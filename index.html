@@ -16,6 +16,14 @@
     #xr-note{margin-top:16px;font-size:12px;color:#8a95a0;line-height:1.6;max-width:520px}
     .badge{display:inline-block;padding:3px 9px;border:1px solid var(--blood);border-radius:20px;
       font-size:11px;letter-spacing:2px;color:#e7a0a0;margin-bottom:14px}
+    #mode-select{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px}
+    .mode{pointer-events:auto;cursor:pointer;font-family:inherit;color:#9aa7b0;background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:10px 16px;font-size:14px;letter-spacing:1px;
+      display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .15s;min-width:150px}
+    .mode span{font-size:10px;letter-spacing:0;opacity:.7;text-transform:none}
+    .mode:hover{border-color:#9aa7b0}
+    .mode.selected{border-color:var(--blood);color:#e7edf2;background:rgba(160,18,18,.15);box-shadow:0 0 14px rgba(160,18,18,.3)}
+    .btn.resume{display:block;margin:0 auto 14px;background:linear-gradient(180deg,#123a24,#0a2417);border-color:#2f8a55;color:#bfeecf}
   </style>
 </head>
 <body>
@@ -40,6 +48,9 @@
   </div>
   <div id="vr-crosshair"></div>
 
+  <!-- Case File / Journal (Tab) -->
+  <div id="journal"></div>
+
   <!-- Start screen -->
   <div id="startscreen" class="screen show">
     <div class="screen-inner">
@@ -53,6 +64,11 @@
         flashlight in your hand is the only thing between you and the dead who
         never left. Survive until dawn.
       </p>
+      <div id="mode-select">
+        <button id="mode-night" class="mode selected">🌙 ONE NIGHT<span>~20 min</span></button>
+        <button id="mode-24" class="mode">⏳ 24-HOUR REAL SURVIVAL<span>the clock is real — last until 6 PM tomorrow</span></button>
+      </div>
+      <button id="btn-resume-save" class="btn resume" style="display:none">↺ RESUME SAVED NIGHT</button>
       <div id="enter-buttons">
         <button id="btn-vr" class="btn big">🥽 ENTER IN VR</button>
         <button id="btn-desktop" class="btn ghost">🖥 PLAY ON DESKTOP</button>

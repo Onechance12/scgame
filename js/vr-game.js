@@ -43,6 +43,18 @@ let nurseryTimer = 0, nurseryMusicTimer = 3;
 let peekers = [];              // children behind the walls, peeking through paintings
 let peekSpawnTimer = 6;
 let peekMats = null;
+let realMode = false;          // 24-hour real-time survival vs one-night
+let startEpoch = 0;            // Date.now() when the night began (wall clock)
+let documents = [];            // findable story papers
+let docMeshes = new Map();
+let docPanelTimer = 0;
+let ritual = null;             // ritual room state
+let ritMats = null;
+let childrenFreed = false;     // ritual outcome
+let xrSupported = false;
+let autosaveT = 8;
+let wakeLock = null;
+const SAVE_KEY = 'collegehill_save';
 let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
@@ -125,8 +137,49 @@ function init() {
   bindDesktopInput();
   bindUI();
   checkXR();
+  offerResume();
+
+  document.addEventListener('visibilitychange', () => { saveState(); if (document.visibilityState === 'visible' && realMode) requestWake(); });
+  window.addEventListener('beforeunload', saveState);
 
   renderer.setAnimationLoop(render);
+}
+
+// ---- persistence (so a 24-hour night survives the headset sleeping) ----
+function saveState() {
+  if (!data || !player || state === 'MENU') return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: 2, realMode, startEpoch,
+      floor: player.floor, x: player.x, y: player.y,
+      fear: player.fear, battery: player.battery, hasLight: player.hasLight,
+      inv: player.inv, keys: player.keys,
+      itemsTaken: data.items.filter((i) => i.taken).map((i) => i.id),
+      objectives: data.objectives.map((o) => o.done),
+      docs: documents.filter((d) => d.found).map((d) => d.id),
+      ritualLit: ritual ? ritual.nodes.filter((n) => n.lit).length : 0,
+      ritualDone: !!(ritual && ritual.done),
+      childrenFreed,
+      finished: state === 'WIN' || state === 'DEAD',
+    }));
+  } catch (e) { /* storage full / disabled */ }
+}
+function loadSave() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } }
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
+
+function offerResume() {
+  const s = loadSave();
+  if (!s || s.finished) return;
+  const btn = document.getElementById('btn-resume-save');
+  if (!btn) return;
+  const mins = Math.max(0, Math.floor((Date.now() - (s.startEpoch || Date.now())) / 60000));
+  const dur = mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + 'm';
+  btn.textContent = '↺ RESUME — ' + (s.realMode ? '24-Hour' : 'One Night') + ', ' + dur + ' in';
+  btn.style.display = 'block';
+}
+
+async function requestWake() {
+  try { if (navigator.wakeLock && (!wakeLock || wakeLock.released)) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { }
 }
 
 function checkXR() {
@@ -134,6 +187,7 @@ function checkXR() {
   const btnVR = document.getElementById('btn-vr');
   if (navigator.xr && navigator.xr.isSessionSupported) {
     navigator.xr.isSessionSupported('immersive-vr').then((ok) => {
+      xrSupported = ok;
       if (ok) {
         note.innerHTML = 'Headset detected. Press <b>ENTER IN VR</b> and put it on. ' +
           'Left stick to walk, right stick to snap-turn, trigger to interact, grip to toggle the flashlight, hold left grip for the spirit box.';
@@ -281,16 +335,28 @@ function hideBigPanel() { bigPanel.visible = false; }
 // ============================================================ new game
 function bindUI() {
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
-  on('btn-vr', enterVR);
+  on('btn-vr', () => enterVR());
   on('btn-desktop', () => startDesktop());
   on('btn-resume', resumeGame);
   on('btn-restart', () => newGame());
   on('btn-restart-dead', () => newGame());
   on('btn-restart-win', () => newGame());
+  on('mode-night', () => setMode(false));
+  on('mode-24', () => setMode(true));
+  on('btn-resume-save', () => {
+    const s = loadSave(); if (!s) return;
+    if (xrSupported) enterVR(s); else startDesktop(s);
+  });
+}
+function setMode(v) {
+  realMode = v;
+  const n = document.getElementById('mode-night'), t = document.getElementById('mode-24');
+  if (n) n.classList.toggle('selected', !v);
+  if (t) t.classList.toggle('selected', v);
 }
 
-function enterVR() {
-  if (!navigator.xr) { startDesktop(); return; }
+function enterVR(saved) {
+  if (!navigator.xr) { startDesktop(saved); return; }
   Audio2.init(); Audio2.resume();
   const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] };
   navigator.xr.requestSession('immersive-vr', sessionInit).then((session) => {
@@ -300,14 +366,14 @@ function enterVR() {
     session.addEventListener('end', () => { isVR = false; });
     wristPanel.visible = true;
     document.getElementById('vr-crosshair').style.display = 'none';
-    newGame();
+    newGame(saved);
   }).catch((err) => {
     console.warn('VR session failed:', err);
-    startDesktop();
+    startDesktop(saved);
   });
 }
 
-function startDesktop() {
+function startDesktop(saved) {
   isVR = false;
   Audio2.init(); Audio2.resume();
   document.getElementById('vr-hud').classList.add('show');
@@ -316,14 +382,18 @@ function startDesktop() {
     'WASD move · drag mouse to look · click to lock pointer · F flashlight · E interact · Q spirit box · Shift run · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
-  newGame();
+  newGame(saved);
 }
 
-function newGame() {
+function newGame(saved) {
   hideAllScreens();
   hideBigPanel();
   data = World.build();
   ents = Entities.spawnAll(data);
+  documents = data.documents || [];
+  ritual = data.ritual ? { floor: data.ritual.floor, cx: data.ritual.cx, cy: data.ritual.cy, done: false,
+    nodes: data.ritual.nodes.map((n) => ({ dx: n.dx, dy: n.dy, lit: false })) } : null;
+  childrenFreed = false;
   const sp = World.spawn(data);
   player = {
     floor: sp.floor, x: sp.x + 0.5, y: sp.y + 0.5,
@@ -331,15 +401,40 @@ function newGame() {
     hasLight: false, lightOn: false, hidden: false, inv: {}, keys: {},
   };
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false;
-  deathBy = ''; ambientEventTimer = 5; scareCooldown = 0;
+  deathBy = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   data.objectives.forEach((o) => (o.done = false));
+
+  if (saved) restoreFrom(saved); else { startEpoch = Date.now(); }
+
   buildFloor(player.floor);
   placeDollyAtTile(player.x, player.y);
-  flashState = true; player.lightOn = false; flashlight.visible = false; player.hasLight = false;
+  flashState = true;
+  flashlight.visible = !!(player.hasLight && player.lightOn);
   state = 'PLAY';
   Audio2.startAmbient();
-  runIntro(0);
+  if (realMode) requestWake();
+  if (saved) { showSubtitle('You come back to yourself where you left off. It never left.', 4); }
+  else runIntro(0);
+  saveState();
+}
+
+function restoreFrom(s) {
+  realMode = !!s.realMode;
+  setMode(realMode);
+  startEpoch = s.startEpoch || Date.now();
+  player.floor = s.floor; player.x = s.x; player.y = s.y;
+  player.fear = s.fear || 12; player.battery = s.battery == null ? 100 : s.battery;
+  player.hasLight = !!s.hasLight; player.lightOn = false;
+  player.inv = s.inv || {}; player.keys = s.keys || {};
+  (s.itemsTaken || []).forEach((id) => { const it = data.items.find((i) => i.id === id); if (it) it.taken = true; });
+  (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
+  (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
+  childrenFreed = !!s.childrenFreed;
+  if (ritual) {
+    ritual.done = !!s.ritualDone;
+    for (let i = 0; i < (s.ritualLit || 0) && i < ritual.nodes.length; i++) ritual.nodes[i].lit = true;
+  }
 }
 
 const INTRO = [
@@ -391,7 +486,7 @@ function disposeGroup(g) {
 
 function buildFloor(fi) {
   disposeGroup(floorGroup);
-  doorMeshes.clear(); itemMeshes.clear(); candleLights = [];
+  doorMeshes.clear(); itemMeshes.clear(); docMeshes.clear(); candleLights = [];
   entityMeshes.forEach((v) => v.group && scene.remove(v.group));
   entityMeshes.clear();
 
@@ -467,11 +562,45 @@ function buildFloor(fi) {
   // children behind the walls
   try { buildPeekers(fi); } catch (e) { console.warn('peekers failed:', e); peekers = []; }
 
+  // story documents on this floor
+  documents.forEach((d) => { if (!d.found && d.floor === fi) addDocMesh(d); });
+
+  // the ritual chamber (basement only)
+  if (ritual && fi === ritual.floor) { try { buildRitual(); } catch (e) { console.warn('ritual failed:', e); } }
+
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
 
   // entities present on this floor get meshes
   ents.forEach((e) => { if (e.floor === fi) ensureEntityMesh(e); });
+}
+
+// ---- Case File / journal (desktop) ----
+let journalOpen = false;
+function toggleJournal() {
+  const el = document.getElementById('journal');
+  if (!el || !data) return;
+  journalOpen = !journalOpen;
+  if (!journalOpen) { el.classList.remove('show'); return; }
+  const done = data.objectives.filter((o) => o.done).length;
+  let html = '<h2>CASE FILE — COLLEGE HILL</h2>';
+  html += '<p class="sub">The Old Hospital on College Hill · Williamson, WV · 1928–1988</p>';
+  html += '<h3>Truths (' + done + '/' + data.objectives.length + ')</h3><ul>';
+  data.objectives.forEach((o) => { html += `<li class="${o.done ? 'done' : ''}">${o.done ? '✔' : '○'} <b>${o.title}</b> — <span class="hint">${o.hint}</span></li>`; });
+  html += '</ul><h3>The Dead</h3><ul>';
+  html += '<li><b>The Grey Nurse</b> (Ada Coyle) — died in the ER after a crash on her way to work. Still walks her rounds.</li>';
+  html += '<li><b>Mose Blackburn</b> — 1962; went out a third-floor window. Swears he did not jump.</li>';
+  html += '<li><b>The Children</b> — the basement ward; bound here by the night staff so the beds stayed full.</li>';
+  html += '<li><b>The Ash</b> — what the incinerator kept, and what the ritual could set loose.</li>';
+  html += '</ul><h3>Documents</h3>';
+  const found = documents.filter((d) => d.found);
+  if (!found.length) html += '<p class="hint">Nothing filed yet. Search the rooms — letters, patient files, newspaper clippings, a diary.</p>';
+  else {
+    html += `<p class="hint">${found.length} of ${documents.length} recovered.</p>`;
+    found.forEach((d) => { html += `<div class="casedoc"><b>${d.title}</b><br><span class="hint">${d.body.join('<br>')}</span></div>`; });
+  }
+  el.innerHTML = html + '<p class="tip">Tab to close.</p>';
+  el.classList.add('show');
 }
 
 // ---- the children behind the walls ----
@@ -650,6 +779,57 @@ function addItemMesh(it) {
   itemMeshes.set(it.id, g);
 }
 
+// ---- story documents ----
+function addDocMesh(d) {
+  const g = new THREE.Group();
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0xd8d2b0, emissive: 0x4a3f18, emissiveIntensity: 0.6, side: THREE.DoubleSide, roughness: 1 }));
+  paper.rotation.x = -Math.PI / 2.2;
+  g.add(paper);
+  const pl = new THREE.PointLight(0xffe4a0, 0.35, 2.5, 2); pl.position.y = 0.3; g.add(pl);
+  g.position.set((d.x + 0.5) * TILE_M, 1.0, (d.y + 0.5) * TILE_M);
+  g.userData.doc = true;
+  floorGroup.add(g);
+  docMeshes.set(d.id, g);
+}
+
+// ---- ritual chamber ----
+function ritualMats() {
+  if (ritMats) return ritMats;
+  ritMats = {
+    wax: new THREE.MeshStandardMaterial({ color: 0xcfc6b0, roughness: .9 }),
+    flame: new THREE.MeshBasicMaterial({ color: 0xffcf7a, fog: false }),
+    altar: new THREE.MeshStandardMaterial({ color: 0x1a1418, roughness: .8, emissive: 0x1a0004, emissiveIntensity: .4 }),
+    sigil: new THREE.MeshBasicMaterial({ color: 0x5a0d0d, fog: false }),
+  };
+  return ritMats;
+}
+function buildRitual() {
+  const m = ritualMats();
+  ritual.altarTileX = ritual.cx + 0.5; ritual.altarTileY = ritual.cy + 0.5;
+  // altar
+  const altar = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.85, 0.8), m.altar);
+  altar.position.set(ritual.altarTileX * TILE_M, 0.42, ritual.altarTileY * TILE_M);
+  floorGroup.add(altar);
+  // a faint sigil ring on the floor
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.4 * TILE_M / 2.7, 1.55 * TILE_M / 2.7, 24), m.sigil);
+  ring.rotation.x = -Math.PI / 2; ring.position.set(ritual.altarTileX * TILE_M, 0.03, ritual.altarTileY * TILE_M);
+  floorGroup.add(ring);
+  // candles
+  ritual.nodes.forEach((n) => {
+    const tx = ritual.cx + n.dx, ty = ritual.cy + n.dy;
+    n.tileX = tx + 0.5; n.tileY = ty + 0.5;
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 8), m.wax));
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), m.flame);
+    flame.position.y = 0.3; flame.visible = n.lit; g.add(flame);
+    const light = new THREE.PointLight(0xffb060, n.lit ? 0.9 : 0, 3.2, 2); light.position.y = 0.45; g.add(light);
+    g.position.set(n.tileX * TILE_M, 0.21, n.tileY * TILE_M);
+    n.mesh = g; n.flame = flame; n.light = light;
+    floorGroup.add(g);
+  });
+}
+
 // ---- entity meshes ----
 function ensureEntityMesh(e) {
   if (entityMeshes.has(e)) return entityMeshes.get(e);
@@ -779,6 +959,7 @@ function bindDesktopInput() {
     if (k === 'e' && state === 'PLAY') interact();
     if (k === 'q' && state === 'PLAY') startSpirit();
     if (k === 'p' || k === 'escape') { if (state === 'PLAY') pause(); else if (state === 'PAUSE') resumeGame(); }
+    if (k === 'tab') { e.preventDefault(); toggleJournal(); }
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
   });
   window.addEventListener('keyup', (e) => {
@@ -855,6 +1036,10 @@ function interact() {
   const it = data.items.find((i) => !i.taken && i.floor === player.floor &&
     Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return pickupItem(it);
+  const doc = documents.find((d) => !d.found && d.floor === player.floor &&
+    Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);
+  if (doc) return readDocument(doc);
+  if (ritual && player.floor === ritual.floor && ritualInteract()) return;
   if (t === TILE.EXIT) return tryExit();
   const obj = objectiveHere();
   if (obj && (obj.type === 'document' || obj.type === 'bell')) return completeObjective(obj);
@@ -878,6 +1063,70 @@ function pickupItem(it) {
   }
 }
 function keyLabel(id) { return ({ key_mose: 'Room 3-East', key_incinerator: 'the Incinerator', key_roof: 'Roof Access' })[id] || id; }
+
+function readDocument(doc) {
+  doc.found = true; Audio2.pickup();
+  const m = docMeshes.get(doc.id); if (m) { floorGroup.remove(m); docMeshes.delete(doc.id); }
+  showDocPanel(doc);
+  showSubtitle('Added to Case File — ' + doc.title, 3.5);
+  player.fear = Math.max(0, player.fear - 3);
+  saveState();
+}
+function wrapDraw(c, text, x, y, maxW, lh) {
+  const words = text.split(' '); let line = ''; let yy = y;
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (c.measureText(test).width > maxW && line) { c.fillText(line, x, yy); line = w; yy += lh; }
+    else line = test;
+  }
+  if (line) c.fillText(line, x, yy);
+  return yy + lh;
+}
+function showDocPanel(doc) {
+  bigPanel.visible = true; docPanelTimer = 11;
+  const c = bigCtx; c.clearRect(0, 0, 1024, 512);
+  c.fillStyle = 'rgba(10,9,5,0.94)'; c.fillRect(0, 0, 1024, 512);
+  c.strokeStyle = 'rgba(120,100,50,0.5)'; c.lineWidth = 3; c.strokeRect(40, 30, 944, 452);
+  c.textAlign = 'center'; c.fillStyle = '#e8dfa0'; c.font = 'bold 40px Courier New';
+  c.fillText(doc.title, 512, 92);
+  c.textAlign = 'left'; c.fillStyle = '#cbc4a2'; c.font = '26px Courier New';
+  let y = 150;
+  doc.body.forEach((line) => { y = wrapDraw(c, line, 80, y, 860, 34) + 8; });
+  c.textAlign = 'center'; c.fillStyle = '#7a746a'; c.font = '20px Courier New';
+  c.fillText('— saved to your Case File (open with Tab) —', 512, 462);
+  bigTex.needsUpdate = true;
+}
+
+// returns true if a ritual candle/altar was interacted with
+function ritualInteract() {
+  const n = ritual.nodes.find((nn) => !nn.lit && Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
+  if (n) { lightRitualCandle(n); return true; }
+  if (!ritual.done && Math.hypot(ritual.altarTileX - player.x, ritual.altarTileY - player.y) < 1.5) {
+    if (!ritual.nodes.every((nn) => nn.lit)) { showSubtitle('Five candles must burn before the circle will open.', 3); return true; }
+    if (!player.inv.spiritbox) { showSubtitle('The altar wants a voice. You need the spirit box.', 3); return true; }
+    performRitual(); return true;
+  }
+  return false;
+}
+function lightRitualCandle(n) {
+  n.lit = true; if (n.flame) n.flame.visible = true; if (n.light) n.light.intensity = 0.9;
+  Audio2.pickup(); Audio2.whisper(0.5);
+  const c = ritual.nodes.filter((x) => x.lit).length;
+  showSubtitle('A candle catches. (' + c + '/5)  The air drops a degree.', 2.6);
+  player.fear = Math.min(100, player.fear + 2);
+  saveState();
+}
+function performRitual() {
+  ritual.done = true; Audio2.stinger(true); player.fear = Math.min(100, player.fear + 15);
+  playLore('ritual', () => {
+    childrenFreed = true;
+    const child = ents.find((e) => e.kind === 'child');
+    if (child) { child.state = Entities.S.DORMANT; child.wakeHour = 999; }
+    const ash = ents.find((e) => e.kind === 'ash'); if (ash) ash.awake();
+    showSubtitle('The children go quiet. But the circle is open now — and it is not empty.', 4.5);
+    saveState();
+  });
+}
 
 function changeFloor(dir) {
   const nf = Math.max(0, Math.min(4, player.floor + dir));
@@ -971,6 +1220,10 @@ function render() {
 function spinItems(dt) {
   itemMeshes.forEach((g) => { if (g.userData.spin) { g.userData.spin.rotation.y += dt * 1.5; g.position.y = 1.1 + Math.sin(performance.now() / 400) * 0.08; } });
   candleLights.forEach((c) => { c.light.intensity = c.base * (0.75 + Math.random() * 0.35); });
+  docMeshes.forEach((g) => { g.rotation.y += dt * 0.6; g.position.y = 1.0 + Math.sin(performance.now() / 500) * 0.06; });
+  if (ritual && player && player.floor === ritual.floor) {
+    ritual.nodes.forEach((n) => { if (n.lit && n.light) n.light.intensity = 0.9 * (0.7 + Math.random() * 0.4); });
+  }
 }
 
 // flickering / dying fluorescent fixtures + the incinerator glow
@@ -1018,9 +1271,15 @@ function animateProps(dt) {
 // The haunted nursery: step inside and the children notice you.
 function nurseryUpdate(dt) {
   const inN = inRoom(player.floor, 'nursery') || inRoom(player.floor, 'maternity');
-  if (inN && !nurseryActive) { showSubtitle('The mobile begins to turn. Something in here is awake.', 3); nurseryMusicTimer = 1.2; Audio2.rattle(); }
-  nurseryActive = inN;
+  const wasActive = nurseryActive;
+  nurseryActive = inN && !childrenFreed;
   if (!inN) { nurseryTimer = 0; return; }
+  if (childrenFreed) { // the ritual set them free — the room is only sad now
+    nurseryTimer -= dt;
+    if (nurseryTimer <= 0) { nurseryTimer = 6 + Math.random() * 6; if (Math.random() < 0.5) Audio2.laugh(); }
+    return;
+  }
+  if (!wasActive) { showSubtitle('The mobile begins to turn. Something in here is awake.', 3); nurseryMusicTimer = 1.2; Audio2.rattle(); }
   player.fear = Math.min(100, player.fear + dt * 1.7);   // cold dread
   const child = ents.find((e) => e.kind === 'child');
   if (child && child.awake) child.awake();               // draw the Child to you
@@ -1045,7 +1304,13 @@ function nurseryUpdate(dt) {
 }
 
 function update(dt) {
-  elapsed += dt; hour = elapsed * HOURS_PER_SEC;
+  // time is driven by the real wall clock (so a 24h night survives sleeps/reloads)
+  elapsed = (Date.now() - startEpoch) / 1000;
+  hour = realMode ? Math.min(24, elapsed / 3600) : elapsed * (24 / GAME_SECONDS);
+
+  autosaveT -= dt;
+  if (autosaveT <= 0) { autosaveT = 10; saveState(); }
+  if (docPanelTimer > 0) { docPanelTimer -= dt; if (docPanelTimer <= 0) hideBigPanel(); }
 
   if (isVR) vrLocomotion(dt);
   else desktopUpdate(dt);
@@ -1053,7 +1318,7 @@ function update(dt) {
 
   // flashlight battery + aim
   if (player.lightOn && player.battery > 0) {
-    player.battery = Math.max(0, player.battery - dt * 1.6);
+    player.battery = Math.max(0, player.battery - dt * (realMode ? 0.05 : 1.6));
     if (player.battery <= 0) { player.lightOn = false; flashlight.visible = false; showSubtitle('The flashlight dies. Darkness.', 2.5); }
     flashFlicker = player.battery < 20 ? (0.55 + Math.random() * 0.45) : 1;
     flashlight.intensity = 30 * flashFlicker;
@@ -1149,6 +1414,7 @@ function update(dt) {
   if (hudTick <= 0) { hudTick = 0.15; updateHUD(); }
 
   if (player.fear >= 100 && state === 'PLAY') { deathBy = deathBy || 'Your heart gave out.'; die(); }
+  if (realMode && hour >= 24 && state === 'PLAY') win();   // survived the full 24 hours
 }
 
 function beamHits(ex, ey) {
@@ -1181,8 +1447,9 @@ function nearCandle() {
 function updateFear(dt) {
   const lit = isPlayerLit();
   const night = 0.5 + Math.min(1, hour / 12) * 0.9;
-  if (!lit) player.fear = Math.min(100, player.fear + dt * (2.2 * night));
-  else player.fear = Math.max(0, player.fear - dt * 3.2);
+  const rise = realMode ? 0.7 : 2.2;                  // gentler baseline over a real night
+  if (!lit) player.fear = Math.min(100, player.fear + dt * (rise * night));
+  else player.fear = Math.max(0, player.fear - dt * (realMode ? 4.2 : 3.2));
   if (player.hidden) player.fear = Math.min(100, player.fear + dt * 1.4);
   if (nearCandle()) player.fear = Math.max(0, player.fear - dt * 5);
 }
@@ -1226,6 +1493,13 @@ function findInteract() {
   if (t === TILE.EXIT) return 'Trigger — the chained front doors';
   const it = data.items.find((i) => !i.taken && i.floor === player.floor && Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return 'Trigger — take the ' + itemName(it.type);
+  const doc = documents.find((d) => !d.found && d.floor === player.floor && Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);
+  if (doc) return 'Trigger — read the ' + doc.type + ' (' + doc.title + ')';
+  if (ritual && player.floor === ritual.floor) {
+    const n = ritual.nodes.find((nn) => !nn.lit && Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
+    if (n) return 'Trigger — light the ritual candle';
+    if (!ritual.done && Math.hypot(ritual.altarTileX - player.x, ritual.altarTileY - player.y) < 1.5) return 'Trigger — the altar' + (ritual.nodes.every((nn) => nn.lit) ? ' (speak into the spirit box)' : ' (light all five candles first)');
+  }
   const o = objectiveHere();
   if (o && o.type === 'document') return 'Trigger — read';
   if (o && o.type === 'bell') return 'Trigger — ring the dawn bell';
@@ -1317,7 +1591,7 @@ function resumeGame() {
 }
 function die() {
   if (state === 'DEAD') return;
-  state = 'DEAD'; stopSpirit(); Audio2.stinger(true);
+  state = 'DEAD'; stopSpirit(); Audio2.stinger(true); clearSave();
   setTimeout(() => Audio2.suspend(), 1600);
   if (isVR) showBigPanel('YOU DIED', [deathBy].concat(data.LORE.ending_bad), '#e02a2a');
   else {
@@ -1328,7 +1602,7 @@ function die() {
 }
 function win() {
   if (state === 'WIN') return;
-  state = 'WIN'; stopSpirit();
+  state = 'WIN'; stopSpirit(); clearSave();
   if (isVR) showBigPanel('DAWN', data.LORE.ending_good, '#8affb0');
   else {
     const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_good.map((l) => `<p>${l}</p>`).join('');

@@ -53,6 +53,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;
 #journal li.done{opacity:.5;text-decoration:line-through}
 #journal .hint{color:#8a95a0}
 #journal .tip{margin-top:24px;color:#6a747e;font-size:12px}
+#journal .casedoc{border-left:2px solid rgba(200,170,90,.4);padding:8px 0 8px 14px;margin:12px 0;
+  font-size:13px;line-height:1.6;background:rgba(200,170,90,.04)}
+#journal .casedoc b{color:#e8dfa0}
 
 /* ---------- Screens ---------- */
 .screen{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;

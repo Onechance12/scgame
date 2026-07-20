@@ -72,6 +72,35 @@ run · **P** pause.
 
 ---
 
+## Two ways to play
+
+On the start screen, pick a mode:
+
+- **🌙 One Night (~20 min)** — the whole night compressed into a tense ~20-minute run.
+- **⏳ 24-Hour Real Survival** — the clock is **real**. You have from 6 PM to 6 PM
+  the next day — a genuine 24 hours. The game runs on the wall clock and
+  **auto-saves**, so if the headset sleeps or you close the tab, hit **Resume**
+  and you pick up exactly where the building left you (it requests a screen wake
+  lock to help stay running). Resources are rebalanced for the long haul.
+
+## The mystery (a real investigation)
+
+The night is a **case to solve**. Scattered through the rooms are **letters,
+newspaper clippings, patient files, a police report, and a matron's diary** —
+find and read them and they assemble into your **Case File** (open with **Tab**
+on desktop; they display in the headset as you read them). Piece together the
+1926 fire, Nurse **Ada Coyle**, **Mose Blackburn**, the children's ward, the
+incinerator, and the night staff's **binding ritual** that keeps the dead from
+ever leaving.
+
+## Easter egg: the Ritual Chamber
+
+Hidden in the basement is a **ritual room**. Light the **five pentagram candles**,
+then speak into the **spirit box at the altar** — and something answers. Perform
+it and you set the bound children free… but the circle held more than children,
+and now it's open. (Find *"The Binding — Instructions"* first if you want to know
+what you're doing.)
+
 ## What's inside
 
 A full, furnished hospital — not empty boxes:

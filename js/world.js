@@ -126,6 +126,7 @@ const World = (() => {
         { name: 'The Morgue', side: 'bot', units: 3, tag: 'morgue' },
         { name: 'Incinerator', side: 'bot', units: 2, tag: 'incinerator', locked: true },
         { name: 'Boiler Room', side: 'bot', units: 2, tag: 'boiler' },
+        { name: 'Ritual Chamber', side: 'bot', units: 2, tag: 'ritual' },
         { name: 'Laundry', side: 'bot', units: 2, tag: 'laundry' },
       ],
     },
@@ -216,6 +217,14 @@ const World = (() => {
       "SPIRIT BOX (child): … cold … will you stay with me … don’t go up …",
       "THE ASH: everything the fire took, it kept. it is awake now.",
     ],
+    ritual: [
+      "The five candles catch. The circle closes. The air goes to ice.",
+      "SPIRIT BOX: … you read the words … you opened the door …",
+      "MATRON: We bound them so the hospital would never empty.",
+      "MATRON: Say the last line and you unbind what we caged.",
+      "The children stop crying. For the first time in decades, they are free.",
+      "Something older, though, was caged in here with them. It is not.",
+    ],
     ending_good: [
       "6:00 AM. Grey light in the windows. The chain on the front doors falls.",
       "The Nurse stands aside. Her rounds are done. So are yours.",
@@ -289,6 +298,88 @@ const World = (() => {
       },
     ];
 
+    // ---------- STORY DOCUMENTS (the mystery to investigate) ----------
+    // {floor,x,y,id,type,title,body[],found}
+    const documents = [];
+    const addDoc = (fi, tag, id, type, title, body, dx = 0, dy = 0) => {
+      const r = findRoom(fi, tag);
+      if (!r) return;
+      documents.push({ floor: fi, x: r.cx + dx, y: r.cy + dy, id, type, title, body, found: false });
+    };
+    addDoc(1, 'lobby', 'doc_fire', 'clipping', 'Mingo Republican — Nov. 1926', [
+      'FIRE GUTS CITY HOSPITAL. Three lost in the night ward before the',
+      'trucks arrived. Williamson is left without a hospital. A new one is',
+      'already pledged — up on College Hill, above the flood line.',
+    ], -1, 0);
+    addDoc(1, 'admitting', 'doc_dedication', 'clipping', 'Dedication Program — March 3, 1928', [
+      'THE NEW HOSPITAL ON COLLEGE HILL OPENS ITS DOORS.',
+      'Four floors of the most modern care in Appalachia — and beneath',
+      'them, a basement for the work the public need not see.',
+    ]);
+    addDoc(2, 'station', 'doc_nurse_letter', 'letter', 'Letter — Nurse Ada Coyle', [
+      'Dear Mother — the night shift is long but the patients are kind.',
+      'I am always running late; the road down the hill is wicked in rain.',
+      'One day it will be the end of me. Ha. Kiss Bess for me. — Ada',
+      '(dated the morning of her accident, 1953)',
+    ]);
+    addDoc(1, 'er', 'doc_admission', 'file', 'ER Admission Log — 1953', [
+      'ADMITTED: Coyle, Ada — staff. MVA on College Hill Road.',
+      'Brought into the room she worked in. Pronounced at 6:14 AM.',
+      'Note in margin, another hand: "She never clocked out."',
+    ], 1, 0);
+    addDoc(1, 'records', 'doc_police', 'report', 'Police Report — 1962', [
+      'Officers responded to a disturbance outside a downtown restaurant.',
+      'Suspect M. BLACKBURN exchanged fire; Lt. G. RICHMOND struck fatally.',
+      'Blackburn wounded, admitted under guard, third floor, Room 3-East.',
+    ]);
+    addDoc(3, 'mose', 'doc_mose_note', 'letter', 'Scrap of Paper — Room 3-East', [
+      'they keep saying I jumped. I did not jump. two men were in the room',
+      'and then the window was open and then I was falling.',
+      'tell Ora. tell somebody. I did not jump. — M.B.',
+    ]);
+    addDoc(0, 'nursery', 'doc_ward', 'file', 'Children’s Ward Register — Winter 1937', [
+      'Fever swept the ward. Eleven cots, eleven names, all struck through.',
+      'Parents were turned away at the stair; contagion, they were told.',
+      'The little ones were carried down, not up. Down to the basement.',
+    ]);
+    addDoc(0, 'boiler', 'doc_incin', 'file', 'Incinerator Log', [
+      'Unclaimed remains, per county contract, reduced Tuesdays.',
+      'Entries in a shaking hand grow vaguer: "materials," "effects," "the small ones."',
+      'Last line: "It does not stay burned. Do not go down alone."',
+    ]);
+    addDoc(4, 'matron', 'doc_diary', 'diary', 'Matron’s Diary — 1953', [
+      'The dead will not leave. Ada walks her rounds; the children cry below.',
+      'The night staff have begun a working — candles, a circle, the old words —',
+      'to BIND them here, so the beds are never truly empty and the ward survives.',
+      'God forgive us. We caged them. And we caged something else with them.',
+    ]);
+    addDoc(0, 'ritual', 'doc_ritual', 'diary', 'The Binding — Instructions', [
+      'Five candles at the points. Light them widdershins, then speak into the box.',
+      'To BIND: recite the litany. To UNBIND: say the last line backward and let go.',
+      'Warning: the circle holds more than the children. Something older waits under.',
+    ]);
+    addDoc(2, 'maternity', 'doc_crayon', 'letter', 'Crayon Drawing', [
+      'A child’s drawing: stick figures in beds, a tall grey nurse over them.',
+      'Scrawled at the bottom in red crayon, pressed hard enough to tear:',
+      '"THEY WONT LET US GO HOME."',
+    ]);
+    addDoc(4, 'attic', 'doc_closing', 'letter', 'Final Memo — 1988', [
+      'We are closing College Hill for good. The new hospital is open up the road.',
+      'Do not disturb the basement. Do not relight the candles.',
+      'Some doors are locked from the inside for a reason. — Administrator',
+    ]);
+
+    // ---------- RITUAL config (basement Ritual Chamber) ----------
+    const rr = findRoom(0, 'ritual');
+    const ritual = rr ? {
+      floor: 0, cx: rr.cx, cy: rr.cy,
+      // 5 candle points on a small circle + a central altar
+      nodes: [0, 1, 2, 3, 4].map((i) => {
+        const a = -Math.PI / 2 + (i / 5) * Math.PI * 2;
+        return { dx: Math.cos(a) * 2.0, dy: Math.sin(a) * 1.6, lit: false };
+      }),
+    } : null;
+
     // Place a few candle "safe lights" in the world for fear relief.
     floors.forEach((f, fi) => {
       // one candle per floor near a stairwell corridor
@@ -312,7 +403,7 @@ const World = (() => {
       if (r) floors[1].grid[r.y + 1][r.cx] = TILE.EXIT;
     })();
 
-    return { floors, items, objectives, LORE, TILE, W, H, CORR_TOP, CORR_BOT };
+    return { floors, items, objectives, documents, ritual, LORE, TILE, W, H, CORR_TOP, CORR_BOT };
   }
 
   // Spawn point: 1st floor lobby
