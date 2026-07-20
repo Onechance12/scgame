@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>COLLEGE HILL — 24 Hours</title>
+  <link rel="stylesheet" href="game.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- In-game HUD -->
+  <div id="hud">
+    <div id="topbar">
+      <div id="clock">6:00 PM</div>
+      <div id="objective-count">Truths: 0/4</div>
+    </div>
+
+    <div id="meters">
+      <div class="meter">
+        <span class="lbl">FEAR</span>
+        <div class="bar"><div id="fear-fill" class="fill fear"></div></div>
+      </div>
+      <div class="meter">
+        <span class="lbl">LIGHT</span>
+        <div class="bar"><div id="battery-fill" class="fill battery"></div></div>
+      </div>
+      <div class="meter">
+        <span class="lbl">BODY</span>
+        <div class="bar"><div id="stamina-fill" class="fill stamina"></div></div>
+      </div>
+    </div>
+
+    <div id="inventory"></div>
+    <div id="objective"></div>
+    <div id="interact-prompt"></div>
+    <div id="subtitle"></div>
+    <div id="controls-hint">WASD move · Mouse aim · Click/F flashlight · Shift run · E interact · Q spirit box · Tab journal · P pause</div>
+  </div>
+
+  <!-- Journal -->
+  <div id="journal"></div>
+
+  <!-- Start screen -->
+  <div id="startscreen" class="screen show">
+    <div class="screen-inner">
+      <h1 class="title">COLLEGE HILL</h1>
+      <div class="subtitle-big">24 HOURS</div>
+      <p class="blurb">
+        The Old Hospital on College Hill — Williamson, West Virginia.
+        Opened 1928. Closed 1988. The most haunted asylum in America.<br /><br />
+        Your ride is gone. The doors are chained. You have until dawn to learn
+        the truth of the dead who never left — the <b>Grey Nurse</b>, <b>Mose
+        Blackburn</b>, the children in the basement, and the thing the
+        <b>incinerator</b> made.<br /><br />
+        Survive twenty-four hours.
+      </p>
+      <button id="btn-start" class="btn big">ENTER THE HOSPITAL</button>
+      <p class="warn">🎧 Headphones on. Lights off. Volume up. All sound is live — every whisper is meant for you.</p>
+      <p class="disclaimer">Fan tribute to Sam &amp; Colby's <i>“Our Unexplainable Night at Haunted Asylum.”</i> Not affiliated. Based on the real history of the location.</p>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div id="pausescreen" class="screen">
+    <div class="screen-inner">
+      <h2>PAUSED</h2>
+      <button id="btn-resume" class="btn">RESUME</button>
+      <button id="btn-restart" class="btn ghost">RESTART NIGHT</button>
+    </div>
+  </div>
+
+  <!-- Death -->
+  <div id="deathscreen" class="screen">
+    <div class="screen-inner">
+      <h2 class="dead">YOU DIED</h2>
+      <p id="death-reason" class="reason"></p>
+      <div id="death-lore" class="lore"></div>
+      <button id="btn-restart-dead" class="btn">TRY AGAIN</button>
+      <button id="btn-menu-death" class="btn ghost">MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- Win -->
+  <div id="winscreen" class="screen">
+    <div class="screen-inner">
+      <h2 class="win">DAWN</h2>
+      <div id="win-lore" class="lore"></div>
+      <p class="reason">You survived the night at the Old Hospital on College Hill.</p>
+      <button id="btn-restart-win" class="btn">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <script src="js/audio.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

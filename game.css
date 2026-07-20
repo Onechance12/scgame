@@ -1,0 +1,87 @@
+/* COLLEGE HILL — 24 Hours : styling */
+:root{
+  --blood:#a11212;
+  --blood-bright:#e02a2a;
+  --grey:#9aa7b0;
+  --ink:#07070a;
+  --amber:#ffbe5a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;
+  font-family:"Courier New",ui-monospace,monospace;color:#d7dde3;cursor:crosshair}
+#game{position:fixed;inset:0;display:block;background:#000}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+#topbar{position:absolute;top:14px;left:0;right:0;display:flex;justify-content:space-between;
+  padding:0 22px;font-size:20px;letter-spacing:2px}
+#clock{color:#cdd6de;text-shadow:0 0 10px rgba(0,0,0,.9)}
+#objective-count{color:var(--grey)}
+
+#meters{position:absolute;top:52px;left:22px;display:flex;flex-direction:column;gap:6px}
+.meter{display:flex;align-items:center;gap:8px}
+.meter .lbl{font-size:11px;width:42px;letter-spacing:1px;opacity:.8}
+.bar{width:180px;height:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+  border-radius:2px;overflow:hidden}
+.fill{height:100%;width:12%;transition:width .12s linear}
+.fill.fear{background:linear-gradient(90deg,#5a0000,var(--blood-bright))}
+.fill.battery{background:linear-gradient(90deg,#3a5a2a,#8aff9e)}
+.fill.stamina{background:linear-gradient(90deg,#2a4a5a,#7ad0ff)}
+
+#inventory{position:absolute;bottom:64px;left:0;right:0;text-align:center;font-size:18px;
+  letter-spacing:2px;text-shadow:0 0 8px #000}
+#objective{position:absolute;top:52px;right:22px;max-width:320px;text-align:right;font-size:14px;
+  line-height:1.5;text-shadow:0 0 8px #000}
+#objective .hint{color:#9aa7b0;font-size:12px}
+#interact-prompt{position:absolute;bottom:150px;left:0;right:0;text-align:center;font-size:16px;
+  color:var(--amber);opacity:0;transition:opacity .15s;text-shadow:0 0 10px #000}
+#subtitle{position:absolute;bottom:100px;left:0;right:0;text-align:center;font-size:19px;
+  color:#e7edf2;opacity:0;transition:opacity .4s;text-shadow:0 0 12px #000,0 0 4px #000;
+  padding:0 40px;font-style:italic}
+#controls-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11px;
+  color:rgba(200,210,220,.35);letter-spacing:1px}
+
+/* ---------- Journal ---------- */
+#journal{position:fixed;inset:0;z-index:40;background:rgba(4,4,7,.94);color:#cdd6de;
+  padding:5vh 8vw;display:none;overflow:auto;pointer-events:auto}
+#journal.show{display:block}
+#journal h2{font-size:26px;letter-spacing:3px;color:#e7edf2;margin-bottom:4px}
+#journal .sub{color:#8a95a0;margin-bottom:20px;font-size:13px}
+#journal h3{margin:20px 0 8px;color:var(--blood-bright);letter-spacing:2px;font-size:15px}
+#journal ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+#journal li{font-size:14px;line-height:1.5;border-left:2px solid rgba(255,255,255,.1);padding-left:12px}
+#journal li.done{opacity:.5;text-decoration:line-through}
+#journal .hint{color:#8a95a0}
+#journal .tip{margin-top:24px;color:#6a747e;font-size:12px}
+
+/* ---------- Screens ---------- */
+.screen{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 40%,rgba(20,0,0,.7),rgba(0,0,0,.97));
+  pointer-events:auto;text-align:center;padding:20px}
+.screen.show{display:flex;animation:fadein .8s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.screen-inner{max-width:640px}
+.title{font-size:clamp(44px,9vw,96px);letter-spacing:10px;color:#e7edf2;
+  text-shadow:0 0 30px rgba(160,18,18,.6),0 0 4px #000;font-weight:700}
+.subtitle-big{font-size:clamp(20px,4vw,34px);letter-spacing:14px;color:var(--blood-bright);
+  margin:2px 0 26px;animation:flick 5s infinite}
+@keyframes flick{0%,97%,100%{opacity:1}98%{opacity:.3}99%{opacity:.8}}
+.blurb{font-size:15px;line-height:1.7;color:#b5bdc5;margin-bottom:28px}
+.warn{margin-top:20px;font-size:13px;color:var(--amber);opacity:.85}
+.disclaimer{margin-top:18px;font-size:11px;color:#5a646e;line-height:1.5}
+h2{font-size:clamp(32px,7vw,64px);letter-spacing:8px;margin-bottom:16px}
+h2.dead{color:var(--blood-bright);text-shadow:0 0 24px rgba(224,42,42,.7)}
+h2.win{color:#8affb0;text-shadow:0 0 24px rgba(120,255,170,.5)}
+.reason{font-size:16px;color:#c5ccd3;margin:10px 0 18px;font-style:italic}
+.lore{margin:16px 0;color:#9aa7b0;font-size:14px;line-height:1.7}
+.lore p{margin:6px 0}
+
+.btn{pointer-events:auto;display:inline-block;margin:10px 8px 0;padding:14px 30px;
+  font-family:inherit;font-size:16px;letter-spacing:3px;color:#e7edf2;cursor:pointer;
+  background:linear-gradient(180deg,#2a0d0d,#160707);border:1px solid var(--blood);
+  border-radius:3px;transition:all .18s}
+.btn:hover{background:linear-gradient(180deg,#4a1414,#2a0d0d);
+  box-shadow:0 0 20px rgba(160,18,18,.5);transform:translateY(-1px)}
+.btn.big{font-size:20px;padding:18px 44px;margin-top:6px}
+.btn.ghost{background:transparent;border-color:rgba(255,255,255,.2);color:#9aa7b0}
+.btn.ghost:hover{border-color:#9aa7b0;box-shadow:none;background:rgba(255,255,255,.05)}
