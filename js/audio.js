@@ -602,6 +602,86 @@ const Audio2 = (() => {
     });
   }
 
+  // ---- NEW: chains, falling debris, bodies ------------------------------
+
+  // Chain links dragged over concrete, from a direction. vol 0..1.
+  function chains(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan || 0);
+    const v = Math.max(0.01, Math.min(1, vol == null ? 0.5 : vol));
+    // drag bed
+    const s = noiseSource();
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(700, t); bp.frequency.linearRampToValueAtTime(1100, t + 0.9); bp.Q.value = 3;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.05 * v, t + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+    s.connect(bp); bp.connect(g); g.connect(out); s.start(t); s.stop(t + 1.2);
+    // link clinks
+    let tt = t + 0.05;
+    for (let i = 0; i < 5 + Math.floor(rnd() * 3); i++) {
+      const f = 2400 + rnd() * 2400;
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f;
+      const hp = ctx.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = f; hp.Q.value = 14;
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, tt);
+      og.gain.exponentialRampToValueAtTime(0.05 * v, tt + 0.004);
+      og.gain.exponentialRampToValueAtTime(0.0001, tt + 0.09);
+      o.connect(hp); hp.connect(og); og.connect(out);
+      o.start(tt); o.stop(tt + 0.1);
+      tt += 0.08 + rnd() * 0.16;
+    }
+  }
+
+  // Heavy crash — a ceiling panel or light fixture hitting the floor.
+  function crash() {
+    if (!started) return;
+    const t = now();
+    const s = noiseSource();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.55, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    s.connect(lp); lp.connect(g); g.connect(master); s.start(t); s.stop(t + 0.55);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.3);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.5, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.42);
+    // settling clatter
+    let tt = t + 0.25;
+    for (let i = 0; i < 4; i++) {
+      const s2 = noiseSource();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500 + rnd() * 1500; bp.Q.value = 6;
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0.12 / (i + 1), tt);
+      g2.gain.exponentialRampToValueAtTime(0.0001, tt + 0.12);
+      s2.connect(bp); bp.connect(g2); g2.connect(master); s2.start(tt); s2.stop(tt + 0.13);
+      tt += 0.09 + rnd() * 0.12;
+    }
+  }
+
+  // A body-weight thud, then a slowing roll.
+  function thud() {
+    if (!started) return;
+    const t = now();
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.22);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.36);
+    // roll bumps, slowing
+    let tt = t + 0.3, gap = 0.22;
+    for (let i = 0; i < 5; i++) {
+      const o2 = ctx.createOscillator(); o2.type = 'sine';
+      o2.frequency.setValueAtTime(70 - i * 6, tt); o2.frequency.exponentialRampToValueAtTime(30, tt + 0.1);
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0.22 / (i * 0.6 + 1), tt);
+      g2.gain.exponentialRampToValueAtTime(0.0001, tt + 0.14);
+      o2.connect(g2); g2.connect(master); o2.start(tt); o2.stop(tt + 0.16);
+      tt += gap; gap *= 1.35;
+    }
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -613,7 +693,7 @@ const Audio2 = (() => {
     pickup, stinger, dread, chase, setMasterVolume, suspend, resume, isStarted,
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
-    footstepPan, laughPan,
+    footstepPan, laughPan, chains, crash, thud,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

@@ -54,6 +54,10 @@ let childrenFreed = false;     // ritual outcome
 let xrSupported = false;
 let autosaveT = 8;
 let wakeLock = null;
+let moodLights = [];           // per-room coloured lights
+let carter = null, carterTimer = 50;   // the chain-dragging apparition
+let fallingDebris = [], debrisKept = [], dropCooldown = 25;
+let morgueScared = false, sceneAnims = [];
 const SAVE_KEY = 'collegehill_save';
 let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
 let itemMeshes = new Map();     // item.id -> mesh
@@ -480,7 +484,29 @@ function loadTextures() {
   TEX.floorN = load('floor_nor.jpg', World.W, World.H, false);
   TEX.ceilD = load('ceiling_diff.jpg', World.W / 2, World.H / 2);
   TEX.doorD = load('door_diff.jpg', 1, 1);
+  // per-room floor skins (repeat set per-room via clone)
+  TEX.rooms = {
+    tile: load('floor_tiles_06_diff.jpg', 1, 1),
+    bigtile: load('large_floor_tiles_02_diff.jpg', 1, 1),
+    lino: load('old_linoleum_flooring_01_diff.jpg', 1, 1),
+    wood: load('wood_floor_worn_diff.jpg', 1, 1),
+    conc: load('worn_concrete_floor_diff.jpg', 1, 1),
+    carpet: load('dirty_carpet_diff.jpg', 1, 1),
+    mosaic: load('old_mosaic_floor_diff.jpg', 1, 1),
+    metal: load('rusty_metal_04_diff.jpg', 1, 1),
+  };
 }
+
+// which floor skin each room type wears
+const ROOM_FLOOR = {
+  lobby: 'mosaic', admitting: 'mosaic', waiting: 'carpet', cafeteria: 'carpet',
+  er: 'tile', surgery: 'tile', prep: 'tile', xray: 'tile', autopsy: 'tile', pharmacy: 'tile', bath: 'tile',
+  kitchen: 'bigtile', ward: 'lino', room207: 'lino', maternity: 'lino', quarters: 'lino', matron: 'lino',
+  station: 'lino', records: 'lino', linen: 'lino', iso: 'lino', recovery: 'lino', mose: 'lino',
+  chapel: 'wood', sanctum: 'wood', attic: 'wood', nursery: 'wood', bell: 'wood',
+  morgue: 'conc', storage: 'conc', laundry: 'conc', ritual: 'conc', supply: 'conc', landing: 'conc',
+  incinerator: 'metal', boiler: 'metal',
+};
 
 // ============================================================ world geometry
 function disposeGroup(g) {
@@ -495,6 +521,7 @@ function disposeGroup(g) {
 function buildFloor(fi) {
   disposeGroup(floorGroup);
   doorMeshes.clear(); itemMeshes.clear(); docMeshes.clear(); candleLights = [];
+  moodLights = []; carter = null; fallingDebris = []; debrisKept = []; sceneAnims = [];
   entityMeshes.forEach((v) => v.group && scene.remove(v.group));
   entityMeshes.clear();
 
@@ -517,6 +544,21 @@ function buildFloor(fi) {
   ceil.rotation.x = Math.PI / 2;
   ceil.position.set(spanX / 2, WALL_H, spanZ / 2);
   floorGroup.add(ceil);
+
+  // per-room floor skins — every room type wears its own floor
+  data.floors[fi].rooms.forEach((r) => {
+    const key = ROOM_FLOOR[r.tag];
+    const tex = key && TEX.rooms && TEX.rooms[key];
+    if (!tex) return;
+    const t2 = tex.clone(); t2.needsUpdate = true;
+    t2.repeat.set(Math.max(1, (r.w - 2) / 2.2), Math.max(1, (r.h - 2) / 2.2));
+    const mat = new THREE.MeshStandardMaterial({ map: t2, color: 0x93969c, roughness: .95 });
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry((r.w - 2) * TILE_M, (r.h - 2) * TILE_M), mat);
+    pl.rotation.x = -Math.PI / 2;
+    pl.position.set((r.x + r.w / 2) * TILE_M, 0.02, (r.y + r.h / 2) * TILE_M);
+    pl.receiveShadow = true;
+    floorGroup.add(pl);
+  });
 
   // count walls -> instanced
   let wallCount = 0;
@@ -564,6 +606,7 @@ function buildFloor(fi) {
       flickers = p.fixtures || [];
       emberProp = p.ember || null;
       animatedProps = p.animated || [];
+      moodLights = p.moods || [];
     } catch (e) { console.warn('props failed:', e); }
   }
 
@@ -1286,6 +1329,157 @@ function updateFixtures(dt) {
     }
   }
   if (emberProp) emberProp.traverse((o) => { if (o.material && o.material.emissive && o.material.emissiveIntensity > 0.5) o.material.emissiveIntensity = 1.1 + Math.random() * 0.9; });
+  for (const m of moodLights) {
+    m.light.intensity = black ? 0 : m.base * (0.72 + Math.random() * 0.4);
+  }
+}
+
+// ---- the Chain-Carter: a pale thing dragging a chained gurney, far off ----
+function spawnCarter() {
+  if (carter || !player) return;
+  const midY = 15.5;
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const cx = Math.max(5, Math.min(World.W - 5, player.x + side * (8 + Math.random() * 3)));
+  if (Math.abs(cx - player.x) < 6) return;
+  const dark = new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 1 });
+  const pale = new THREE.MeshStandardMaterial({ color: 0x8a929c, emissive: 0x161c22, roughness: 1 });
+  const grp = new THREE.Group();
+  const fig = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 1.7, 8), pale); fig.position.y = 0.85; grp.add(fig);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), pale); head.position.y = 1.85; grp.add(head);
+  const cart = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.75, 1.9), dark); cart.position.set(0, 0.45, 1.6); grp.add(cart);
+  const lump = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.25, 1.5),
+    new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 1 })); lump.position.set(0, 0.9, 1.6); grp.add(lump);
+  for (let i = 0; i < 4; i++) {
+    const link = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 5, 8), dark);
+    link.position.set(0.22, 0.55 - i * 0.1, 0.55 + i * 0.22); grp.add(link);
+  }
+  grp.position.set(cx * TILE_M, 0, midY * TILE_M);
+  grp.visible = false;                       // invisible until the beam finds it
+  floorGroup.add(grp);
+  carter = { grp, x: cx, y: midY, dir: -side, life: 22, revealed: false, revealT: 0, soundT: 0.2 };
+}
+function updateCarter(dt) {
+  carterTimer -= dt;
+  if (!carter) { if (carterTimer <= 0) { carterTimer = 70 + Math.random() * 60; spawnCarter(); } return; }
+  const c = carter;
+  c.life -= dt;
+  c.x += c.dir * dt * 0.45;
+  c.grp.position.x = c.x * TILE_M;
+  const dx = c.x - player.x, dy = c.y - player.y;
+  const d = Math.hypot(dx, dy);
+  c.soundT -= dt;
+  if (c.soundT <= 0 && d < 22) {
+    c.soundT = 1.25 + Math.random() * 0.5;
+    camera.getWorldDirection(tmpV2);
+    const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
+    const pan = Math.max(-1, Math.min(1, Math.sin(normAng(Math.atan2(dx, dy) - fYaw))));
+    Audio2.chains(pan, Math.max(0.15, 1 - d / 22));
+  }
+  if (!c.revealed && beamHits(c.x, c.y)) {
+    c.revealed = true; c.revealT = 1.5; c.grp.visible = true;
+    Audio2.stinger(false); Audio2.chains(0, 1);
+    player.fear = Math.min(100, player.fear + 9);
+    showSubtitle('Something pale is dragging a chained gurney down the hall. It stops. It looks at you.', 3.5);
+  }
+  if (c.revealed) {
+    c.revealT -= dt;
+    c.grp.rotation.y = Math.atan2(player.x - c.x, player.y - c.y);
+    if (c.revealT <= 0) {
+      floorGroup.remove(c.grp); carter = null;
+      Audio2.chains(0, 0.5);
+      setTimeout(() => Audio2.chains(0, 0.24), 650);
+      setTimeout(() => Audio2.chains(0, 0.1), 1350);
+      showSubtitle('Chains, running away into the dark. Then nothing.', 3);
+      return;
+    }
+  }
+  if (carter && (c.life <= 0 || d > 26)) { floorGroup.remove(c.grp); carter = null; }
+}
+
+// ---- falling ceiling panels / light fixtures ----
+function dropScare() {
+  camera.getWorldDirection(tmpV);
+  const len = Math.hypot(tmpV.x, tmpV.z) || 1;
+  const fx = player.x + (tmpV.x / len) * 3.5;
+  const fy = player.y + (tmpV.z / len) * 3.5;
+  if (!passableFor(player.floor, fx, fy)) return;
+  const isLight = Math.random() < 0.4;
+  const mesh = new THREE.Mesh(
+    isLight ? new THREE.BoxGeometry(1.5, 0.1, 0.3) : new THREE.BoxGeometry(1.1, 0.07, 1.1),
+    isLight ? new THREE.MeshStandardMaterial({ color: 0xd8dde2, emissive: 0x8aa0b8, emissiveIntensity: 0.9 })
+            : new THREE.MeshStandardMaterial({ color: 0x57534c, roughness: 1 }));
+  mesh.position.set(fx * TILE_M, WALL_H - 0.08, fy * TILE_M);
+  floorGroup.add(mesh);
+  fallingDebris.push({ mesh, vy: 0, isLight, spin: (Math.random() - 0.5) * 3 });
+  if (isLight) Audio2.buzz(0.09);
+}
+function updateDrops(dt) {
+  for (let i = fallingDebris.length - 1; i >= 0; i--) {
+    const f = fallingDebris[i];
+    f.vy += 9.8 * dt;
+    f.mesh.position.y -= f.vy * dt;
+    f.mesh.rotation.z += f.spin * dt; f.mesh.rotation.x += f.spin * 0.6 * dt;
+    if (f.mesh.position.y <= 0.06) {
+      f.mesh.position.y = 0.06;
+      f.mesh.rotation.set((Math.random() - 0.5) * 0.2, f.mesh.rotation.y, (Math.random() - 0.5) * 0.4);
+      Audio2.crash();
+      if (f.isLight) { Audio2.buzz(0.1); f.mesh.material.emissiveIntensity = 0; }
+      player.fear = Math.min(100, player.fear + 12);
+      showSubtitle(f.isLight ? 'A light fixture tears loose and bursts on the tile in front of you.'
+                             : 'A ceiling panel crashes down right in front of you.', 3);
+      debrisKept.push(f.mesh);
+      if (debrisKept.length > 6) { const old = debrisKept.shift(); floorGroup.remove(old); }
+      fallingDebris.splice(i, 1);
+    }
+  }
+}
+
+// ---- the morgue set-piece: a drawer slides open, the body comes out ----
+function morgueScare() {
+  const r = data.floors[0].rooms.find((rr) => rr.tag === 'morgue');
+  if (!r) { morgueScared = true; return; }
+  morgueScared = true;
+  const bx = r.x + 1.6, bz = r.cy - 1.2;
+  const drawer = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 1.6),
+    new THREE.MeshStandardMaterial({ color: 0xb7bcc4, metalness: .6, roughness: .4 }));
+  drawer.position.set(bx * TILE_M, 0.6, bz * TILE_M);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.24, 1.5),
+    new THREE.MeshStandardMaterial({ color: 0xcfd3d8, roughness: 1 }));
+  body.position.set(bx * TILE_M, 0.85, bz * TILE_M);
+  floorGroup.add(drawer); floorGroup.add(body);
+  Audio2.creak();
+  let t = 0;
+  sceneAnims.push((dt) => {
+    t += dt;
+    if (t < 1.2) {                              // the drawer rolls out on its own
+      drawer.position.z = (bz + t * 0.9) * TILE_M;
+      body.position.z = drawer.position.z;
+      if (t + dt >= 1.2) Audio2.drag();
+      return true;
+    }
+    if (t < 2.2) {                              // the body tips off the tray
+      const k = (t - 1.2);
+      body.position.y = 0.85 - k * 0.7;
+      body.rotation.x = k * 1.2;
+      if (t + dt >= 2.2) {
+        Audio2.thud(); Audio2.stinger(true);
+        player.fear = Math.min(100, player.fear + 16);
+        showSubtitle('A drawer was not latched. The body inside it is on the floor now — pointed at you.', 4.5);
+      }
+      return true;
+    }
+    if (t < 3.6) {                              // it rolls. bodies should not roll.
+      const k = 1 - (t - 2.2) / 1.4;
+      body.position.y = 0.14;
+      body.rotation.x += dt * 4 * k;
+      body.position.x += dt * 0.5 * k;
+      return true;
+    }
+    return false;                               // it stays where it stopped
+  });
+}
+function updateSceneAnims(dt) {
+  for (let i = sceneAnims.length - 1; i >= 0; i--) if (!sceneAnims[i](dt)) sceneAnims.splice(i, 1);
 }
 
 function powerSurge() {
@@ -1417,6 +1611,13 @@ function update(dt) {
   Survival.update(dt, hour, realMode);
   if (player.fear >= 96) Survival.useMedkit();   // last-second mercy, if you carry one
 
+  // scripted horrors
+  updateCarter(dt);
+  updateDrops(dt);
+  updateSceneAnims(dt);
+  if (dropCooldown > 0) dropCooldown -= dt;
+  if (!morgueScared && player.floor === 0 && inRoom(0, 'morgue')) morgueScare();
+
   // power-surge blackout scare (more frequent as the night deepens)
   surgeTimer -= dt;
   if (surgeTimer <= 0) {
@@ -1504,6 +1705,7 @@ function catchLine(e) {
 }
 function ambientEvent() {
   if (state !== 'PLAY') return;
+  if (dropCooldown <= 0 && hour > 1 && Math.random() < 0.22) { dropCooldown = 75; dropScare(); return; }
   const roll = Math.random();
   // floor-flavoured sounds
   if (player.floor === 0 && Math.random() < 0.45) {

@@ -52,11 +52,41 @@ const Props = (() => {
     [[-0.36, -0.9], [0.36, -0.9], [-0.36, 0.9], [0.36, 0.9]].forEach(([x, z]) => g.add(box(0.06, 0.5, 0.06, m.metal, x, 0.25, z)));
     g.add(box(0.82, 0.08, 1.95, m.metal, 0, 0.5, 0));
     g.add(box(0.74, 0.14, 1.8, m.mattress, 0, 0.6, 0));
-    g.add(box(0.7, 0.12, 1.0, m.sheet, 0, 0.62, 0.35));
-    g.add(box(0.4, 0.1, 0.26, m.sheet, 0, 0.7, -0.72));
-    g.add(box(0.86, 0.5, 0.05, m.metal, 0, 0.55, -0.98)); // headboard
-    if (bloody) g.add(box(0.5, 0.02, 0.6, m.stain, 0, 0.68, 0.1));
-    g.userData = { fw: 0.9, fd: 2.0 };
+    g.add(box(0.7, 0.12, 1.0, m.sheet, 0, 0.62, 0.35));       // rumpled blanket
+    g.add(box(0.44, 0.09, 0.3, m.sheet, 0, 0.71, -0.72));     // pillow
+    g.add(box(0.86, 0.55, 0.05, m.metal, 0, 0.58, -0.98));    // headboard
+    g.add(box(0.86, 0.4, 0.05, m.metal, 0, 0.5, 0.98));       // footboard
+    // side rails
+    g.add(box(0.04, 0.05, 1.2, m.steel, -0.42, 0.78, 0.1));
+    g.add(box(0.04, 0.05, 1.2, m.steel, 0.42, 0.78, 0.1));
+    // patient chart on the footboard
+    g.add(box(0.24, 0.32, 0.02, m.sheet, 0, 0.62, 1.02));
+    if (bloody) {
+      g.add(box(0.5, 0.02, 0.6, m.stain, 0, 0.68, 0.1));
+      g.add(box(0.34, 0.015, 0.4, m.stain, 0.14, 0.005, 0.62)); // dripped to the floor
+    }
+    g.userData = { fw: 0.95, fd: 2.1 };
+    return g;
+  }
+  function casket() {
+    const g = new (T().Group)(), m = mats();
+    g.add(box(0.75, 0.45, 2.0, m.darkwood, 0, 0.35, 0));
+    g.add(box(0.8, 0.07, 2.05, m.wood, 0, 0.61, 0));           // lid, slightly ajar
+    g.children[1].rotation.z = 0.06; g.children[1].position.x = 0.06;
+    g.add(box(0.06, 0.2, 0.06, m.wood, -0.34, 0.1, -0.9));
+    g.add(box(0.06, 0.2, 0.06, m.wood, 0.34, 0.1, 0.9));
+    g.userData = { fw: 0.85, fd: 2.1 };
+    return g;
+  }
+  function shroudBody() {
+    const g = new (T().Group)(), m = mats();
+    g.add(cyl(0.1, 0.14, 0.85, m.steel, 0, 0.42, 0));          // slab
+    g.add(box(0.7, 0.08, 1.9, m.steel, 0, 0.85, 0));
+    // the body under the sheet
+    g.add(box(0.5, 0.22, 1.6, m.sheet, 0, 0.99, 0));
+    g.add(box(0.34, 0.16, 0.3, m.sheet, 0, 1.06, -0.6));       // head
+    g.add(box(0.12, 0.1, 0.16, m.sheet, -0.1, 1.05, 0.55));    // feet
+    g.userData = { fw: 0.8, fd: 2.0 };
     return g;
   }
   function crib() {
@@ -363,24 +393,25 @@ const Props = (() => {
     boiler, incinerator, washer, pew, cross, altar, bell, xraymachine: xrayMachine, window: windowProp,
     preptable, tray, rocker, pipes, cart: crates,
     bassinet, rockinghorse: rockingHorse, teddy, toyblocks: toyBlocks, ball, mobile, toybox, incubator,
+    casket, shroud: shroudBody,
   };
 
   // tag -> {items, style}
   const FILL = {
-    nursery: { items: [], style: 'nursery' },
-    maternity: { items: ['incubator', 'incubator', 'bassinet', 'bassinet', 'rocker'], style: 'walls' },
-    er: { items: ['bed', 'bed', 'bed', 'iv', 'examlight'], style: 'walls' },
+    nursery: { items: [], style: 'nursery', mood: 0x9a6a2a },
+    maternity: { items: ['incubator', 'incubator', 'bassinet', 'bassinet', 'rocker'], style: 'walls', mood: 0x8a5a3a },
+    er: { items: ['bed', 'bed', 'bed', 'iv', 'examlight'], style: 'walls', mood: 0x6a8a9a },
     ward: { items: ['bed', 'bed', 'bed', 'bed'], style: 'walls' },
     recovery: { items: ['bed', 'bed', 'bed', 'iv'], style: 'walls' },
     room207: { items: ['bed', 'wheelchair', 'cabinet'], style: 'walls' },
     iso: { items: ['bed'], style: 'center' },
     quarters: { items: ['bed', 'bed', 'cabinet', 'chair'], style: 'walls' },
-    morgue: { items: ['drawers', 'drawers', 'slab'], style: 'morgue' },
-    autopsy: { items: ['slab', 'slab', 'cabinet'], style: 'center' },
-    incinerator: { items: ['incinerator'], style: 'center' },
+    morgue: { items: ['drawers', 'drawers', 'slab'], style: 'morgue', mood: 0x3a6a58 },
+    autopsy: { items: ['shroud', 'shroud', 'cabinet'], style: 'center', mood: 0x4a7a66 },
+    incinerator: { items: ['incinerator'], style: 'center', mood: 0x8a2a10 },
     boiler: { items: ['boiler', 'boiler', 'pipes'], style: 'walls' },
     laundry: { items: ['washer', 'washer', 'cart'], style: 'walls' },
-    storage: { items: ['shelf', 'shelf', 'crates', 'crates'], style: 'walls' },
+    storage: { items: ['casket', 'casket', 'casket', 'shelf', 'crates'], style: 'walls', mood: 0x2a4a6a },
     supply: { items: ['shelf', 'shelf', 'crates'], style: 'walls' },
     records: { items: ['shelf', 'shelf', 'cabinet', 'cabinet'], style: 'walls' },
     attic: { items: ['crates', 'crates', 'shelf'], style: 'walls' },
@@ -391,11 +422,12 @@ const Props = (() => {
     kitchen: { items: ['counter', 'counter', 'stove', 'shelf', 'preptable'], style: 'kitchen' },
     cafeteria: { items: ['table', 'table', 'table', 'chair', 'chair', 'chair'], style: 'rows' },
     station: { items: ['desk', 'cabinet', 'cabinet'], style: 'walls' },
-    surgery: { items: ['operating', 'examlight', 'tray', 'cabinet'], style: 'center' },
+    surgery: { items: ['operating', 'examlight', 'tray', 'cabinet'], style: 'center', mood: 0x8a9aa8 },
     prep: { items: ['sink', 'counter', 'shelf'], style: 'walls' },
     mose: { items: ['bed', 'window', 'wheelchair'], style: 'mose' },
-    chapel: { items: ['pew', 'pew', 'pew', 'pew', 'cross', 'altar'], style: 'chapel' },
-    sanctum: { items: ['altar', 'cross', 'chair'], style: 'center' },
+    chapel: { items: ['pew', 'pew', 'pew', 'pew', 'cross', 'altar'], style: 'chapel', mood: 0xaa7a2a },
+    sanctum: { items: ['altar', 'cross', 'chair'], style: 'center', mood: 0xc09a4a },
+    ritual: { items: [], style: 'center', mood: 0x7a1010 },
     bell: { items: ['bell'], style: 'center' },
     bath: { items: ['bathtub', 'sink'], style: 'walls' },
     linen: { items: ['shelf', 'shelf'], style: 'walls' },
@@ -536,7 +568,17 @@ const Props = (() => {
       catch (e) { /* never let one room break the floor */ }
     });
     const fixtures = makeFixtures(group, fi, TILE_M, WALL_H);
-    return { group, solids, fixtures, ember: group.userData.ember || null, animated };
+    // per-room coloured mood lights (dim, flickered by the game)
+    const moods = [];
+    data.floors[fi].rooms.forEach((room) => {
+      const spec = FILL[room.tag];
+      if (!spec || !spec.mood) return;
+      const l = new THREE.PointLight(spec.mood, 0.55, 6.5, 2);
+      l.position.set((room.cx + 0.5) * TILE_M, WALL_H - 0.7, (room.cy + 0.5) * TILE_M);
+      group.add(l);
+      moods.push({ light: l, base: 0.55 });
+    });
+    return { group, solids, fixtures, ember: group.userData.ember || null, animated, moods };
   }
 
   return { populate };

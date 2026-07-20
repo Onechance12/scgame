@@ -35,3 +35,8 @@ The full curated source list + verified download-URL patterns lives in
 assets/asset-db.json (machine-readable) and assets/ASSETS.md (human guide).
 Pull assets with tools/fetch-asset.sh. Log any CC-BY / royalty-free (non-CC0)
 assets you add here with their author + license.
+
+Per-room floor textures (Poly Haven, CC0, 1K diffuse):
+  floor_tiles_06, large_floor_tiles_02, old_linoleum_flooring_01,
+  wood_floor_worn, worn_concrete_floor, dirty_carpet, old_mosaic_floor,
+  rusty_metal_04, painted_plaster_wall
