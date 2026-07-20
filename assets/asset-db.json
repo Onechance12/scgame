@@ -1,0 +1,169 @@
+{
+  "meta": {
+    "name": "College Hill — free asset redirect database",
+    "purpose": "Curated, mostly-CC0 free asset sources + direct-download URL patterns to pull skins/textures, 3D objects, creatures, sounds, music, VFX, HDRIs, fonts and period documents into the game. 'verified: true' means an endpoint or URL pattern was tested live during this build.",
+    "updated": "2026-07",
+    "rule": "Prefer CC0 (no attribution, commercial ok). For CC-BY keep the credit in assets/CREDITS.txt. Never commit anything you have not confirmed is free to use."
+  },
+
+  "licenses": {
+    "CC0": "Public domain dedication. No attribution, any use incl. commercial. Preferred.",
+    "CC-BY": "Free incl. commercial, but you MUST credit the author (add to assets/CREDITS.txt).",
+    "CC-BY-SA": "Free + credit + derivatives must share-alike. Avoid for mixed projects unless ok.",
+    "PD": "Public domain (old enough / gov work). Free to use.",
+    "RF-ACCOUNT": "Free but requires a free account / API key / login to download."
+  },
+
+  "resolvers": {
+    "comment": "URL templates. Substitute {id}, {res} in {1k,2k,4k}, {map} in {diff,nor_gl,rough,ao,disp,arm}, {fmt} in {JPG,PNG}. All verified live.",
+    "polyhaven_asset_list": "https://api.polyhaven.com/assets?type={type}    (type = textures|models|hdris)",
+    "polyhaven_files": "https://api.polyhaven.com/files/{id}    (returns JSON with every download URL)",
+    "polyhaven_texture_map": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/{res}/{id}/{id}_{map}_{res}.jpg",
+    "polyhaven_model_gltf": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/{res}/{id}/{id}_{res}.gltf",
+    "polyhaven_hdri": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/{res}/{id}_{res}.hdr",
+    "ambientcg_json": "https://ambientcg.com/api/v2/full_json?type=Material&limit={n}&include=downloadData",
+    "ambientcg_zip": "https://ambientcg.com/get?file={id}_{res}-{fmt}.zip    (e.g. Rock030_1K-JPG.zip)",
+    "sketchfab_cc0_search": "https://api.sketchfab.com/v3/search?type=models&downloadable=true&license=cc0&q={query}&count={n}",
+    "freesound_search": "https://freesound.org/apiv2/search/text/?query={q}&filter=license:%22Creative+Commons+0%22&token={FREESOUND_TOKEN}",
+    "chronicling_america": "https://chroniclingamerica.loc.gov/search/pages/results/?state=&andtext={q}&format=json    (public-domain US newspapers 1770-1963)"
+  },
+
+  "sources": [
+    { "id": "polyhaven", "name": "Poly Haven", "homepage": "https://polyhaven.com/", "license": "CC0",
+      "categories": ["textures", "models", "hdris"], "access": "api", "verified": true,
+      "api": "https://api.polyhaven.com/", "notes": "Best CC0 PBR textures, ~520 game-ready models, ~980 HDRIs. Deterministic download URLs (see resolvers). Already used in this repo." },
+    { "id": "ambientcg", "name": "ambientCG", "homepage": "https://ambientcg.com/", "license": "CC0",
+      "categories": ["textures", "materials", "hdris", "decals", "substances"], "access": "api", "verified": true,
+      "api": "https://ambientcg.com/api/v2/full_json", "notes": "Huge CC0 material/texture library incl. DECALS (blood, grime, cracks, stains — perfect for horror). ZIP downloads via ambientcg.com/get?file=." },
+    { "id": "quaternius", "name": "Quaternius", "homepage": "https://quaternius.com/", "license": "CC0",
+      "categories": ["models", "creatures", "characters", "animated"], "access": "direct", "verified": true,
+      "notes": "CC0 low-poly RIGGED + ANIMATED models. 'Ultimate Monsters' = 50 animated monsters (attack/death/walk) in FBX+glTF — ideal creatures. Also skeletons, enemies, nature, props. Download packs (Google Drive/itch)." },
+    { "id": "polypizza", "name": "Poly Pizza", "homepage": "https://poly.pizza/", "license": "CC0",
+      "categories": ["models", "creatures", "props"], "access": "api", "verified": true,
+      "api": "https://poly.pizza/api (free key)", "notes": "Search + direct GLB downloads for CC0 low-poly models (mirrors Quaternius, Kenney, Google Poly archive). Great for grabbing single objects/creatures as GLB." },
+    { "id": "kenney", "name": "Kenney", "homepage": "https://kenney.nl/assets", "license": "CC0",
+      "categories": ["models", "characters", "vfx", "ui", "audio", "textures"], "access": "browse", "verified": true,
+      "notes": "40k+ CC0 assets. For us: Blocky/Mini characters (creatures), Particle Pack + Smoke sprites (VFX), Impact/Interface SFX, prototype textures, UI packs. Downloads are per-pack ZIPs." },
+    { "id": "sketchfab_cc0", "name": "Sketchfab (CC0 filter)", "homepage": "https://sketchfab.com/search?features=downloadable&licenses=7c23a1ba438d4306920229c12afcb5f9&type=models", "license": "CC0",
+      "categories": ["models", "creatures", "scans"], "access": "api", "verified": true,
+      "api": "https://api.sketchfab.com/v3/search", "notes": "Millions of models; filter license=cc0 & downloadable. Browsing/search is open; downloading a model needs a free account/OAuth token. Also many CC-BY." },
+    { "id": "smithsonian", "name": "Smithsonian Open Access", "homepage": "https://3d.si.edu/cc0", "license": "CC0",
+      "categories": ["models", "scans"], "access": "browse", "notes": "Real CC0 3D scans of historical objects (medical instruments, tools, skeletons) — authenticity for a period hospital. Site may block bots; browse in a real browser." },
+    { "id": "thebasemesh", "name": "The Base Mesh", "homepage": "https://thebasemesh.com/", "license": "CC0",
+      "categories": ["models", "basemeshes"], "notes": "600+ CC0 base meshes (humans, animals, props) to build/retopo creatures." },
+    { "id": "opengameart", "name": "OpenGameArt", "homepage": "https://opengameart.org/", "license": "CC0/CC-BY/GPL (mixed)",
+      "categories": ["models", "sprites", "audio", "vfx", "textures"], "access": "browse", "verified": true,
+      "notes": "Filter by CC0. Direct file URLs (opengameart.org/sites/default/files/...). Good for fire/smoke/blood sprite sheets, monster sprites, horror SFX. CHECK each item's license." },
+    { "id": "freesound", "name": "Freesound", "homepage": "https://freesound.org/", "license": "CC0/CC-BY (mixed)",
+      "categories": ["sfx", "ambience", "field-recordings"], "access": "api-key", "verified": true,
+      "api": "https://freesound.org/apiv2/ (free token)", "notes": "The best SFX library. Filter license:'Creative Commons 0'. Horror gold: whispers, EVP, screams, drips, wind, hospital ambiences. Download needs a free API token; browse/search open." },
+    { "id": "pixabay", "name": "Pixabay", "homepage": "https://pixabay.com/sound-effects/", "license": "RF (Pixabay License)",
+      "categories": ["sfx", "music", "images"], "access": "api-key", "notes": "Royalty-free (no attribution) SFX + music. Free API key. Big horror/ambient sound selection." },
+    { "id": "sonniss", "name": "Sonniss GDC Game Audio", "homepage": "https://sonniss.com/gameaudiogdc", "license": "RF (royalty-free, commercial ok)",
+      "categories": ["sfx", "ambience"], "notes": "Annual multi-GB pro SFX bundles, free & royalty-free for games. Huge horror/foley/ambience content. Torrent/direct ZIPs." },
+    { "id": "fma", "name": "Free Music Archive", "homepage": "https://freemusicarchive.org/", "license": "CC/PD (mixed)",
+      "categories": ["music"], "notes": "Filter public-domain / CC0. Ambient/drone/dark tracks for menus & tension beds." },
+    { "id": "musopen", "name": "Musopen", "homepage": "https://musopen.org/", "license": "PD",
+      "categories": ["music"], "notes": "Public-domain classical recordings — a warped music-box lullaby or organ piece fits the chapel." },
+    { "id": "jangafx_vdb", "name": "JangaFX Free VDB Animations", "homepage": "https://jangafx.com/software/embergen/download/free-vdb-animations/", "license": "CC0-like (free, commercial ok)",
+      "categories": ["vfx", "volumes"], "verified": true, "notes": "Free volumetric VDB smoke/fire/explosion/mist animations. For web/Three.js, bake to sprite sheets or use as reference; native in Blender/UE/Unity." },
+    { "id": "polygonalmind_100avatars", "name": "100 Avatars (Polygonal Mind)", "homepage": "https://github.com/madjin/100avatars", "license": "CC0",
+      "categories": ["characters", "avatars"], "notes": "300+ CC0 rigged VRM/GLB avatars — reskinnable as patients/ghosts." },
+    { "id": "3dmodelscc0", "name": "3DModelsCC0", "homepage": "https://www.3dmodelscc0.com/", "license": "CC0",
+      "categories": ["models"], "notes": "Curated CC0 model directory." },
+    { "id": "gameassetsgarden", "name": "Game Assets Garden", "homepage": "https://www.gameassetsgarden.com/", "license": "CC0",
+      "categories": ["models", "textures", "audio"], "notes": "Curated CC0 game assets." },
+    { "id": "gameasset_net", "name": "GameAsset.net", "homepage": "https://gameasset.net/", "license": "CC0",
+      "categories": ["models", "animations", "textures", "audio", "scripts"], "notes": "Game-ready CC0, no attribution." },
+    { "id": "textureninja", "name": "Texture Ninja", "homepage": "https://texture.ninja/", "license": "CC0",
+      "categories": ["textures", "photos"], "notes": "CC0 photo textures — grime, walls, rust, paper for documents." },
+    { "id": "3dtextures", "name": "3DTextures.me", "homepage": "https://3dtextures.me/", "license": "CC0",
+      "categories": ["textures", "materials"], "notes": "CC0 PBR materials, easy single-page downloads." },
+    { "id": "googlefonts", "name": "Google Fonts", "homepage": "https://fonts.google.com/", "license": "OFL/Apache (free)",
+      "categories": ["fonts", "ui"], "notes": "Free fonts. Horror-fitting: Special Elite (typewriter, for documents), IM Fell (old print), Creepster (title). Self-host the .woff2." },
+    { "id": "chroniclingamerica", "name": "Chronicling America (Library of Congress)", "homepage": "https://chroniclingamerica.loc.gov/", "license": "PD",
+      "categories": ["documents", "newspapers"], "access": "api", "notes": "Digitized US newspapers 1770-1963 (public domain) with a JSON API + page images — REAL period clippings for the mystery (a 1926 fire, 1962 shooting)." },
+    { "id": "internetarchive", "name": "Internet Archive", "homepage": "https://archive.org/", "license": "PD (filtered)",
+      "categories": ["documents", "audio", "images", "film"], "notes": "Public-domain scans, old audio, ephemera. Filter to pre-1929 / PD." },
+    { "id": "wikimedia", "name": "Wikimedia Commons", "homepage": "https://commons.wikimedia.org/", "license": "CC0/CC-BY/PD (mixed)",
+      "categories": ["images", "photos", "documents"], "notes": "Historical photos of hospitals/asylums, medical equipment, documents. Check each file's license." }
+  ],
+
+  "catalog": {
+    "creatures": [
+      { "need": "animated monsters / the dead", "source": "quaternius", "ref": "Ultimate Monsters (50, CC0, FBX+glTF, rigged+animated)", "url": "https://quaternius.com/packs/ultimatemonsters.html", "license": "CC0" },
+      { "need": "skeletons / undead", "source": "quaternius", "ref": "Ultimate Animated Character/Skeleton packs", "url": "https://quaternius.com/", "license": "CC0" },
+      { "need": "single creature GLB", "source": "polypizza", "ref": "search 'monster','ghost','skeleton' -> download GLB", "url": "https://poly.pizza/search/monster", "license": "CC0" },
+      { "need": "patient/ghost humanoids", "source": "polygonalmind_100avatars", "ref": "300 CC0 rigged avatars", "url": "https://github.com/madjin/100avatars", "license": "CC0" },
+      { "need": "blocky characters", "source": "kenney", "ref": "Blocky Characters / Mini Characters", "url": "https://kenney.nl/assets?q=character", "license": "CC0" },
+      { "need": "high-detail CC0 creatures", "source": "sketchfab_cc0", "ref": "search license=cc0 downloadable 'ghost/monster/skull'", "url": "https://sketchfab.com/search?features=downloadable&licenses=7c23a1ba438d4306920229c12afcb5f9&q=ghost&type=models", "license": "CC0" }
+    ],
+    "props_objects": [
+      { "need": "gothic bed", "source": "polyhaven", "id": "GothicBed_01", "license": "CC0" },
+      { "need": "gothic cabinet", "source": "polyhaven", "id": "GothicCabinet_01", "license": "CC0" },
+      { "need": "rocking chair (nursery)", "source": "polyhaven", "id": "Rockingchair_01", "license": "CC0" },
+      { "need": "school desk/chair (children's ward)", "source": "polyhaven", "id": "SchoolDesk_01", "license": "CC0" },
+      { "need": "wet floor sign", "source": "polyhaven", "id": "WetFloorSign_01", "license": "CC0" },
+      { "need": "alarm clock", "source": "polyhaven", "id": "alarm_clock_01", "license": "CC0" },
+      { "need": "barrel stove / boiler", "source": "polyhaven", "id": "barrel_stove", "license": "CC0" },
+      { "need": "brass candleholders (ritual)", "source": "polyhaven", "id": "brass_candleholders", "license": "CC0" },
+      { "need": "ceiling fan", "source": "polyhaven", "id": "ceiling_fan", "license": "CC0" },
+      { "need": "desk lamp", "source": "polyhaven", "id": "desk_lamp_arm_01", "license": "CC0" },
+      { "need": "drawer cabinet / files", "source": "polyhaven", "id": "drawer_cabinet", "license": "CC0" },
+      { "need": "picture frame (peekers)", "source": "polyhaven", "id": "fancy_picture_frame_01", "license": "CC0" },
+      { "need": "old books / encyclopedia", "source": "polyhaven", "id": "book_encyclopedia_set_01", "license": "CC0" },
+      { "need": "notebook / binder", "source": "polyhaven", "id": "binder_notebook", "license": "CC0" },
+      { "need": "cardboard boxes", "source": "polyhaven", "id": "cardboard_box_01", "license": "CC0" },
+      { "need": "megaphone / boombox", "source": "polyhaven", "id": "Megaphone_01", "license": "CC0" },
+      { "need": "hospital / medical low-poly set", "source": "polypizza", "ref": "search 'hospital','wheelchair','gurney','skeleton'", "url": "https://poly.pizza/search/hospital", "license": "CC0" }
+    ],
+    "textures_skins": [
+      { "need": "peeling paint wall (in use)", "source": "polyhaven", "id": "peeling_painted_wall", "license": "CC0" },
+      { "need": "cracked plaster (in use)", "source": "polyhaven", "id": "worn_cracked_plaster", "license": "CC0" },
+      { "need": "dirty tile floor (in use)", "source": "polyhaven", "id": "dirty_tiles", "license": "CC0" },
+      { "need": "ceiling (in use)", "source": "polyhaven", "id": "ceiling_interior", "license": "CC0" },
+      { "need": "wood door (in use)", "source": "polyhaven", "id": "rough_pine_door", "license": "CC0" },
+      { "need": "damaged concrete floor", "source": "polyhaven", "id": "damaged_concrete_floor", "license": "CC0" },
+      { "need": "old linoleum", "source": "polyhaven", "id": "old_linoleum_flooring_01", "license": "CC0" },
+      { "need": "rusty metal (morgue/incinerator)", "source": "polyhaven", "id": "rusty_metal_04", "license": "CC0" },
+      { "need": "blood / grime / crack DECALS", "source": "ambientcg", "ref": "type=Decal, e.g. Blood, Stain, Crack packs", "url": "https://ambientcg.com/list?type=Decal", "license": "CC0" },
+      { "need": "paper texture (documents)", "source": "ambientcg", "ref": "Paper001..; or textureninja photos", "url": "https://ambientcg.com/list?q=paper", "license": "CC0" }
+    ],
+    "sounds_sfx": [
+      { "need": "whispers / EVP / voices", "source": "freesound", "ref": "query 'whisper','evp','ghost voice' filter CC0", "url": "https://freesound.org/search/?q=whisper&f=license:%22Creative+Commons+0%22", "license": "CC0" },
+      { "need": "screams / children", "source": "freesound", "ref": "'child laugh','scream','crying' CC0", "url": "https://freesound.org/search/?q=child+laugh&f=license:%22Creative+Commons+0%22", "license": "CC0" },
+      { "need": "hospital ambience / drones", "source": "freesound", "ref": "'abandoned hospital','room tone','drone' CC0", "url": "https://freesound.org/search/?q=abandoned+hospital&f=license:%22Creative+Commons+0%22", "license": "CC0" },
+      { "need": "footsteps / doors / metal drags", "source": "freesound", "ref": "'footstep concrete','door creak','metal drag' CC0", "url": "https://freesound.org/search/?q=door+creak&f=license:%22Creative+Commons+0%22", "license": "CC0" },
+      { "need": "royalty-free horror SFX (no key hassle)", "source": "pixabay", "ref": "sound-effects/search/horror", "url": "https://pixabay.com/sound-effects/search/horror/", "license": "RF" },
+      { "need": "pro SFX bundle", "source": "sonniss", "ref": "GDC game-audio bundles", "url": "https://sonniss.com/gameaudiogdc", "license": "RF" },
+      { "need": "impact/UI SFX", "source": "kenney", "ref": "Impact Sounds, Interface Sounds", "url": "https://kenney.nl/assets?q=audio", "license": "CC0" }
+    ],
+    "music": [
+      { "need": "ambient/dark tension beds", "source": "fma", "ref": "filter public-domain / CC0, genre drone/ambient", "url": "https://freemusicarchive.org/", "license": "CC/PD" },
+      { "need": "public-domain classical (chapel/organ)", "source": "musopen", "url": "https://musopen.org/", "license": "PD" }
+    ],
+    "vfx_volumes": [
+      { "need": "smoke / fire / mist volumes", "source": "jangafx_vdb", "ref": "free VDB animations (bake to sprite sheets for web)", "url": "https://jangafx.com/software/embergen/download/free-vdb-animations/", "license": "RF" },
+      { "need": "particle sprites / smoke puffs", "source": "kenney", "ref": "Particle Pack, Smoke Particles", "url": "https://kenney.nl/assets?q=particle", "license": "CC0" },
+      { "need": "fire/smoke/blood sprite sheets", "source": "opengameart", "ref": "search 'smoke sprite sheet','fire animation','blood' filter CC0", "url": "https://opengameart.org/art-search-advanced?keys=smoke+sprite&sort_by=count&field_art_licenses_tid%5B%5D=4", "license": "CC0" }
+    ],
+    "hdris_skyboxes": [
+      { "need": "night sky / moonlight", "source": "polyhaven", "id": "dikhololo_night", "license": "CC0" },
+      { "need": "blue night town", "source": "polyhaven", "id": "blaubeuren_night", "license": "CC0" },
+      { "need": "abandoned interior light", "source": "polyhaven", "id": "abandoned_hall_01", "license": "CC0" },
+      { "need": "abandoned church", "source": "polyhaven", "id": "abandoned_church", "license": "CC0" },
+      { "need": "storm / dread sky", "source": "polyhaven", "id": "approaching_storm", "license": "CC0" }
+    ],
+    "fonts_ui": [
+      { "need": "typewriter (documents/HUD)", "source": "googlefonts", "ref": "Special Elite", "url": "https://fonts.google.com/specimen/Special+Elite", "license": "OFL" },
+      { "need": "old print (clippings)", "source": "googlefonts", "ref": "IM Fell English", "url": "https://fonts.google.com/specimen/IM+Fell+English", "license": "OFL" },
+      { "need": "horror title", "source": "googlefonts", "ref": "Creepster / Nosifer", "url": "https://fonts.google.com/specimen/Creepster", "license": "OFL" },
+      { "need": "UI kit", "source": "kenney", "ref": "UI Pack / Fonts", "url": "https://kenney.nl/assets?q=ui", "license": "CC0" }
+    ],
+    "story_documents": [
+      { "need": "real 1926 fire / 1962 shooting clippings", "source": "chroniclingamerica", "ref": "JSON API, West Virginia papers", "url": "https://chroniclingamerica.loc.gov/search/pages/results/?state=West+Virginia&andtext=hospital+fire&format=json", "license": "PD" },
+      { "need": "period ephemera / forms / photos", "source": "internetarchive", "url": "https://archive.org/search?query=hospital+records", "license": "PD" },
+      { "need": "asylum/hospital historical photos", "source": "wikimedia", "url": "https://commons.wikimedia.org/w/index.php?search=abandoned+hospital&title=Special:MediaSearch&type=image", "license": "CC0/CC-BY/PD" }
+    ]
+  }
+}

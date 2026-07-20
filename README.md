@@ -167,6 +167,10 @@ climbs just by being in there.
 - `index.html` — WebXR VR game shell (+ desktop mode)
 - `flat.html` — the original 2D top-down version
 - `game.css` — styling
+- `assets/asset-db.json` + `assets/ASSETS.md` — curated **free/CC0 asset database**
+  (skins, objects, creatures, sounds, VFX, HDRIs, fonts, real period documents)
+  with verified download-URL patterns
+- `tools/fetch-asset.sh` — one-command puller for Poly Haven & ambientCG assets
 - `assets/textures/` — CC0 hospital textures from Poly Haven (see `assets/CREDITS.txt`)
 - `js/vendor/three.min.js` — Three.js r160 (vendored, offline-capable)
 - `js/vr-game.js` — 3D world build, WebXR rig, controllers, render loop

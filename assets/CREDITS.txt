@@ -18,8 +18,13 @@ support the artists.
 Audio is generated live in the browser (js/audio.js) — no external files.
 
 Other great CC0 / royalty-free libraries for extending this:
-  ambientCG      https://ambientcg.com          (CC0 textures/materials)
+  ambientCG      https://ambientcg.com          (CC0 textures/materials/decals)
   Kenney         https://kenney.nl              (CC0 game assets)
-  Quaternius     https://quaternius.com         (CC0 3D models)
+  Quaternius     https://quaternius.com         (CC0 rigged/animated creatures)
   Freesound      https://freesound.org          (filter to CC0)
   OpenGameArt    https://opengameart.org        (filter to CC0)
+
+The full curated source list + verified download-URL patterns lives in
+assets/asset-db.json (machine-readable) and assets/ASSETS.md (human guide).
+Pull assets with tools/fetch-asset.sh. Log any CC-BY / royalty-free (non-CC0)
+assets you add here with their author + license.
