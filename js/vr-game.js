@@ -23,7 +23,7 @@ const LIGHT_RANGE = 8.5; // flashlight reach, in tiles (matches AI)
 const CONE = 0.62;       // flashlight cone half-angle (rad), matches AI
 const GAME_SECONDS = 1080;
 const HOURS_PER_SEC = 24 / GAME_SECONDS;
-const KEY_FOR = { mose: 'key_mose', incinerator: 'key_incinerator', roof: 'key_roof' };
+const KEY_FOR = { mose: 'key_mose', incinerator: 'key_incinerator', roof: 'key_roof', sanctum: 'key_sanctum' };
 const TILE = World.TILE;
 
 // ---- three core objects ----
@@ -160,6 +160,7 @@ function saveState() {
       ritualLit: ritual ? ritual.nodes.filter((n) => n.lit).length : 0,
       ritualDone: !!(ritual && ritual.done),
       childrenFreed,
+      survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
       finished: state === 'WIN' || state === 'DEAD',
     }));
   } catch (e) { /* storage full / disabled */ }
@@ -259,6 +260,7 @@ function makeHandMesh() {
 function onTrigger(c) {
   if (state === 'DEAD' || state === 'WIN' || state === 'MENU') { restartFromPanel(); return; }
   if (state !== 'PLAY') return;
+  if (c === sources.left && !interactTarget) { Survival.drink(); return; }  // left trigger: drink
   interact();
 }
 function onSqueezeStart(c) {
@@ -379,7 +381,7 @@ function startDesktop(saved) {
   document.getElementById('vr-hud').classList.add('show');
   document.getElementById('vr-crosshair').style.display = 'block';
   document.getElementById('controls-hint').textContent =
-    'WASD move · drag mouse to look · click to lock pointer · F flashlight · E interact · Q spirit box · Shift run · P pause';
+    'WASD move · mouse look · F flashlight · E interact · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
   newGame(saved);
@@ -394,6 +396,11 @@ function newGame(saved) {
   ritual = data.ritual ? { floor: data.ritual.floor, cx: data.ritual.cx, cy: data.ritual.cy, done: false,
     nodes: data.ritual.nodes.map((n) => ({ dx: n.dx, dy: n.dy, lit: false })) } : null;
   childrenFreed = false;
+  Survival.init({
+    player: () => player, ents: () => ents, data: () => data, docs: () => documents,
+    subtitle: showSubtitle, audio: Audio2, powerSurge: () => powerSurge(), save: () => saveState(),
+  });
+  Survival.reset();
   const sp = World.spawn(data);
   player = {
     floor: sp.floor, x: sp.x + 0.5, y: sp.y + 0.5,
@@ -431,6 +438,7 @@ function restoreFrom(s) {
   (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed;
+  if (s.survival) Survival.restore(s.survival);
   if (ritual) {
     ritual.done = !!s.ritualDone;
     for (let i = 0; i < (s.ritualLit || 0) && i < ritual.nodes.length; i++) ritual.nodes[i].lit = true;
@@ -765,7 +773,7 @@ function addLocker(wx, wz) {
   floorGroup.add(m);
 }
 
-const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a };
+const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a };
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
@@ -960,6 +968,8 @@ function bindDesktopInput() {
     if (k === 'q' && state === 'PLAY') startSpirit();
     if (k === 'p' || k === 'escape') { if (state === 'PLAY') pause(); else if (state === 'PAUSE') resumeGame(); }
     if (k === 'tab') { e.preventDefault(); toggleJournal(); }
+    if (k === 'c' && state === 'PLAY') Survival.drink();
+    if (k === 'v' && state === 'PLAY') Survival.useMedkit();
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
   });
   window.addEventListener('keyup', (e) => {
@@ -1043,10 +1053,19 @@ function interact() {
   if (t === TILE.EXIT) return tryExit();
   const obj = objectiveHere();
   if (obj && (obj.type === 'document' || obj.type === 'bell')) return completeObjective(obj);
+  if (Survival.tryInteract()) return;
   showSubtitle('Nothing here.', 1.2);
 }
 
 function pickupItem(it) {
+  if (['draught', 'backpack', 'medkit', 'teddy'].includes(it.type)) {
+    if (Survival.onPickup(it)) {
+      it.taken = true;
+      const m2 = itemMeshes.get(it.id);
+      if (m2) { floorGroup.remove(m2); itemMeshes.delete(it.id); }
+    }
+    return;
+  }
   it.taken = true; Audio2.pickup();
   const mesh = itemMeshes.get(it.id);
   if (mesh) { floorGroup.remove(mesh); itemMeshes.delete(it.id); }
@@ -1361,12 +1380,14 @@ function update(dt) {
   const ctx = {
     hour, noise,
     playerLit: isPlayerLit(),
+    peace: Survival.peaceActive(),
     beamHits: (ex, ey) => beamHits(ex, ey),
     onCatch: (e) => { deathBy = catchLine(e); die(); },
   };
   let nearest = Infinity, hunting = false;
+  const eDt = dt * Survival.entityTimeScale();
   ents.forEach((e) => {
-    e.update(dt, data, player, ctx);
+    e.update(eDt, data, player, ctx);
     if (e.floor === player.floor) {
       ensureEntityMesh(e);
       const rec = entityMeshes.get(e);
@@ -1393,6 +1414,8 @@ function update(dt) {
   animateProps(dt);
   nurseryUpdate(dt);
   updatePeekers(dt);
+  Survival.update(dt, hour, realMode);
+  if (player.fear >= 96) Survival.useMedkit();   // last-second mercy, if you carry one
 
   // power-surge blackout scare (more frequent as the night deepens)
   surgeTimer -= dt;
@@ -1521,9 +1544,11 @@ function findInteract() {
   if (o && o.type === 'document') return 'Trigger — read';
   if (o && o.type === 'bell') return 'Trigger — ring the dawn bell';
   if (o && o.type === 'spiritbox') return 'Hold left grip — spirit box';
+  const sp = Survival.interactPrompt();
+  if (sp) return sp;
   return null;
 }
-function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key' })[t] || t; }
+function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear' })[t] || t; }
 
 // ============================================================ HUD
 function updateHUD() {
@@ -1539,6 +1564,7 @@ function updateHUD() {
     if (player.inv.emf) bits.push('📶 EMF');
     if (player.inv.spiritbox) bits.push(spiritActive ? '📻 …' : '📻');
     Object.keys(player.keys).forEach(() => bits.push('🗝'));
+    const st = Survival.hudText(); if (st) bits.push(st);
     inv.textContent = bits.join('   ');
   }
   const prompt = document.getElementById('interact-prompt');

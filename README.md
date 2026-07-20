@@ -83,6 +83,29 @@ On the start screen, pick a mode:
   and you pick up exactly where the building left you (it requests a screen wake
   lock to help stay running). Resources are rebalanced for the long haul.
 
+## Surviving the full 24 hours (the economy of mercy)
+
+The long night is filled hour by hour, and the game gives you tools to earn rest:
+
+- **The hourly almanac** — all 24 hours are authored. Midnight makes every door
+  breathe in; **3 AM is the witching hour** (the dead move half again as fast,
+  and again at its 3 PM mirror); 8 AM is a lull to restock and read; 5 PM they
+  gather in the lobby to watch the doors.
+- **🍶 Quiet Draughts** — small bottles hidden in the pharmacy, kitchen, morgue…
+  Drink one (**C** on desktop, **left trigger** in VR) for **5 real minutes of
+  peace**: the dead cannot find you. You can carry two — find the **🎒 orderly's
+  backpack** to carry five.
+- **⛨ The Sanctum** — a locked room on the fourth floor. Open the **matron's
+  safe** (its dial wants three dates your Case File knows: the fire, the
+  opening, the shooting — *26 · 28 · 62*) to get the Sanctum key. Kneel inside
+  for a **30-real-minute protected break** — nothing dead may enter. The candles
+  take ~2.5 hours to re-form, so spend it wisely.
+- **⚕ Medkits** — pull your heart back from the brink (**V**, or auto-used at
+  the last second).
+- **🧸 The seven teddy bears** — hidden through the hospital. Return all seven
+  to your keeping and the children grant a permanent blessing: **the dead move
+  slower around you for the rest of the night.**
+
 ## The mystery (a real investigation)
 
 The night is a **case to solve**. Scattered through the rooms are **letters,

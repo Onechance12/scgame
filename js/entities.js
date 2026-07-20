@@ -108,6 +108,7 @@ const Entities = (() => {
         if (d < 2.2 && !ctx.playerLit) detected = true;
       }
 
+      if (ctx.peace) detected = false;   // a Quiet Draught / the Sanctum: they cannot find you
       if (detected && onSameFloor) {
         if (this.state !== S.HUNT) { Audio2.dread(); }
         this.state = S.HUNT;
@@ -126,7 +127,7 @@ const Entities = (() => {
           this.lastSeen = { x: player.x, y: player.y };
           // caught?
           if (Math.hypot(player.x - this.x, player.y - this.y) < 0.75 &&
-              !(player.hidden)) {
+              !(player.hidden) && !ctx.peace) {
             ctx.onCatch(this);
           }
           this.cooldown -= dt;

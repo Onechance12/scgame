@@ -176,8 +176,9 @@ const World = (() => {
       name: 'FOURTH FLOOR', subtitle: 'nurses’ quarters · chapel · the roof door',
       hasUp: false, hasDown: true,
       rooms: [
-        { name: 'Nurses’ Quarters', side: 'top', units: 3, tag: 'quarters' },
+        { name: 'Nurses’ Quarters', side: 'top', units: 2, tag: 'quarters' },
         { name: 'Matron’s Office', side: 'top', units: 2, tag: 'matron' },
+        { name: 'The Sanctum', side: 'top', units: 2, tag: 'sanctum', locked: true },
         { name: 'Attic Records', side: 'top', units: 2, tag: 'attic' },
         { name: 'Chapel', side: 'bot', units: 3, tag: 'chapel' },
         { name: 'Bell Room', side: 'bot', units: 2, tag: 'bell' },
@@ -270,6 +271,25 @@ const World = (() => {
     addItem(2, 'room207', 'key', 'key_incinerator');   // basement incinerator
     addItem(1, 'records', 'key', 'key_mose', 1, 1);    // Mose's room (3-East)
     addItem(4, 'chapel', 'key', 'key_roof');           // roof access (final)
+
+    // ---------- survival economy (see js/survival.js) ----------
+    // Quiet Draughts — 5 real minutes of peace each
+    addItem(1, 'pharmacy', 'draught', 'dr1');
+    addItem(1, 'kitchen', 'draught', 'dr2', 1, 1);
+    addItem(2, 'station', 'draught', 'dr3', -1, 0);
+    addItem(0, 'morgue', 'draught', 'dr4', 1, -1);
+    // the orderly's backpack + medkits
+    addItem(0, 'storage', 'backpack', 'backpack', -1, 0);
+    addItem(1, 'er', 'medkit', 'mk1', -1, 1);
+    addItem(3, 'supply', 'medkit', 'mk2', 1, 0);
+    // the seven teddy bears (the children's blessing)
+    addItem(0, 'nursery', 'teddy', 'teddy1', -2, 0);
+    addItem(1, 'waiting', 'teddy', 'teddy2', 1, 0);
+    addItem(2, 'ward', 'teddy', 'teddy3', 1, 1);
+    addItem(2, 'maternity', 'teddy', 'teddy4', -1, 1);
+    addItem(3, 'iso', 'teddy', 'teddy5');
+    addItem(0, 'laundry', 'teddy', 'teddy6', 1, 0);
+    addItem(4, 'chapel', 'teddy', 'teddy7', -1, 1);
 
     // ---------- OBJECTIVES ----------
     // The night's story beats. Complete all 4 "truths" to lift the chain at dawn.

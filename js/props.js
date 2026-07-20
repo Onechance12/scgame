@@ -395,6 +395,7 @@ const Props = (() => {
     prep: { items: ['sink', 'counter', 'shelf'], style: 'walls' },
     mose: { items: ['bed', 'window', 'wheelchair'], style: 'mose' },
     chapel: { items: ['pew', 'pew', 'pew', 'pew', 'cross', 'altar'], style: 'chapel' },
+    sanctum: { items: ['altar', 'cross', 'chair'], style: 'center' },
     bell: { items: ['bell'], style: 'center' },
     bath: { items: ['bathtub', 'sink'], style: 'walls' },
     linen: { items: ['shelf', 'shelf'], style: 'walls' },
