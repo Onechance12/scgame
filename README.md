@@ -60,6 +60,12 @@ run · **P** pause.
 > The 2D top-down original is at **`flat.html`** and runs from a bare file with
 > no server at all.
 
+> **Why serve it?** The 3D hospital uses real textures, and browsers block
+> WebGL textures loaded from a bare `file://` page (CORS). Served over
+> http/https they load fine — so the game looks best from a server or from the
+> live GitHub Pages URL. Opened as a bare file it still runs, just with flat
+> untextured walls.
+
 > Best played **alone, in the dark, with headphones.** All sound is generated
 > live in your browser — there are no audio files, so every whisper is aimed
 > at *you*.
@@ -94,6 +100,7 @@ run · **P** pause.
 - `index.html` — WebXR VR game shell (+ desktop mode)
 - `flat.html` — the original 2D top-down version
 - `game.css` — styling
+- `assets/textures/` — CC0 hospital textures from Poly Haven (see `assets/CREDITS.txt`)
 - `js/vendor/three.min.js` — Three.js r160 (vendored, offline-capable)
 - `js/vr-game.js` — 3D world build, WebXR rig, controllers, render loop
 - `js/audio.js` — procedural Web Audio horror engine (no external assets)

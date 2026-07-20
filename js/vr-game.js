@@ -31,6 +31,7 @@ let renderer, scene, camera, dolly, clock;
 let flashlight, flashState = true;
 let ambient, fog;
 let floorGroup = null;          // geometry of the current floor
+let TEX = {};                   // CC0 texture cache (Poly Haven)
 let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
@@ -103,6 +104,7 @@ function init() {
 
   clock = new THREE.Clock();
 
+  loadTextures();
   setupControllers();
   setupVignette();
   setupWristPanel();
@@ -343,6 +345,28 @@ function runIntro(i) {
   setTimeout(() => runIntro(i + 1), 3200);
 }
 
+// ============================================================ textures (CC0)
+function loadTextures() {
+  const L = new THREE.TextureLoader();
+  const load = (file, rx, ry, srgb = true) => {
+    const t = L.load('assets/textures/' + file, undefined, undefined,
+      () => console.warn('texture missing:', file)); // fail-soft: keep flat colour
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rx, ry);
+    if (srgb && 'colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  };
+  TEX.wallD = load('wall_diff.jpg', 1, 1.2);
+  TEX.wallN = load('wall_nor.jpg', 1, 1.2, false);
+  TEX.wall2D = load('wall2_diff.jpg', 1, 1.2);
+  TEX.wall2N = load('wall2_nor.jpg', 1, 1.2, false);
+  TEX.floorD = load('floor_diff.jpg', World.W, World.H);
+  TEX.floorN = load('floor_nor.jpg', World.W, World.H, false);
+  TEX.ceilD = load('ceiling_diff.jpg', World.W / 2, World.H / 2);
+  TEX.doorD = load('door_diff.jpg', 1, 1);
+}
+
 // ============================================================ world geometry
 function disposeGroup(g) {
   if (!g) return;
@@ -365,15 +389,15 @@ function buildFloor(fi) {
 
   const spanX = World.W * TILE_M, spanZ = World.H * TILE_M;
 
-  // floor + ceiling
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x14141a, roughness: 1 });
+  // floor + ceiling (CC0 textures)
+  const floorMat = new THREE.MeshStandardMaterial({ map: TEX.floorD, normalMap: TEX.floorN, color: 0x8f9299, roughness: .95 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(spanX, spanZ), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(spanX / 2, 0, spanZ / 2);
   floor.receiveShadow = true;
   floorGroup.add(floor);
 
-  const ceilMat = new THREE.MeshStandardMaterial({ color: 0x0d0d12, roughness: 1 });
+  const ceilMat = new THREE.MeshStandardMaterial({ map: TEX.ceilD, color: 0x6d7076, roughness: 1 });
   const ceil = new THREE.Mesh(new THREE.PlaneGeometry(spanX, spanZ), ceilMat);
   ceil.rotation.x = Math.PI / 2;
   ceil.position.set(spanX / 2, WALL_H, spanZ / 2);
@@ -383,7 +407,11 @@ function buildFloor(fi) {
   let wallCount = 0;
   for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) if (g[y][x] === TILE.WALL) wallCount++;
   const wallGeo = new THREE.BoxGeometry(TILE_M, WALL_H, TILE_M);
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x2b2b33, roughness: .95 });
+  const wallMat = new THREE.MeshStandardMaterial({
+    map: fi === 0 ? TEX.wall2D : TEX.wallD,
+    normalMap: fi === 0 ? TEX.wall2N : TEX.wallN,
+    color: 0xb7bac0, roughness: .95,
+  });
   const walls = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
   walls.castShadow = true; walls.receiveShadow = true;
   const m4 = new THREE.Matrix4();
@@ -419,7 +447,7 @@ function buildFloor(fi) {
 }
 
 function addDoor(x, y, wx, wz, locked) {
-  const mat = new THREE.MeshStandardMaterial({ color: locked ? 0x5a1e1e : 0x3a2a1c, roughness: .8, emissive: locked ? 0x300000 : 0x000000 });
+  const mat = new THREE.MeshStandardMaterial({ map: TEX.doorD, color: locked ? 0x9a5050 : 0x9a8a76, roughness: .85, emissive: locked ? 0x300000 : 0x000000 });
   const door = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.9, WALL_H * 0.92, 0.18), mat);
   door.position.set(wx, WALL_H * 0.46, wz);
   door.castShadow = true;
@@ -770,7 +798,7 @@ function tryUnlockAhead() {
       if (keyId && player.keys[keyId]) {
         g[yy][xx] = TILE.DOOR; Audio2.creak();
         const dm = doorMeshes.get(xx + ',' + yy);
-        if (dm) { dm.material.color.setHex(0x3a2a1c); dm.material.emissive.setHex(0x000000); }
+        if (dm) { dm.material.color.setHex(0x9a8a76); dm.material.emissive.setHex(0x000000); }
         showSubtitle('The lock gives. ' + (room ? room.name : '') + ' opens.', 2.5);
       }
     }

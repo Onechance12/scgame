@@ -1,0 +1,25 @@
+ASSET CREDITS
+=============
+
+Textures in assets/textures/ are CC0 (public domain, no attribution required)
+from Poly Haven — https://polyhaven.com — and are included here as a courtesy
+credit:
+
+  wall_diff / wall_nor      "Peeling Painted Wall"   (peeling_painted_wall)
+  wall2_diff / wall2_nor    "Worn Cracked Plaster"   (worn_cracked_plaster)  [basement]
+  floor_diff / floor_nor    "Dirty Tiles"            (dirty_tiles)
+  ceiling_diff              "Ceiling Interior"       (ceiling_interior)
+  door_diff                 "Rough Pine Door"        (rough_pine_door)
+
+All downscaled to 1K JPG for fast web/headset loading. License: CC0 1.0.
+Poly Haven is community-funded — https://polyhaven.com/support if you want to
+support the artists.
+
+Audio is generated live in the browser (js/audio.js) — no external files.
+
+Other great CC0 / royalty-free libraries for extending this:
+  ambientCG      https://ambientcg.com          (CC0 textures/materials)
+  Kenney         https://kenney.nl              (CC0 game assets)
+  Quaternius     https://quaternius.com         (CC0 3D models)
+  Freesound      https://freesound.org          (filter to CC0)
+  OpenGameArt    https://opengameart.org        (filter to CC0)
