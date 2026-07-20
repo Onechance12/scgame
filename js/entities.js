@@ -209,6 +209,20 @@ const Entities = (() => {
       speed: 1.1, huntSpeed: 2.2, hearing: 12, sight: 10, color: '#1c1310',
       wakeHour: 12, roams: false,
     }));
+    // The Crawler — came out of the kitchen. Low, fast, never stops moving.
+    p = R(1, 'kitchen');
+    list.push(new Entity({
+      name: 'The Crawler', kind: 'crawler', floor: 1, x: p.x, y: p.y,
+      speed: 2.4, huntSpeed: 4.2, hearing: 9, sight: 7, color: '#151318',
+      wakeHour: 4, roams: true,
+    }));
+    // The Second Nurse — the night shift never ended. Patrols the wards.
+    p = R(2, 'ward');
+    list.push(new Entity({
+      name: 'Night Nurse', kind: 'nurse', floor: 2, x: p.x, y: p.y,
+      speed: 1.8, huntSpeed: 3.1, hearing: 6, sight: 8, color: '#9aa7b0',
+      wakeHour: 2, roams: true,
+    }));
     return list;
   }
 

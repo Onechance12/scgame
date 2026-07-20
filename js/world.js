@@ -19,7 +19,7 @@ const TILE = {
 };
 
 const World = (() => {
-  const W = 48, H = 32;      // tiles per floor
+  const W = 64, H = 32;      // tiles per floor (wider — more & bigger rooms)
   const CORR_TOP = 14, CORR_BOT = 17; // main corridor band (rows)
 
   // --- deterministic RNG so the hospital is the same every night ---
@@ -66,10 +66,12 @@ const World = (() => {
     g[CORR_TOP][W - 2] = TILE.WALL; g[CORR_BOT][W - 2] = TILE.WALL;
 
     const rooms = [];
-    const totalUnits = spec.rooms.reduce((a, r) => a + (r.units || 1), 0);
+    const topUnits = spec.rooms.filter((r) => r.side === 'top').reduce((a, r) => a + (r.units || 1), 0);
+    const botUnits = spec.rooms.filter((r) => r.side !== 'top').reduce((a, r) => a + (r.units || 1), 0);
     const usable = W - 6;
     let cursorTop = 3, cursorBot = 3;
-    const perUnit = Math.floor(usable / Math.max(totalUnits, 1));
+    // size columns to the busier side so rooms fill the floor without overflow
+    const perUnit = Math.floor(usable / Math.max(topUnits, botUnits, 1));
 
     spec.rooms.forEach((r) => {
       const units = r.units || 1;
@@ -114,38 +116,45 @@ const World = (() => {
   // Player starts on floor index 1 (Ground / 1st floor lobby).
   const floorSpecs = [
     { // 0 : BASEMENT
-      name: 'BASEMENT', subtitle: 'children’s ward · morgue · X-ray · the incinerator',
+      name: 'BASEMENT', subtitle: 'children’s ward · morgue · autopsy · the incinerator',
       hasUp: true, hasDown: false,
       rooms: [
         { name: 'Children’s Ward', side: 'top', units: 3, tag: 'nursery' },
         { name: 'X-Ray', side: 'top', units: 2, tag: 'xray' },
         { name: 'Cold Storage', side: 'top', units: 2, tag: 'storage' },
+        { name: 'Autopsy', side: 'top', units: 2, tag: 'autopsy' },
         { name: 'The Morgue', side: 'bot', units: 3, tag: 'morgue' },
         { name: 'Incinerator', side: 'bot', units: 2, tag: 'incinerator', locked: true },
-        { name: 'Boiler', side: 'bot', units: 2, tag: 'boiler' },
+        { name: 'Boiler Room', side: 'bot', units: 2, tag: 'boiler' },
+        { name: 'Laundry', side: 'bot', units: 2, tag: 'laundry' },
       ],
     },
     { // 1 : FIRST FLOOR (start)
-      name: 'FIRST FLOOR', subtitle: 'lobby · emergency room · admitting',
+      name: 'FIRST FLOOR', subtitle: 'lobby · emergency room · kitchen · cafeteria',
       hasUp: true, hasDown: true,
       rooms: [
         { name: 'Front Lobby', side: 'top', units: 3, tag: 'lobby' },
         { name: 'Admitting', side: 'top', units: 2, tag: 'admitting' },
         { name: 'Records', side: 'top', units: 2, tag: 'records' },
+        { name: 'Pharmacy', side: 'top', units: 2, tag: 'pharmacy' },
         { name: 'Emergency Room', side: 'bot', units: 4, tag: 'er' },
-        { name: 'Waiting', side: 'bot', units: 3, tag: 'waiting' },
+        { name: 'Waiting', side: 'bot', units: 2, tag: 'waiting' },
+        { name: 'Kitchen', side: 'bot', units: 3, tag: 'kitchen' },
+        { name: 'Cafeteria', side: 'bot', units: 2, tag: 'cafeteria' },
       ],
     },
     { // 2 : SECOND FLOOR
-      name: 'SECOND FLOOR', subtitle: 'patient wing · nurses’ station',
+      name: 'SECOND FLOOR', subtitle: 'patient wing · nurses’ station · the baths',
       hasUp: true, hasDown: true,
       rooms: [
         { name: 'Ward 2-A', side: 'top', units: 2, tag: 'ward' },
         { name: 'Ward 2-B', side: 'top', units: 2, tag: 'ward' },
         { name: 'Nurses’ Station', side: 'top', units: 2, tag: 'station' },
+        { name: 'Ward 2-D', side: 'top', units: 2, tag: 'ward' },
         { name: 'Patient 207', side: 'bot', units: 2, tag: 'room207' },
         { name: 'Linen', side: 'bot', units: 1, tag: 'linen' },
         { name: 'Ward 2-C', side: 'bot', units: 3, tag: 'ward' },
+        { name: 'Bathrooms', side: 'bot', units: 2, tag: 'bath' },
       ],
     },
     { // 3 : THIRD FLOOR (Mose Blackburn)
@@ -155,9 +164,11 @@ const World = (() => {
         { name: 'Operating Room', side: 'top', units: 3, tag: 'surgery' },
         { name: 'Recovery', side: 'top', units: 2, tag: 'recovery' },
         { name: 'Room 3-East', side: 'top', units: 2, tag: 'mose', locked: true },
+        { name: 'Prep', side: 'top', units: 2, tag: 'prep' },
         { name: 'Supply', side: 'bot', units: 2, tag: 'supply' },
         { name: 'Isolation', side: 'bot', units: 2, tag: 'iso' },
-        { name: 'Stair Landing', side: 'bot', units: 3, tag: 'landing' },
+        { name: 'Stair Landing', side: 'bot', units: 2, tag: 'landing' },
+        { name: 'Ward 3-B', side: 'bot', units: 2, tag: 'ward' },
       ],
     },
     { // 4 : FOURTH FLOOR (nurses' quarters / chapel)
@@ -166,6 +177,7 @@ const World = (() => {
       rooms: [
         { name: 'Nurses’ Quarters', side: 'top', units: 3, tag: 'quarters' },
         { name: 'Matron’s Office', side: 'top', units: 2, tag: 'matron' },
+        { name: 'Attic Records', side: 'top', units: 2, tag: 'attic' },
         { name: 'Chapel', side: 'bot', units: 3, tag: 'chapel' },
         { name: 'Bell Room', side: 'bot', units: 2, tag: 'bell' },
         { name: 'Roof Access', side: 'bot', units: 2, tag: 'roof', locked: true },

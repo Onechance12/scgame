@@ -32,6 +32,11 @@ let flashlight, flashState = true;
 let ambient, fog;
 let floorGroup = null;          // geometry of the current floor
 let TEX = {};                   // CC0 texture cache (Poly Haven)
+let propSolids = [];            // furniture collision boxes (metres)
+let flickers = [];              // flickering ceiling fixtures
+let emberProp = null;           // the incinerator's glow (basement)
+let surgeTimer = 14;            // power-surge scare countdown
+let blackoutUntil = 0;         // ms timestamp fixtures are forced dark
 let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
@@ -80,7 +85,7 @@ function init() {
   fog = new THREE.FogExp2(0x03030a, 0.055);
   scene.fog = fog;
 
-  ambient = new THREE.AmbientLight(0x3a4652, 0.10);
+  ambient = new THREE.AmbientLight(0x3a4652, 0.14);
   scene.add(ambient);
   const moon = new THREE.DirectionalLight(0x25406a, 0.10);
   moon.position.set(6, 20, 4);
@@ -93,7 +98,7 @@ function init() {
   camera.position.set(0, EYE, 0);
 
   // Flashlight — parented to the right hand in VR, to the camera on desktop.
-  flashlight = new THREE.SpotLight(0xfff2d6, 22, LIGHT_RANGE * TILE_M, CONE, 0.5, 1.2);
+  flashlight = new THREE.SpotLight(0xfff2d6, 30, LIGHT_RANGE * TILE_M, CONE, 0.5, 1.2);
   flashlight.castShadow = true;
   flashlight.shadow.mapSize.set(1024, 1024);
   flashlight.shadow.camera.near = 0.1;
@@ -304,7 +309,7 @@ function startDesktop() {
   document.getElementById('controls-hint').textContent =
     'WASD move · drag mouse to look · click to lock pointer · F flashlight · E interact · Q spirit box · Shift run · P pause';
   // desktop uses camera-mounted flashlight
-  if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.2, -0.2, 0); flashlight.target.position.set(0, 0, -1); }
+  if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
   newGame();
 }
 
@@ -439,11 +444,33 @@ function buildFloor(fi) {
   walls.instanceMatrix.needsUpdate = true;
   floorGroup.add(walls);
 
+  // furniture + fixtures (props.js)
+  propSolids = []; flickers = []; emberProp = null;
+  if (window.Props) {
+    try {
+      const p = Props.populate(fi, data, { TILE_M, WALL_H });
+      floorGroup.add(p.group);
+      propSolids = p.solids || [];
+      flickers = p.fixtures || [];
+      emberProp = p.ember || null;
+    } catch (e) { console.warn('props failed:', e); }
+  }
+
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
 
   // entities present on this floor get meshes
   ents.forEach((e) => { if (e.floor === fi) ensureEntityMesh(e); });
+}
+
+// true if a world-space point (metres) lies inside any solid prop (+radius)
+function solidBlocked(xm, zm) {
+  const R = 0.32;
+  for (let i = 0; i < propSolids.length; i++) {
+    const s = propSolids[i];
+    if (xm > s.x0 - R && xm < s.x1 + R && zm > s.z0 - R && zm < s.z1 + R) return true;
+  }
+  return false;
 }
 
 function addDoor(x, y, wx, wz, locked) {
@@ -509,6 +536,7 @@ function ensureEntityMesh(e) {
   else if (e.kind === 'mose') { bodyColor = 0x20181a; headColor = 0x241a1a; emis = 0x080000; }
   else if (e.kind === 'child') { bodyColor = 0x8b95a0; headColor = 0xaab4be; scale = 0.55; emis = 0x101418; }
   else if (e.kind === 'ash') { bodyColor = 0x120a08; headColor = 0x1a0e08; emis = 0x180800; }
+  else if (e.kind === 'crawler') { bodyColor = 0x14121a; headColor = 0x1a1620; emis = 0x0a0010; }
 
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(0.28 * scale, 0.42 * scale, 1.5 * scale, 10),
@@ -528,6 +556,7 @@ function ensureEntityMesh(e) {
     const glow = new THREE.PointLight(0xff5a1e, 0.8, 4, 2); glow.position.y = 1; grp.add(glow);
     grp.userData.ember = glow;
   }
+  if (e.kind === 'crawler') grp.scale.set(1.2, 0.42, 1.5); // low, long, wrong
   grp.visible = false;
   scene.add(grp);
   const rec = { group: grp, body, head };
@@ -565,10 +594,12 @@ function moveDolly(dxT, dyT) {
   const r = 0.24;
   const nx = player.x + dxT, ny = player.y + dyT;
   const sx = dxT > 0 ? r : -r, sy = dyT > 0 ? r : -r;
-  if (dxT !== 0 && passableFor(player.floor, nx + sx, player.y + r) && passableFor(player.floor, nx + sx, player.y - r)) {
+  if (dxT !== 0 && passableFor(player.floor, nx + sx, player.y + r) && passableFor(player.floor, nx + sx, player.y - r) &&
+      !solidBlocked((nx + sx) * TILE_M, player.y * TILE_M)) {
     dolly.position.x += dxT * TILE_M;
   }
-  if (dyT !== 0 && passableFor(player.floor, player.x + r, ny + sy) && passableFor(player.floor, player.x - r, ny + sy)) {
+  if (dyT !== 0 && passableFor(player.floor, player.x + r, ny + sy) && passableFor(player.floor, player.x - r, ny + sy) &&
+      !solidBlocked(player.x * TILE_M, (ny + sy) * TILE_M)) {
     dolly.position.z += dyT * TILE_M;
   }
 }
@@ -819,6 +850,39 @@ function spinItems(dt) {
   candleLights.forEach((c) => { c.light.intensity = c.base * (0.75 + Math.random() * 0.35); });
 }
 
+// flickering / dying fluorescent fixtures + the incinerator glow
+function updateFixtures(dt) {
+  const black = performance.now() < blackoutUntil;
+  for (const f of flickers) {
+    if (black) { f.tube.material.emissiveIntensity = 0.01; if (f.light) f.light.intensity = 0; continue; }
+    f.nextFlick -= dt;
+    if (f.dead) {
+      if (f.nextFlick <= 0) {
+        f.nextFlick = 2 + Math.random() * 5;
+        if (Math.random() < 0.5) { f.tube.material.emissiveIntensity = 0.7; if (Math.random() < 0.5) Audio2.buzz(0.03); }
+        else f.tube.material.emissiveIntensity = 0.02;
+      }
+      continue;
+    }
+    if (f.nextFlick <= 0) {
+      f.nextFlick = 0.05 + Math.random() * 0.9;
+      const flick = Math.random() < 0.22;
+      f.on = !flick;
+      f.tube.material.emissiveIntensity = f.on ? 0.9 : 0.06;
+      if (f.light) f.light.intensity = f.on ? f.base : 0.05;
+      if (flick && Math.random() < 0.4) Audio2.buzz(0.03);
+    }
+  }
+  if (emberProp) emberProp.traverse((o) => { if (o.material && o.material.emissive && o.material.emissiveIntensity > 0.5) o.material.emissiveIntensity = 1.1 + Math.random() * 0.9; });
+}
+
+function powerSurge() {
+  blackoutUntil = performance.now() + 1400;
+  Audio2.slam(); Audio2.stinger(true);
+  player.fear = Math.min(100, player.fear + 12);
+  showSubtitle('The power dies. Everything goes black.', 2.4);
+}
+
 function update(dt) {
   elapsed += dt; hour = elapsed * HOURS_PER_SEC;
 
@@ -831,7 +895,7 @@ function update(dt) {
     player.battery = Math.max(0, player.battery - dt * 1.6);
     if (player.battery <= 0) { player.lightOn = false; flashlight.visible = false; showSubtitle('The flashlight dies. Darkness.', 2.5); }
     flashFlicker = player.battery < 20 ? (0.55 + Math.random() * 0.45) : 1;
-    flashlight.intensity = 22 * flashFlicker;
+    flashlight.intensity = 30 * flashFlicker;
   }
   // aim yaw (of the flashlight) in tile space for AI
   const beamObj = flashlight.parent || camera;
@@ -880,6 +944,16 @@ function update(dt) {
   if (player.inv.emf && nearest < 9 && Math.random() < dt * (2 + (5 - nearest / 9 * 5))) Audio2.emf(Math.max(1, Math.round(5 - nearest / 9 * 5)));
 
   updateSpiritObjective(dt);
+
+  // flickering fixtures
+  updateFixtures(dt);
+
+  // power-surge blackout scare (more frequent as the night deepens)
+  surgeTimer -= dt;
+  if (surgeTimer <= 0) {
+    surgeTimer = 45 + Math.random() * 40 - hour * 1.2;
+    if (hour > 2 && Math.random() < 0.6) powerSurge();
+  }
 
   // ambient scares
   ambientEventTimer -= dt;
@@ -954,17 +1028,24 @@ function catchLine(e) {
     mose: 'Mose Blackburn’s shadow closes over you. He was never going to let you leave unheard.',
     child: 'The small cold hand finds yours and does not let go.',
     ash: 'The Ash folds around you. The fire finally has a name for you.',
+    crawler: 'The Crawler is on you before you can turn — it was always faster than it looked.',
   })[e.kind] || 'It takes you.';
 }
 function ambientEvent() {
   if (state !== 'PLAY') return;
   const roll = Math.random();
-  if (roll < 0.4) Audio2.whisper(0.6 + hour / 24);
-  else if (roll < 0.7) Audio2.creak();
-  else if (roll < 0.85) { Audio2.footstep(0.05); Audio2.footstep(0.05); }
+  // floor-flavoured sounds
+  if (player.floor === 0 && Math.random() < 0.4) { Math.random() < 0.5 ? Audio2.drip() : Audio2.laugh(); return; }
+  if (player.floor === 1 && Math.random() < 0.3) { Audio2.drag(); return; }
+  if (roll < 0.30) Audio2.whisper(0.6 + hour / 24);
+  else if (roll < 0.50) Audio2.creak();
+  else if (roll < 0.62) { Audio2.footstep(0.05); Audio2.footstep(0.05); }
+  else if (roll < 0.72) Audio2.drip();
+  else if (roll < 0.82) Audio2.drag();
+  else if (roll < 0.90 && hour > 3) Audio2.scream(2);
   else if (scareCooldown <= 0 && player.fear > 30) {
     Audio2.stinger(false); player.fear = Math.min(100, player.fear + 8); scareCooldown = 12;
-    const lines = ['Something moved at the edge of the beam.', 'A door slams somewhere below.', 'Cold breath on the back of your neck.', 'Footsteps right behind you. Nothing there.'];
+    const lines = ['Something moved at the edge of the beam.', 'A gurney rolls in the dark down the hall.', 'Cold breath on the back of your neck.', 'Footsteps right behind you. Nothing there.', 'A child is laughing two rooms over.'];
     showSubtitle(lines[Math.floor(Math.random() * lines.length)], 2.2);
   }
 }

@@ -72,6 +72,24 @@ run · **P** pause.
 
 ---
 
+## What's inside
+
+A full, furnished hospital — not empty boxes:
+
+- **Dressed rooms** — hospital beds & gurneys, wheelchairs, IV stands, morgue
+  drawers, operating & autopsy tables, a **large kitchen** (counters, stove &
+  hood, prep table), a cafeteria, a chapel with pews and a cross, boilers, the
+  glowing **incinerator**, laundry, shelves, lockers, and more — placed per room.
+- **Flickering, dying fluorescent lights** that buzz, stutter, and cut out, plus
+  random **power-surge blackouts** that drop the whole floor into darkness.
+- **More rooms & a bigger footprint** — kitchen, cafeteria, pharmacy, autopsy,
+  laundry, extra wards and baths across five wider floors.
+- **More of the dead** — the Grey Nurse, Mose Blackburn, the basement Child, the
+  incinerator's **Ash**, a fast low **Crawler** out of the kitchen, and a second
+  **Night Nurse** working the wards.
+- **A deeper soundscape** — dripping water, dragged gurneys, distant screams,
+  a child's laughter, electrical buzz, and slamming doors, all synthesized live.
+
 ## The real haunting (the game is built on it)
 
 - **The building** — opened 1928 after the original hospital burned in 1926;
@@ -105,6 +123,7 @@ run · **P** pause.
 - `js/vr-game.js` — 3D world build, WebXR rig, controllers, render loop
 - `js/audio.js` — procedural Web Audio horror engine (no external assets)
 - `js/world.js` — floor generation, rooms, items, and the true history/lore
+- `js/props.js` — furniture & set dressing (beds, morgue drawers, kitchen…)
 - `js/entities.js` — the dead, and how they hunt
 - `js/game.js` — logic for the 2D version
 

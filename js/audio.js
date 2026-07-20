@@ -366,6 +366,112 @@ const Audio2 = (() => {
     o.start(t); o.stop(t + 0.42);
   }
 
+  // ---- NEW: environmental horror sounds ----------------------------------
+
+  // Electrical zap of a failing fluorescent tube.
+  function buzz(vol = 0.05) {
+    if (!started) return;
+    const t = now();
+    const s = noiseSource();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 3200 + rnd() * 2000; bp.Q.value = 8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05 + rnd() * 0.06);
+    s.connect(bp); bp.connect(g); g.connect(master);
+    s.start(t); s.stop(t + 0.14);
+    // 60Hz hum under it
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 120;
+    const og = ctx.createGain(); og.gain.setValueAtTime(vol * 0.4, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
+    o.connect(lp); lp.connect(og); og.connect(master); o.start(t); o.stop(t + 0.12);
+  }
+
+  // Distant wail — far-off, reverberant, human but wrong.
+  function scream(dist = 1) {
+    if (!started) return;
+    const t = now();
+    const vol = 0.06 / Math.max(1, dist);
+    [220, 223].forEach((f, i) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f * 1.4, t);
+      o.frequency.exponentialRampToValueAtTime(f * 0.7, t + 1.6);
+      // vibrato
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 6;
+      const lfg = ctx.createGain(); lfg.gain.value = 8;
+      lfo.connect(lfg); lfg.connect(o.frequency); lfo.start(t); lfo.stop(t + 1.8);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.7);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
+      o.connect(lp); lp.connect(g); g.connect(master);
+      o.start(t); o.stop(t + 1.8);
+    });
+  }
+
+  // Long metallic scrape — a gurney or drawer dragged across tile.
+  function drag() {
+    if (!started) return;
+    const t = now();
+    const s = noiseSource();
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(600, t); bp.frequency.linearRampToValueAtTime(1800, t + 1.4); bp.Q.value = 4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.05, t + 0.2);
+    g.gain.linearRampToValueAtTime(0.02, t + 1.0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    s.connect(bp); bp.connect(g); g.connect(master);
+    s.start(t); s.stop(t + 1.7);
+  }
+
+  // A child's giggle — a few pitched blips.
+  function laugh() {
+    if (!started) return;
+    const t = now();
+    const notes = [0, 0.12, 0.24, 0.34, 0.46];
+    notes.forEach((dt, i) => {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.value = 620 + (i % 2 ? 90 : -60) + rnd() * 40;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + dt);
+      g.gain.exponentialRampToValueAtTime(0.04, t + dt + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.1);
+      o.connect(g); g.connect(master); o.start(t + dt); o.stop(t + dt + 0.12);
+    });
+  }
+
+  // Slow water drip.
+  function drip() {
+    if (!started) return;
+    const t = now();
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(900, t);
+    o.frequency.exponentialRampToValueAtTime(260, t + 0.12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.2);
+  }
+
+  // Heavy door slam.
+  function slam() {
+    if (!started) return;
+    const t = now();
+    const s = noiseSource();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.5, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    s.connect(lp); lp.connect(g); g.connect(master); s.start(t); s.stop(t + 0.32);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(80, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.2);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.4, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.3);
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -375,6 +481,7 @@ const Audio2 = (() => {
     init, startAmbient, setFear, tickHeart, whisper,
     spiritStart, spiritStop, spiritWord, emf, footstep, creak,
     pickup, stinger, dread, chase, setMasterVolume, suspend, resume, isStarted,
+    buzz, scream, drag, laugh, drip, slam,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;
