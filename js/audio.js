@@ -472,6 +472,89 @@ const Audio2 = (() => {
     o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.3);
   }
 
+  // ---- NEW: children / nursery horror -----------------------------------
+
+  // Infant cry — thin, piercing, wailing up and down.
+  function babyCry(dist = 1) {
+    if (!started) return;
+    const t = now();
+    const vol = 0.07 / Math.max(1, dist);
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.linearRampToValueAtTime(920, t + 0.3);
+    o.frequency.linearRampToValueAtTime(600, t + 0.6);
+    o.frequency.linearRampToValueAtTime(980, t + 0.95);
+    o.frequency.linearRampToValueAtTime(420, t + 1.5);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 13;
+    const lg = ctx.createGain(); lg.gain.value = 24; lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(t + 1.6);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1300; bp.Q.value = 4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.1);
+    g.gain.setValueAtTime(vol, t + 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    o.connect(bp); bp.connect(g); g.connect(master); o.start(t); o.stop(t + 1.6);
+  }
+
+  // A single music-box bell note (inharmonic partials).
+  function bellNote(freq, t, vol) {
+    [[1, vol], [2.76, vol * 0.3], [5.4, vol * 0.1]].forEach(([m, v]) => {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq * m;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(v, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + 1.35);
+    });
+  }
+  // A slow, slightly-detuned lullaby that drags at the end.
+  function musicBox(speed = 1) {
+    if (!started) return;
+    const t0 = now();
+    const base = 523.25; // C5
+    const mel = [0, 4, 7, 4, 0, 4, 7, 9, 7, 4, 2, 0];
+    let tt = t0;
+    mel.forEach((st, i) => {
+      const detune = 1 + Math.sin(i * 1.7) * 0.005;      // out of tune
+      const slow = i > 8 ? 1.03 : 1;                       // pitch sags at the end
+      const freq = base * Math.pow(2, st / 12) * detune / slow;
+      bellNote(freq, tt, 0.05);
+      tt += (0.36 / speed) + (i > 8 ? 0.06 * (i - 8) : 0); // tempo drags
+    });
+  }
+
+  // A child humming a wandering tune.
+  function humming() {
+    if (!started) return;
+    const t0 = now(); const notes = [0, 2, 3, 2, 0, -2, 0]; const base = 330;
+    let tt = t0;
+    notes.forEach((st) => {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = base * Math.pow(2, st / 12);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 5;
+      const lg = ctx.createGain(); lg.gain.value = 4; lfo.connect(lg); lg.connect(o.frequency); lfo.start(tt); lfo.stop(tt + 0.5);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, tt);
+      g.gain.exponentialRampToValueAtTime(0.04, tt + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.46);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 800;
+      o.connect(lp); lp.connect(g); g.connect(master); o.start(tt); o.stop(tt + 0.5);
+      tt += 0.42;
+    });
+  }
+
+  // Baby rattle — quick shakes.
+  function rattle() {
+    if (!started) return;
+    const t = now();
+    for (let i = 0; i < 5; i++) {
+      const tt = t + i * 0.08;
+      const s = noiseSource();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 3;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.04, tt); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.05);
+      s.connect(bp); bp.connect(g); g.connect(master); s.start(tt); s.stop(tt + 0.06);
+    }
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -482,6 +565,7 @@ const Audio2 = (() => {
     spiritStart, spiritStop, spiritWord, emf, footstep, creak,
     pickup, stinger, dread, chase, setMasterVolume, suspend, resume, isStarted,
     buzz, scream, drag, laugh, drip, slam,
+    babyCry, musicBox, humming, rattle,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

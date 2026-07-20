@@ -37,6 +37,9 @@ let flickers = [];              // flickering ceiling fixtures
 let emberProp = null;           // the incinerator's glow (basement)
 let surgeTimer = 14;            // power-surge scare countdown
 let blackoutUntil = 0;         // ms timestamp fixtures are forced dark
+let animatedProps = [];        // mobiles / rocking things
+let nurseryActive = false;     // player currently inside a haunted nursery
+let nurseryTimer = 0, nurseryMusicTimer = 3;
 let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
@@ -326,6 +329,7 @@ function newGame() {
   };
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false;
   deathBy = ''; ambientEventTimer = 5; scareCooldown = 0;
+  nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   data.objectives.forEach((o) => (o.done = false));
   buildFloor(player.floor);
   placeDollyAtTile(player.x, player.y);
@@ -453,6 +457,7 @@ function buildFloor(fi) {
       propSolids = p.solids || [];
       flickers = p.fixtures || [];
       emberProp = p.ember || null;
+      animatedProps = p.animated || [];
     } catch (e) { console.warn('props failed:', e); }
   }
 
@@ -883,6 +888,44 @@ function powerSurge() {
   showSubtitle('The power dies. Everything goes black.', 2.4);
 }
 
+// mobiles spin, cribs & rocking horses rock — harder when the nursery is awake
+function animateProps(dt) {
+  const boost = nurseryActive ? 1 : 0.28;
+  for (const a of animatedProps) {
+    if (a.kind === 'spin') a.obj.rotation.y += dt * (0.35 + boost * 0.9);
+    else if (a.kind === 'rock') { a.phase += dt * (0.8 + boost * 2.0); a.obj.rotation.z = Math.sin(a.phase) * (0.025 + boost * 0.11); }
+  }
+}
+
+// The haunted nursery: step inside and the children notice you.
+function nurseryUpdate(dt) {
+  const inN = inRoom(player.floor, 'nursery') || inRoom(player.floor, 'maternity');
+  if (inN && !nurseryActive) { showSubtitle('The mobile begins to turn. Something in here is awake.', 3); nurseryMusicTimer = 1.2; Audio2.rattle(); }
+  nurseryActive = inN;
+  if (!inN) { nurseryTimer = 0; return; }
+  player.fear = Math.min(100, player.fear + dt * 1.7);   // cold dread
+  const child = ents.find((e) => e.kind === 'child');
+  if (child && child.awake) child.awake();               // draw the Child to you
+  // the music box winds up on its own
+  nurseryMusicTimer -= dt;
+  if (nurseryMusicTimer <= 0) { nurseryMusicTimer = 9 + Math.random() * 6; Audio2.musicBox(0.85 + Math.random() * 0.25); }
+  // periodic child sounds + peek scares
+  nurseryTimer -= dt;
+  if (nurseryTimer <= 0) {
+    nurseryTimer = 2.4 + Math.random() * 3;
+    const r = Math.random();
+    if (r < 0.28) Audio2.babyCry();
+    else if (r < 0.55) Audio2.laugh();
+    else if (r < 0.78) Audio2.humming();
+    else Audio2.rattle();
+    if (Math.random() < 0.28) {
+      Audio2.whisper(1); player.fear = Math.min(100, player.fear + 5);
+      const lines = ['A crib is rocking on its own.', 'Small footsteps circle you in the dark.', '“Will you stay and play with me?”', 'Something small is breathing under a crib.', 'A ball rolls slowly across the floor toward you.'];
+      showSubtitle(lines[Math.floor(Math.random() * lines.length)], 2.6);
+    }
+  }
+}
+
 function update(dt) {
   elapsed += dt; hour = elapsed * HOURS_PER_SEC;
 
@@ -945,8 +988,10 @@ function update(dt) {
 
   updateSpiritObjective(dt);
 
-  // flickering fixtures
+  // flickering fixtures + animated toys + the haunted nursery
   updateFixtures(dt);
+  animateProps(dt);
+  nurseryUpdate(dt);
 
   // power-surge blackout scare (more frequent as the night deepens)
   surgeTimer -= dt;
@@ -1035,7 +1080,12 @@ function ambientEvent() {
   if (state !== 'PLAY') return;
   const roll = Math.random();
   // floor-flavoured sounds
-  if (player.floor === 0 && Math.random() < 0.4) { Math.random() < 0.5 ? Audio2.drip() : Audio2.laugh(); return; }
+  if (player.floor === 0 && Math.random() < 0.45) {
+    const c = Math.random();
+    if (c < 0.3) Audio2.drip(); else if (c < 0.55) Audio2.laugh();
+    else if (c < 0.75) Audio2.babyCry(2); else if (c < 0.9) Audio2.humming(); else Audio2.musicBox(0.8);
+    return;
+  }
   if (player.floor === 1 && Math.random() < 0.3) { Audio2.drag(); return; }
   if (roll < 0.30) Audio2.whisper(0.6 + hour / 24);
   else if (roll < 0.50) Audio2.creak();

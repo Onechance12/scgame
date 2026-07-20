@@ -35,12 +35,16 @@ const Props = (() => {
       window: new THREE.MeshStandardMaterial({ color: 0x0a0f18, emissive: 0x24406a, emissiveIntensity: 0.6 }),
       tube: new THREE.MeshStandardMaterial({ color: 0xdfe6ea, emissive: 0xcfe6ff, emissiveIntensity: 0.9 }),
       brass: s(0x9a7b32, 0.4, 0.6),
+      // dusty, faded toy colours for the nursery
+      toyR: s(0x7a3b3b, 0.9, 0), toyB: s(0x3b4a7a, 0.9, 0), toyY: s(0x8a7a3b, 0.9, 0),
+      plush: s(0x6a4f38, 1, 0),
     };
     return M;
   }
 
   const box = (w, h, d, mat, x, y, z) => { const m = new (T().Mesh)(new (T().BoxGeometry)(w, h, d), mat); m.position.set(x || 0, y || 0, z || 0); return m; };
   const cyl = (rt, rb, h, mat, x, y, z, seg) => { const m = new (T().Mesh)(new (T().CylinderGeometry)(rt, rb, h, seg || 10), mat); m.position.set(x || 0, y || 0, z || 0); return m; };
+  const sph = (r, mat, x, y, z) => { const m = new (T().Mesh)(new (T().SphereGeometry)(r, 10, 10), mat); m.position.set(x || 0, y || 0, z || 0); return m; };
 
   // ---------- prop builders: each returns a Group with userData.fw/fd (metres)
   function bed(bloody) {
@@ -280,16 +284,91 @@ const Props = (() => {
     return g;
   }
 
+  // ---- nursery / children builders ----
+  function bassinet() {
+    const g = new (T().Group)(), m = mats();
+    g.add(box(0.55, 0.32, 0.9, m.white, 0, 0.78, 0));
+    g.add(box(0.48, 0.16, 0.82, m.mattress, 0, 0.82, 0));
+    [[-0.22, -0.38], [0.22, -0.38], [-0.22, 0.38], [0.22, 0.38]].forEach(([x, z]) => g.add(cyl(0.02, 0.02, 0.62, m.metal, x, 0.31, z, 6)));
+    g.userData = { fw: 0.6, fd: 1.0, anim: 'rock' };
+    return g;
+  }
+  function rockingHorse() {
+    const g = new (T().Group)(), m = mats();
+    g.add(box(0.7, 0.24, 0.26, m.plush, 0, 0.62, 0));
+    g.add(box(0.24, 0.34, 0.2, m.plush, 0.34, 0.85, 0));
+    g.add(box(0.05, 0.06, 1.0, m.wood, -0.2, 0.16, 0));
+    g.add(box(0.05, 0.06, 1.0, m.wood, 0.2, 0.16, 0));
+    [[-0.2, -0.3], [0.2, -0.3], [-0.2, 0.3], [0.2, 0.3]].forEach(([x, z]) => g.add(box(0.05, 0.4, 0.05, m.wood, x, 0.4, z)));
+    g.userData = { fw: 0.8, fd: 0.5, anim: 'rock' };
+    return g;
+  }
+  function teddy() {
+    const g = new (T().Group)(), m = mats();
+    g.add(sph(0.16, m.plush, 0, 0.18, 0));
+    g.add(sph(0.12, m.plush, 0, 0.42, 0));
+    g.add(sph(0.05, m.plush, -0.09, 0.5, 0)); g.add(sph(0.05, m.plush, 0.09, 0.5, 0));
+    g.add(sph(0.06, m.plush, -0.17, 0.16, 0.05)); g.add(sph(0.06, m.plush, 0.17, 0.16, 0.05));
+    g.add(sph(0.015, m.dark, -0.04, 0.44, 0.11)); g.add(sph(0.015, m.dark, 0.04, 0.44, 0.11)); // eyes
+    g.userData = { fw: 0.4, fd: 0.4, solid: false };
+    return g;
+  }
+  function toyBlocks() {
+    const g = new (T().Group)(), m = mats();
+    g.add(box(0.13, 0.13, 0.13, m.toyR, 0, 0.065, 0));
+    g.add(box(0.13, 0.13, 0.13, m.toyB, 0.02, 0.2, 0.02));
+    g.add(box(0.13, 0.13, 0.13, m.toyY, -0.12, 0.065, 0.14));
+    g.userData = { fw: 0.4, fd: 0.4, solid: false };
+    return g;
+  }
+  function ball() {
+    const g = new (T().Group)(), m = mats();
+    g.add(sph(0.17, m.toyR, 0, 0.17, 0));
+    g.userData = { fw: 0.4, fd: 0.4, solid: false };
+    return g;
+  }
+  function mobile() {
+    const THREE = T(), g = new THREE.Group(), m = mats();
+    g.add(cyl(0.008, 0.008, 0.5, m.metal, 0, 2.95, 0, 5));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.02, 6, 14), m.metal);
+    ring.rotation.x = Math.PI / 2; ring.position.y = 2.65; g.add(ring);
+    const cols = [m.toyR, m.toyB, m.toyY, m.plush];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2, x = Math.cos(a) * 0.26, z = Math.sin(a) * 0.26;
+      g.add(cyl(0.004, 0.004, 0.25, m.metal, x, 2.5, z, 4));
+      g.add(sph(0.06, cols[i], x, 2.36, z));
+    }
+    g.userData = { fw: 0.6, fd: 0.6, anim: 'spin', solid: false };
+    return g;
+  }
+  function toybox() {
+    const g = new (T().Group)(), m = mats();
+    g.add(box(0.7, 0.45, 0.5, m.darkwood, 0, 0.22, 0));
+    g.add(box(0.72, 0.06, 0.52, m.wood, 0, 0.47, 0));
+    g.userData = { fw: 0.75, fd: 0.55 };
+    return g;
+  }
+  function incubator() {
+    const g = new (T().Group)(), m = mats();
+    g.add(box(0.8, 0.16, 0.55, m.white, 0, 0.78, 0));
+    g.add(box(0.7, 0.4, 0.45, m.window, 0, 1.05, 0));
+    [[-0.32, -0.2], [0.32, -0.2], [-0.32, 0.2], [0.32, 0.2]].forEach(([x, z]) => g.add(box(0.05, 0.7, 0.05, m.metal, x, 0.35, z)));
+    g.userData = { fw: 0.85, fd: 0.6 };
+    return g;
+  }
+
   const BUILDERS = {
     bed, crib, wheelchair, operating: operatingTable, examlight: examLight, drawers: morgueDrawers,
     slab, cabinet, shelf, crates, chair, table, desk, counter, stove, sink, bathtub, iv: ivStand,
     boiler, incinerator, washer, pew, cross, altar, bell, xraymachine: xrayMachine, window: windowProp,
     preptable, tray, rocker, pipes, cart: crates,
+    bassinet, rockinghorse: rockingHorse, teddy, toyblocks: toyBlocks, ball, mobile, toybox, incubator,
   };
 
   // tag -> {items, style}
   const FILL = {
-    nursery: { items: ['crib', 'crib', 'crib', 'crib', 'rocker'], style: 'walls' },
+    nursery: { items: [], style: 'nursery' },
+    maternity: { items: ['incubator', 'incubator', 'bassinet', 'bassinet', 'rocker'], style: 'walls' },
     er: { items: ['bed', 'bed', 'bed', 'iv', 'examlight'], style: 'walls' },
     ward: { items: ['bed', 'bed', 'bed', 'bed'], style: 'walls' },
     recovery: { items: ['bed', 'bed', 'bed', 'iv'], style: 'walls' },
@@ -325,7 +404,7 @@ const Props = (() => {
   const DEFAULT_FILL = { items: ['chair', 'crates'], style: 'walls' };
 
   // place props for one room
-  function fillRoom(group, solids, room, TILE_M, bloodyChance) {
+  function fillRoom(group, solids, animated, room, TILE_M, bloodyChance) {
     const spec = FILL[room.tag] || DEFAULT_FILL;
     const items = spec.items;
     // room interior in metres, inset from walls
@@ -346,6 +425,7 @@ const Props = (() => {
         solids.push({ x0: xm - w / 2, z0: zm - d / 2, x1: xm + w / 2, z1: zm + d / 2 });
       }
       if (g.userData.ember) group.userData.ember = g;
+      if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: Math.random() * 6 });
     };
 
     const style = spec.style;
@@ -386,6 +466,21 @@ const Props = (() => {
       place('window', cx, z0 - 0.4, 0);   // the window, on the far wall
       place('bed', x0 + 0.6, cz, 0);
       place('wheelchair', x1 - 0.6, cz, 0);
+    } else if (style === 'nursery') {
+      // the haunted children's ward — rows of cribs, a mobile, scattered toys
+      const nCrib = 3;
+      for (let i = 0; i < nCrib; i++) {
+        const xm = x0 + (x1 - x0) * (nCrib === 1 ? 0.5 : i / (nCrib - 1));
+        place('crib', xm, z0, 0); place('crib', xm, z1, Math.PI);
+      }
+      place('bassinet', x0, cz, Math.PI / 2);
+      place('bassinet', x1, cz, Math.PI / 2);
+      place('rockinghorse', cx - 1.1, cz, 0.3);
+      place('toybox', cx + 1.3, cz + 0.6, 0);
+      place('mobile', cx, cz - 0.4, 0);
+      place('teddy', cx + 0.4, cz - 0.2, 0);
+      place('ball', cx - 0.6, cz + 0.9, 0);
+      place('toyblocks', cx + 0.2, cz + 1.1, 0);
     } else { // 'walls' — alternate along top then bottom wall, facing centre
       const top = [], bot = [];
       items.forEach((it, i) => (i % 2 ? bot : top).push(it));
@@ -434,12 +529,13 @@ const Props = (() => {
     const TILE_M = opts.TILE_M, WALL_H = opts.WALL_H;
     const group = new THREE.Group();
     const solids = [];
+    const animated = [];
     data.floors[fi].rooms.forEach((room) => {
-      try { fillRoom(group, solids, room, TILE_M, fi === 1 || fi === 0 ? 0.25 : 0.12); }
+      try { fillRoom(group, solids, animated, room, TILE_M, fi === 1 || fi === 0 ? 0.25 : 0.12); }
       catch (e) { /* never let one room break the floor */ }
     });
     const fixtures = makeFixtures(group, fi, TILE_M, WALL_H);
-    return { group, solids, fixtures, ember: group.userData.ember || null };
+    return { group, solids, fixtures, ember: group.userData.ember || null, animated };
   }
 
   return { populate };

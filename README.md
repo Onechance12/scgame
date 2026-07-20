@@ -90,6 +90,16 @@ A full, furnished hospital — not empty boxes:
 - **A deeper soundscape** — dripping water, dragged gurneys, distant screams,
   a child's laughter, electrical buzz, and slamming doors, all synthesized live.
 
+### 🧸 The haunted nursery
+
+The basement children's ward (and a maternity ward upstairs) are the worst place
+in the building. Rows of cribs and bassinets, a rocking horse, a spinning mobile,
+a teddy bear, scattered toy blocks and a ball. Step inside and it **wakes**: the
+mobile turns on its own, cribs rock, a **music box** winds up and plays a
+detuned lullaby, and the dark fills with **baby cries, giggles, humming, and
+rattles** — while the Child comes looking for someone to play with. Your fear
+climbs just by being in there.
+
 ## The real haunting (the game is built on it)
 
 - **The building** — opened 1928 after the original hospital burned in 1926;

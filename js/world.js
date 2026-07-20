@@ -150,7 +150,7 @@ const World = (() => {
         { name: 'Ward 2-A', side: 'top', units: 2, tag: 'ward' },
         { name: 'Ward 2-B', side: 'top', units: 2, tag: 'ward' },
         { name: 'Nurses’ Station', side: 'top', units: 2, tag: 'station' },
-        { name: 'Ward 2-D', side: 'top', units: 2, tag: 'ward' },
+        { name: 'Maternity', side: 'top', units: 3, tag: 'maternity' },
         { name: 'Patient 207', side: 'bot', units: 2, tag: 'room207' },
         { name: 'Linen', side: 'bot', units: 1, tag: 'linen' },
         { name: 'Ward 2-C', side: 'bot', units: 3, tag: 'ward' },
