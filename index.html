@@ -2,98 +2,94 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>COLLEGE HILL — 24 Hours</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>COLLEGE HILL — 24 Hours (VR)</title>
   <link rel="stylesheet" href="game.css" />
+  <style>
+    /* VR-specific chrome */
+    #app{position:fixed;inset:0}
+    #vr-hud{position:fixed;inset:0;pointer-events:none;z-index:12;display:none}
+    #vr-hud.show{display:block}
+    #vr-crosshair{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
+      border-radius:50%;background:rgba(255,255,255,.35);z-index:11;display:none}
+    #enter-buttons{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+    #xr-note{margin-top:16px;font-size:12px;color:#8a95a0;line-height:1.6;max-width:520px}
+    .badge{display:inline-block;padding:3px 9px;border:1px solid var(--blood);border-radius:20px;
+      font-size:11px;letter-spacing:2px;color:#e7a0a0;margin-bottom:14px}
+  </style>
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <div id="app"></div>
 
-  <!-- In-game HUD -->
-  <div id="hud">
+  <!-- Desktop HUD (hidden in immersive VR; the headset uses the wrist panel) -->
+  <div id="vr-hud">
     <div id="topbar">
       <div id="clock">6:00 PM</div>
       <div id="objective-count">Truths: 0/4</div>
     </div>
-
     <div id="meters">
-      <div class="meter">
-        <span class="lbl">FEAR</span>
-        <div class="bar"><div id="fear-fill" class="fill fear"></div></div>
-      </div>
-      <div class="meter">
-        <span class="lbl">LIGHT</span>
-        <div class="bar"><div id="battery-fill" class="fill battery"></div></div>
-      </div>
-      <div class="meter">
-        <span class="lbl">BODY</span>
-        <div class="bar"><div id="stamina-fill" class="fill stamina"></div></div>
-      </div>
+      <div class="meter"><span class="lbl">FEAR</span><div class="bar"><div id="fear-fill" class="fill fear"></div></div></div>
+      <div class="meter"><span class="lbl">LIGHT</span><div class="bar"><div id="battery-fill" class="fill battery"></div></div></div>
+      <div class="meter"><span class="lbl">BODY</span><div class="bar"><div id="stamina-fill" class="fill stamina"></div></div></div>
     </div>
-
     <div id="inventory"></div>
     <div id="objective"></div>
     <div id="interact-prompt"></div>
     <div id="subtitle"></div>
-    <div id="controls-hint">WASD move · Mouse aim · Click/F flashlight · Shift run · E interact · Q spirit box · Tab journal · P pause</div>
+    <div id="controls-hint"></div>
   </div>
-
-  <!-- Journal -->
-  <div id="journal"></div>
+  <div id="vr-crosshair"></div>
 
   <!-- Start screen -->
   <div id="startscreen" class="screen show">
     <div class="screen-inner">
+      <span class="badge">WEBXR · META QUEST READY</span>
       <h1 class="title">COLLEGE HILL</h1>
-      <div class="subtitle-big">24 HOURS</div>
+      <div class="subtitle-big">24 HOURS · VR</div>
       <p class="blurb">
         The Old Hospital on College Hill — Williamson, West Virginia.
-        Opened 1928. Closed 1988. The most haunted asylum in America.<br /><br />
-        Your ride is gone. The doors are chained. You have until dawn to learn
-        the truth of the dead who never left — the <b>Grey Nurse</b>, <b>Mose
-        Blackburn</b>, the children in the basement, and the thing the
-        <b>incinerator</b> made.<br /><br />
-        Survive twenty-four hours.
+        Opened 1928. Closed 1988.<br /><br />
+        Put on the headset. Your ride is gone, the doors are chained, and the
+        flashlight in your hand is the only thing between you and the dead who
+        never left. Survive until dawn.
       </p>
-      <button id="btn-start" class="btn big">ENTER THE HOSPITAL</button>
-      <p class="warn">🎧 Headphones on. Lights off. Volume up. All sound is live — every whisper is meant for you.</p>
-      <p class="disclaimer">Fan tribute to Sam &amp; Colby's <i>“Our Unexplainable Night at Haunted Asylum.”</i> Not affiliated. Based on the real history of the location.</p>
+      <div id="enter-buttons">
+        <button id="btn-vr" class="btn big">🥽 ENTER IN VR</button>
+        <button id="btn-desktop" class="btn ghost">🖥 PLAY ON DESKTOP</button>
+      </div>
+      <p id="xr-note"></p>
+      <p class="warn">🎧 Headphones. Room-scale, standing, cleared play space. All sound is live.</p>
+      <p class="disclaimer">Fan tribute to Sam &amp; Colby's <i>“Our Unexplainable Night at Haunted Asylum.”</i> Not affiliated. Based on the real history of the location. · <a href="flat.html" style="color:#8a95a0">2D version</a></p>
     </div>
   </div>
 
-  <!-- Pause -->
   <div id="pausescreen" class="screen">
-    <div class="screen-inner">
-      <h2>PAUSED</h2>
+    <div class="screen-inner"><h2>PAUSED</h2>
       <button id="btn-resume" class="btn">RESUME</button>
-      <button id="btn-restart" class="btn ghost">RESTART NIGHT</button>
-    </div>
+      <button id="btn-restart" class="btn ghost">RESTART NIGHT</button></div>
   </div>
 
-  <!-- Death -->
   <div id="deathscreen" class="screen">
-    <div class="screen-inner">
-      <h2 class="dead">YOU DIED</h2>
+    <div class="screen-inner"><h2 class="dead">YOU DIED</h2>
       <p id="death-reason" class="reason"></p>
       <div id="death-lore" class="lore"></div>
-      <button id="btn-restart-dead" class="btn">TRY AGAIN</button>
-      <button id="btn-menu-death" class="btn ghost">MAIN MENU</button>
-    </div>
+      <button id="btn-restart-dead" class="btn">TRY AGAIN</button></div>
   </div>
 
-  <!-- Win -->
   <div id="winscreen" class="screen">
-    <div class="screen-inner">
-      <h2 class="win">DAWN</h2>
+    <div class="screen-inner"><h2 class="win">DAWN</h2>
       <div id="win-lore" class="lore"></div>
       <p class="reason">You survived the night at the Old Hospital on College Hill.</p>
-      <button id="btn-restart-win" class="btn">PLAY AGAIN</button>
-    </div>
+      <button id="btn-restart-win" class="btn">PLAY AGAIN</button></div>
   </div>
 
+  <!-- Three.js (global build) vendored locally so it works offline & on-headset -->
+  <script src="js/vendor/three.min.js"></script>
+  <!-- shared data + logic -->
   <script src="js/audio.js"></script>
   <script src="js/world.js"></script>
   <script src="js/entities.js"></script>
-  <script src="js/game.js"></script>
+  <!-- the VR game (classic script, uses global THREE) -->
+  <script src="js/vr-game.js"></script>
 </body>
 </html>

@@ -377,3 +377,4 @@ const Audio2 = (() => {
     pickup, stinger, dread, chase, setMasterVolume, suspend, resume, isStarted,
   };
 })();
+if (typeof window !== 'undefined') window.Audio2 = Audio2;

@@ -214,3 +214,4 @@ const Entities = (() => {
 
   return { Entity, spawnAll, lineOfSight, S };
 })();
+if (typeof window !== 'undefined') window.Entities = Entities;

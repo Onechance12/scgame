@@ -311,3 +311,4 @@ const World = (() => {
 
   return { build, spawn, TILE, W, H };
 })();
+if (typeof window !== 'undefined') window.World = World;
