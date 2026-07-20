@@ -320,13 +320,13 @@ function showBigPanel(title, lines, color) {
   c.fillRect(0, 0, 1024, 512);
   c.textAlign = 'center';
   c.fillStyle = color || '#e7edf2';
-  c.font = 'bold 90px Courier New';
+  c.font = "72px 'Creepster', cursive";
   c.fillText(title, 512, 130);
   c.fillStyle = '#b7c0c8';
-  c.font = '30px Courier New';
+  c.font = "30px 'IM Fell', serif";
   (lines || []).forEach((l, i) => c.fillText(l, 512, 210 + i * 46));
   c.fillStyle = '#8a95a0';
-  c.font = '26px Courier New';
+  c.font = "26px 'Special Elite', monospace";
   c.fillText('— pull the trigger to continue —', 512, 470);
   bigTex.needsUpdate = true;
 }
@@ -583,7 +583,7 @@ function toggleJournal() {
   journalOpen = !journalOpen;
   if (!journalOpen) { el.classList.remove('show'); return; }
   const done = data.objectives.filter((o) => o.done).length;
-  let html = '<h2>CASE FILE — COLLEGE HILL</h2>';
+  let html = '<div class="folder"><h2>CASE FILE — COLLEGE HILL</h2>';
   html += '<p class="sub">The Old Hospital on College Hill · Williamson, WV · 1928–1988</p>';
   html += '<h3>Truths (' + done + '/' + data.objectives.length + ')</h3><ul>';
   data.objectives.forEach((o) => { html += `<li class="${o.done ? 'done' : ''}">${o.done ? '✔' : '○'} <b>${o.title}</b> — <span class="hint">${o.hint}</span></li>`; });
@@ -597,9 +597,9 @@ function toggleJournal() {
   if (!found.length) html += '<p class="hint">Nothing filed yet. Search the rooms — letters, patient files, newspaper clippings, a diary.</p>';
   else {
     html += `<p class="hint">${found.length} of ${documents.length} recovered.</p>`;
-    found.forEach((d) => { html += `<div class="casedoc"><b>${d.title}</b><br><span class="hint">${d.body.join('<br>')}</span></div>`; });
+    found.forEach((d) => { html += `<div class="casedoc ${d.type}"><b>${d.title}</b><br><span class="hint">${d.body.join('<br>')}</span></div>`; });
   }
-  el.innerHTML = html + '<p class="tip">Tab to close.</p>';
+  el.innerHTML = html + '<p class="tip">TAB TO CLOSE THE FILE</p></div>';
   el.classList.add('show');
 }
 
@@ -1067,10 +1067,27 @@ function keyLabel(id) { return ({ key_mose: 'Room 3-East', key_incinerator: 'the
 function readDocument(doc) {
   doc.found = true; Audio2.pickup();
   const m = docMeshes.get(doc.id); if (m) { floorGroup.remove(m); docMeshes.delete(doc.id); }
-  showDocPanel(doc);
+  if (isVR) showDocPanel(doc); else showDocDom(doc);
   showSubtitle('Added to Case File — ' + doc.title, 3.5);
   player.fear = Math.max(0, player.fear - 3);
   saveState();
+}
+
+// desktop: the document as an actual sheet of paper you hold up to the light
+const DOC_TAGS = { clipping: 'PRESS CUTTING', letter: 'CORRESPONDENCE', file: 'PATIENT RECORD', report: 'POLICE EVIDENCE', diary: 'PRIVATE DIARY' };
+function showDocDom(doc) {
+  const el = document.getElementById('docview');
+  if (!el) { showDocPanel(doc); return; }
+  el.className = 'show ' + (doc.type || 'file');
+  el.innerHTML = '<div class="paper"><span class="doctag">' + (DOC_TAGS[doc.type] || 'EVIDENCE') + '</span>' +
+    '<h4>' + doc.title + '</h4>' +
+    doc.body.map((l) => '<p>' + l + '</p>').join('') +
+    '<div class="dochint">FILED TO CASE FILE · CLICK OR PRESS E TO PUT IT DOWN</div></div>';
+  const close = () => { el.className = ''; el.innerHTML = ''; };
+  el.onclick = close;
+  el.dataset.open = '1';
+  const onKey = (ev) => { if (['e', 'escape', 'tab'].includes(ev.key.toLowerCase())) { close(); window.removeEventListener('keydown', onKey, true); } };
+  window.addEventListener('keydown', onKey, true);
 }
 function wrapDraw(c, text, x, y, maxW, lh) {
   const words = text.split(' '); let line = ''; let yy = y;
@@ -1087,12 +1104,12 @@ function showDocPanel(doc) {
   const c = bigCtx; c.clearRect(0, 0, 1024, 512);
   c.fillStyle = 'rgba(10,9,5,0.94)'; c.fillRect(0, 0, 1024, 512);
   c.strokeStyle = 'rgba(120,100,50,0.5)'; c.lineWidth = 3; c.strokeRect(40, 30, 944, 452);
-  c.textAlign = 'center'; c.fillStyle = '#e8dfa0'; c.font = 'bold 40px Courier New';
+  c.textAlign = 'center'; c.fillStyle = '#e8dfa0'; c.font = "40px 'Special Elite', monospace";
   c.fillText(doc.title, 512, 92);
-  c.textAlign = 'left'; c.fillStyle = '#cbc4a2'; c.font = '26px Courier New';
+  c.textAlign = 'left'; c.fillStyle = '#cbc4a2'; c.font = "26px 'Special Elite', monospace";
   let y = 150;
   doc.body.forEach((line) => { y = wrapDraw(c, line, 80, y, 860, 34) + 8; });
-  c.textAlign = 'center'; c.fillStyle = '#7a746a'; c.font = '20px Courier New';
+  c.textAlign = 'center'; c.fillStyle = '#7a746a'; c.font = "20px 'Special Elite', monospace";
   c.fillText('— saved to your Case File (open with Tab) —', 512, 462);
   bigTex.needsUpdate = true;
 }
@@ -1534,20 +1551,20 @@ function drawWrist(done) {
   if (!wristCtx) return;
   const c = wristCtx; c.clearRect(0, 0, 320, 200);
   c.fillStyle = 'rgba(6,6,10,0.85)'; c.fillRect(0, 0, 320, 200);
-  c.fillStyle = '#cdd6de'; c.font = '26px Courier New'; c.textAlign = 'left';
+  c.fillStyle = '#cdd6de'; c.font = "26px 'Special Elite', monospace"; c.textAlign = 'left';
   c.fillText(fmtClock(), 14, 34);
   c.textAlign = 'right'; c.fillStyle = '#9aa7b0'; c.fillText(`Truths ${done}/4`, 306, 34);
   // bars
   bar(c, 14, 52, 'FEAR', player.fear, '#e02a2a');
   bar(c, 14, 92, 'LIGHT', player.battery, '#8aff9e');
   bar(c, 14, 132, 'BODY', player.stamina, '#7ad0ff');
-  c.fillStyle = '#c9a24a'; c.font = '18px Courier New'; c.textAlign = 'left';
+  c.fillStyle = '#c9a24a'; c.font = "18px 'Special Elite', monospace"; c.textAlign = 'left';
   const next = data.objectives.find((o) => !o.done);
   c.fillText(next ? next.title.slice(0, 30) : 'Reach the front doors', 14, 184);
   wristTex.needsUpdate = true;
 }
 function bar(c, x, y, label, v, col) {
-  c.fillStyle = '#8a95a0'; c.font = '16px Courier New'; c.textAlign = 'left';
+  c.fillStyle = '#8a95a0'; c.font = "16px 'Special Elite', monospace"; c.textAlign = 'left';
   c.fillText(label, x, y + 14);
   c.strokeStyle = 'rgba(255,255,255,.2)'; c.strokeRect(x + 70, y, 220, 18);
   c.fillStyle = col; c.fillRect(x + 71, y + 1, 218 * Math.max(0, Math.min(1, v / 100)), 16);

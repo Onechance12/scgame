@@ -15,6 +15,13 @@ All downscaled to 1K JPG for fast web/headset loading. License: CC0 1.0.
 Poly Haven is community-funded — https://polyhaven.com/support if you want to
 support the artists.
 
+Fonts in assets/fonts/ are from Google Fonts under the SIL Open Font License
+(OFL 1.1 — free for any use; https://openfontlicense.org):
+  creepster.woff2        "Creepster"        by Sideshow
+  selite.woff2           "Special Elite"    by Astigmatic
+  imfell*.woff2          "IM Fell English"  by Igino Marini
+The OFL applies to the font files themselves, not to the game.
+
 Audio is generated live in the browser (js/audio.js) — no external files.
 
 Other great CC0 / royalty-free libraries for extending this:
