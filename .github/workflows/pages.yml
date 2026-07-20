@@ -1,0 +1,39 @@
+name: Deploy to GitHub Pages
+
+# Publishes the game to a live HTTPS URL so it can be opened in the
+# Meta Quest browser (WebXR requires a secure context).
+
+on:
+  push:
+    branches:
+      - claude/sam-colby-ghost-game-s5fct5
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
