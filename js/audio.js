@@ -555,6 +555,53 @@ const Audio2 = (() => {
     }
   }
 
+  // ---- NEW: positional (surround) sounds for the kids behind the walls ----
+
+  // returns an input gain node wired through a stereo panner to master
+  function panOut(pan) {
+    const g = ctx.createGain();
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan || 0));
+      g.connect(p); p.connect(master);
+    } else { g.connect(master); }
+    return g;
+  }
+
+  // A single footstep heard from a direction (pan -1..1) at a volume.
+  function footstepPan(pan, vol) {
+    if (!started) return;
+    const t = now();
+    const s = noiseSource();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 210;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(Math.max(0.001, vol || 0.05), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    s.connect(lp); lp.connect(g); g.connect(panOut(pan));
+    s.start(t); s.stop(t + 0.1);
+    // little scuff of a small foot
+    const s2 = noiseSource();
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+    const g2 = ctx.createGain(); g2.gain.setValueAtTime((vol || 0.05) * 0.5, t); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    s2.connect(hp); hp.connect(g2); g2.connect(panOut(pan)); s2.start(t); s2.stop(t + 0.06);
+  }
+
+  // A child's giggle from a direction.
+  function laughPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan);
+    const notes = [0, 0.11, 0.22, 0.32, 0.44];
+    notes.forEach((dt, i) => {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.value = 640 + (i % 2 ? 90 : -60) + rnd() * 40;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + dt);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.001, vol || 0.04), t + dt + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.1);
+      o.connect(g); g.connect(out); o.start(t + dt); o.stop(t + dt + 0.12);
+    });
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -566,6 +613,7 @@ const Audio2 = (() => {
     pickup, stinger, dread, chase, setMasterVolume, suspend, resume, isStarted,
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
+    footstepPan, laughPan,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

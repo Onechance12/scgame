@@ -90,6 +90,16 @@ A full, furnished hospital — not empty boxes:
 - **A deeper soundscape** — dripping water, dragged gurneys, distant screams,
   a child's laughter, electrical buzz, and slamming doors, all synthesized live.
 
+### 👁 The children behind the walls
+
+Portraits hang throughout the hospital — and **something small watches you
+through them.** Children move in the wall-space: you hear their footsteps as
+**surround sound** (real stereo panning — they circle you in headphones), catch
+**faint eyes** in a painting's holes, and when your **flashlight beam lands on
+them their eyes flare** for an instant before they **bolt — running footsteps
+panning away into the dark, trailing laughter.** Don't shine your light fast
+enough and they slip off on their own; you just hear them go.
+
 ### 🧸 The haunted nursery
 
 The basement children's ward (and a maternity ward upstairs) are the worst place

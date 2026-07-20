@@ -40,6 +40,9 @@ let blackoutUntil = 0;         // ms timestamp fixtures are forced dark
 let animatedProps = [];        // mobiles / rocking things
 let nurseryActive = false;     // player currently inside a haunted nursery
 let nurseryTimer = 0, nurseryMusicTimer = 3;
+let peekers = [];              // children behind the walls, peeking through paintings
+let peekSpawnTimer = 6;
+let peekMats = null;
 let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
@@ -461,11 +464,126 @@ function buildFloor(fi) {
     } catch (e) { console.warn('props failed:', e); }
   }
 
+  // children behind the walls
+  try { buildPeekers(fi); } catch (e) { console.warn('peekers failed:', e); peekers = []; }
+
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
 
   // entities present on this floor get meshes
   ents.forEach((e) => { if (e.floor === fi) ensureEntityMesh(e); });
+}
+
+// ---- the children behind the walls ----
+function makePeekMats() {
+  peekMats = {
+    frame: new THREE.MeshStandardMaterial({ color: 0x2a1e12, roughness: .9 }),
+    canvas: new THREE.MeshStandardMaterial({ color: 0x0a0908, roughness: 1 }),
+    eye: new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }),
+  };
+}
+
+function makePeeker(m) {
+  const wx = (m.x + 0.5) * TILE_M, wz = (m.y + 0.5) * TILE_M;
+  const nx = m.nx, nz = m.nz;
+  const off = TILE_M / 2 - 0.03;
+  const px = wx + nx * off, pz = wz + nz * off;
+  const yaw = Math.atan2(nx, nz);            // portrait faces into the room
+  const grp = new THREE.Group();
+  grp.position.set(px, 1.5, pz); grp.rotation.y = yaw;
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.9, 0.04), peekMats.frame);
+  const canvas = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.78), peekMats.canvas);
+  canvas.position.z = 0.03;
+  grp.add(frame); grp.add(canvas);
+  const eyeGeo = new THREE.SphereGeometry(0.036, 8, 8);
+  const eyeL = new THREE.Mesh(eyeGeo, peekMats.eye.clone());
+  const eyeR = new THREE.Mesh(eyeGeo, peekMats.eye.clone());
+  eyeL.position.set(-0.09, 0.05, 0.05); eyeR.position.set(0.09, 0.05, 0.05);
+  eyeL.visible = eyeR.visible = false;
+  grp.add(eyeL); grp.add(eyeR);
+  floorGroup.add(grp);
+  return { grp, eyeL, eyeR, wx: px, wz: pz, tileX: m.x + nx + 0.5, tileY: m.y + nz + 0.5,
+    state: 'hidden', t: 0, stepT: 0, laughed: false, cool: 2 + Math.random() * 4,
+    fleeV: 0, fleePan: 0, fleeDir: 1 };
+}
+
+function buildPeekers(fi) {
+  peekers = []; peekSpawnTimer = 5;
+  if (!peekMats) makePeekMats();
+  const g = data.floors[fi].grid;
+  const cand = [];
+  for (let y = 1; y < World.H - 1; y++) for (let x = 1; x < World.W - 1; x++) {
+    if (g[y][x] !== TILE.WALL) continue;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of dirs) {
+      const t = g[y + dy][x + dx];
+      if (t === TILE.FLOOR || t === TILE.HIDE) { cand.push({ x, y, nx: dx, nz: dy }); break; }
+    }
+  }
+  const want = Math.min(12, cand.length);
+  const step = Math.max(1, Math.floor(cand.length / Math.max(1, want)));
+  for (let i = 0; i < cand.length && peekers.length < want; i += step) peekers.push(makePeeker(cand[i]));
+}
+
+function startFlee(p, pan, vol, wasLit) {
+  p.state = 'fleeing'; p.t = 1.1; p.laughed = false; p.stepT = 0;
+  p.fleeV = Math.max(0.4, vol); p.fleePan = pan; p.fleeDir = pan >= 0 ? 1 : -1;
+  p.eyeL.visible = p.eyeR.visible = false;
+  if (wasLit) player.fear = Math.min(100, player.fear + 3);
+  Audio2.footstepPan(pan, 0.1 * p.fleeV);
+}
+
+// manage watchers, reveal on flashlight, flee with running footsteps + laughter
+function updatePeekers(dt) {
+  if (!peekers.length) return;
+  camera.getWorldPosition(tmpV); const pxp = tmpV.x, pzp = tmpV.z;
+  camera.getWorldDirection(tmpV2); const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
+  let active = 0;
+  for (const p of peekers) if (p.state !== 'hidden') active++;
+
+  peekSpawnTimer -= dt;
+  if (peekSpawnTimer <= 0) {
+    peekSpawnTimer = 2.5 + Math.random() * 3.5;
+    if (active < 2) {
+      const pool = peekers.filter((p) => p.state === 'hidden' && p.cool <= 0 &&
+        Math.hypot(p.wx - pxp, p.wz - pzp) / TILE_M < 9.5 && Math.hypot(p.wx - pxp, p.wz - pzp) / TILE_M > 2.2);
+      const best = pool[Math.floor(Math.random() * pool.length)];
+      if (best) { best.state = 'watching'; best.t = 3.5 + Math.random() * 3; best.stepT = 0.2; }
+    }
+  }
+
+  for (const p of peekers) {
+    if (p.state === 'hidden') { if (p.cool > 0) p.cool -= dt; continue; }
+    p.t -= dt;
+    const dx = p.wx - pxp, dz = p.wz - pzp;
+    const d = Math.hypot(dx, dz) / TILE_M;
+    const pan = Math.max(-1, Math.min(1, Math.sin(normAng(Math.atan2(dx, dz) - fYaw))));
+    const vol = Math.max(0, 1 - d / 10);
+
+    if (p.state === 'watching') {
+      p.eyeL.visible = p.eyeR.visible = true;
+      p.eyeL.material.color.setHex(0x260404); p.eyeR.material.color.setHex(0x260404); // faint, only just there
+      p.stepT -= dt;
+      if (p.stepT <= 0) { p.stepT = 0.45 + Math.random() * 0.6; Audio2.footstepPan(pan, 0.06 * vol); if (Math.random() < 0.22) Audio2.laughPan(pan, 0.03 * vol); }
+      if (beamHits(p.tileX, p.tileY) && d < LIGHT_RANGE) {
+        p.state = 'revealed'; p.t = 0.4; Audio2.stinger(false);
+        player.fear = Math.min(100, player.fear + 7);
+        showSubtitle('Eyes — watching you through a hole in the painting.', 2);
+      } else if (p.t <= 0) { startFlee(p, pan, vol, false); }
+      player.fear = Math.min(100, player.fear + dt * 0.5);
+    } else if (p.state === 'revealed') {
+      const glow = Math.sin(performance.now() / 40) > 0 ? 0xff3020 : 0xaa1010;
+      p.eyeL.material.color.setHex(glow); p.eyeR.material.color.setHex(glow);
+      if (p.t <= 0) startFlee(p, pan, vol, true);
+    } else if (p.state === 'fleeing') {
+      p.eyeL.visible = p.eyeR.visible = false;
+      p.fleeV *= Math.pow(0.5, dt / 0.5);
+      p.stepT -= dt;
+      if (p.stepT <= 0) { p.stepT = 0.13; Audio2.footstepPan(p.fleePan, 0.1 * p.fleeV); p.fleePan = Math.max(-1, Math.min(1, p.fleePan + p.fleeDir * 0.08)); }
+      if (!p.laughed && p.t < 0.5) { p.laughed = true; Audio2.laughPan(p.fleePan, 0.05); }
+      if (p.t <= 0) { p.state = 'hidden'; p.cool = 4 + Math.random() * 5; }
+    }
+  }
 }
 
 // true if a world-space point (metres) lies inside any solid prop (+radius)
@@ -988,10 +1106,11 @@ function update(dt) {
 
   updateSpiritObjective(dt);
 
-  // flickering fixtures + animated toys + the haunted nursery
+  // flickering fixtures + animated toys + the haunted nursery + wall children
   updateFixtures(dt);
   animateProps(dt);
   nurseryUpdate(dt);
+  updatePeekers(dt);
 
   // power-surge blackout scare (more frequent as the night deepens)
   surgeTimer -= dt;
