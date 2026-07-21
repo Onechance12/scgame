@@ -201,6 +201,11 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
                    https://sketchfab.com/3d-models/ground-moss-fores-square-2k-8b5699d30035485c9564035bb4458a91
     ventvalve/     "Ventilation Valve ceiling/wall" by Mehdi Shahsavan  (textures to 512)
                    https://sketchfab.com/3d-models/ventilation-valve-ceiling-wall-5mb-fadbec3e20754fea815602d72721baae
+    scp096/        "SCP-096 Reanimated"             by Sealife Fan 3  (the walk-up runner)
+                   https://sketchfab.com/3d-models/scp-096-reanimated-9e0b35c9485d4b51864a232e9653cc3a
+                   (textures to 512. SCP-096 originates from the SCP Foundation
+                   collaborative fiction project — SCP content is CC-BY-SA;
+                   this non-commercial fan tribute credits both accordingly.)
 
 TEXTURES HARVESTED FROM CC-BY MATERIAL MODELS (textures/horror/, credited):
     floor_bloodwood.jpg  from "Bloody and clean wooden floor tiles" by Intee Assets

@@ -808,18 +808,76 @@ function buildExterior() {
     new THREE.MeshStandardMaterial({ map: TEX.groundForest, color: 0x3a3d32, roughness: 1 }));
   gnd.rotation.x = -Math.PI / 2; gnd.position.set(doorX, -0.02, -40); g.add(gnd);
   // facade
-  const wallM = new THREE.MeshStandardMaterial({ map: TEX.wallD, color: 0x7a7d84, roughness: .95 });
+  const wallM = new THREE.MeshStandardMaterial({ map: TEX.wallD, color: 0x596068, roughness: .95 });
   const fac = new THREE.Mesh(new THREE.BoxGeometry(46, 15, 2), wallM);
   fac.position.set(doorX, 7.5, -1); g.add(fac);
-  // window grid — dead panes, one alive and flickering
-  const winM = new THREE.MeshStandardMaterial({ color: 0x05070c, emissive: 0x0a1524, emissiveIntensity: .5 });
+  // window grid — every pane its own kind of dead: pitch black, faint cold,
+  // boarded over. One alive and flickering. Deterministic per night.
+  let wseed = 20517; const wrnd = () => { wseed = (wseed * 1103515245 + 12345) & 0x7fffffff; return wseed / 0x7fffffff; };
+  const boardM = new THREE.MeshStandardMaterial({ color: 0x2e2118, roughness: 1 });
   let flickWin = null;
   for (let r = 0; r < 4; r++) for (let c = 0; c < 9; c++) {
-    const w = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.2), (r === 2 && c === 6) ? winM.clone() : winM);
-    w.position.set(doorX - 20 + c * 5, 3.4 + r * 3.4, 0.02);
-    if (r === 2 && c === 6) { flickWin = w; w.material.emissive.setHex(0x8a5a1a); }
+    const alive = (r === 2 && c === 6);
+    const wm = new THREE.MeshStandardMaterial({ color: 0x05070c, emissive: 0x0a1524, emissiveIntensity: 0.5 });
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.2), wm);
+    const wx2 = doorX - 20 + c * 5, wy2 = 3.4 + r * 3.4;
+    w.position.set(wx2, wy2, 0.02);
+    if (alive) { flickWin = w; wm.emissive.setHex(0x8a5a1a); }
+    else {
+      const roll = wrnd();
+      if (roll < 0.35) wm.emissiveIntensity = 0.02;                                 // pitch dead
+      else if (roll < 0.5) { wm.emissive.setHex(0x1a2434); wm.emissiveIntensity = 0.9; }   // faint cold glow
+      if (roll > 0.72) {   // boarded over from the inside
+        for (let bi = 0; bi < 3; bi++) {
+          const bd = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.28, 0.05), boardM);
+          bd.position.set(wx2 + (wrnd() - 0.5) * 0.2, wy2 - 0.7 + bi * 0.7 + (wrnd() - 0.5) * 0.15, 0.08);
+          bd.rotation.z = (wrnd() - 0.5) * 0.3;
+          g.add(bd);
+        }
+      }
+    }
     g.add(w);
   }
+  // grime: decades of rain streaking down from every sill, mould pooling at the base
+  const gc = document.createElement('canvas'); gc.width = 1024; gc.height = 512;
+  const gx = gc.getContext('2d');
+  for (let c = 0; c < 9; c++) for (let r = 0; r < 4; r++) {
+    const sx2 = ((doorX - 20 + c * 5 - (doorX - 23)) / 46) * 1024, sy2 = 512 - ((3.4 + r * 3.4 - 1.1) / 15) * 512;
+    for (let s = 0; s < 5; s++) {
+      const off = (wrnd() - 0.5) * 26, len = 40 + wrnd() * 130, wdt = 2 + wrnd() * 6;
+      const gr = gx.createLinearGradient(0, sy2, 0, sy2 + len);
+      gr.addColorStop(0, 'rgba(10,10,12,' + (0.25 + wrnd() * 0.3) + ')'); gr.addColorStop(1, 'rgba(10,10,12,0)');
+      gx.fillStyle = gr; gx.fillRect(sx2 + off - wdt / 2, sy2, wdt, len);
+    }
+  }
+  for (let i = 0; i < 60; i++) {   // mould blooming up from the foundations
+    gx.fillStyle = 'rgba(8,12,8,' + (0.10 + wrnd() * 0.2) + ')';
+    gx.beginPath(); gx.arc(wrnd() * 1024, 512 - wrnd() * 60, 10 + wrnd() * 42, 0, 6.283); gx.fill();
+  }
+  const grimeT = new THREE.CanvasTexture(gc);
+  const grime = new THREE.Mesh(new THREE.PlaneGeometry(46, 15),
+    new THREE.MeshBasicMaterial({ map: grimeT, transparent: true, opacity: 0.85, depthWrite: false }));
+  grime.position.set(doorX, 7.5, 0.04); g.add(grime);
+  // the sign: COLLEGE HILL HOSPITAL, half its letters gone dark, one end sagging
+  const sc3 = document.createElement('canvas'); sc3.width = 1024; sc3.height = 96;
+  const sx3 = sc3.getContext('2d');
+  sx3.fillStyle = '#14161a'; sx3.fillRect(0, 0, 1024, 96);
+  sx3.strokeStyle = '#2a2d33'; sx3.lineWidth = 5; sx3.strokeRect(4, 4, 1016, 88);
+  sx3.font = "64px 'IM Fell', 'Georgia', serif"; sx3.textAlign = 'center'; sx3.textBaseline = 'middle';
+  const title = 'COLLEGE  HILL  HOSPITAL';
+  let tx3 = 512 - sx3.measureText(title).width / 2;
+  sx3.textAlign = 'left';
+  for (const ch of title) {
+    const dead = wrnd() < 0.28;
+    sx3.fillStyle = dead ? '#23262b' : (wrnd() < 0.2 ? '#7a8188' : '#565d66');
+    sx3.fillText(ch, tx3, 50);
+    tx3 += sx3.measureText(ch).width;
+  }
+  const signT = new THREE.CanvasTexture(sc3); if ('colorSpace' in signT) signT.colorSpace = THREE.SRGBColorSpace;
+  const sign2 = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 0.9),
+    new THREE.MeshStandardMaterial({ map: signT, emissive: 0xffffff, emissiveMap: signT, emissiveIntensity: 0.14, roughness: 0.9 }));
+  sign2.position.set(doorX, 4.9, 0.1); sign2.rotation.z = -0.022;   // one bolt gave out years ago
+  g.add(sign2);
   // door + steps
   const door = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.4, 0.3),
     new THREE.MeshStandardMaterial({ map: TEX.doorD, color: 0x6a5a46, roughness: .9 }));
@@ -959,8 +1017,45 @@ function buildExterior() {
   moonHalo.scale.set(34, 34, 1); moonHalo.position.set(doorX - 42, 46, -95); g.add(moonHalo);
   const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(225,230,240,0.95)'), transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
   moon.scale.set(9, 9, 1); moon.position.copy(moonHalo.position); g.add(moon);
+  // and the moon actually LIGHTS the hill — a thin cold wash so the building
+  // and grounds read as shapes, not a void (this is what makes it creepy AF
+  // instead of just black)
+  const moonlight = new THREE.DirectionalLight(0x93a0c0, 0.85);
+  moonlight.position.copy(moonHalo.position);
+  const mlTarget = new THREE.Object3D(); mlTarget.position.set(doorX, 0, -12);
+  g.add(mlTarget); moonlight.target = mlTarget; g.add(moonlight);
+  // ---- the thing that lives on the grounds ----
+  // You hear it circling in the dark. Then it sprints in and SLAMS the wall
+  // beside the doors. It stays there, heaving, until you get close — and bolts.
+  let runner = null;
+  const runSrc = MOB.runner096;
+  if (runSrc && runSrc.scene) {
+    try {
+      const model = skeletonClone(runSrc.scene);
+      const mx = new THREE.AnimationMixer(model);
+      const clip = (key) => runSrc.animations.find((a) => a.name.toLowerCase().includes(key)) || null;
+      const acts = {
+        run: clip('|running') || clip('running'),
+        slam: clip('teslagatehit'),
+        rage: clip('idle_rage') || clip('panic'),
+      };
+      Object.keys(acts).forEach((k) => { if (acts[k]) acts[k] = mx.clipAction(acts[k]); });
+      model.updateMatrixWorld(true);
+      let bb = new THREE.Box3().setFromObject(model, true);
+      const bh = (bb.max.y - bb.min.y) || 1;
+      model.scale.setScalar(1.75 / bh);   // crouched height — it is much longer than it is tall
+      model.updateMatrixWorld(true);
+      bb = new THREE.Box3().setFromObject(model, true);
+      model.position.y = -bb.min.y;
+      model.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.75); o.frustumCulled = false; } });
+      const holder = new THREE.Group();
+      holder.add(model); holder.visible = false;
+      g.add(holder);
+      runner = { obj: holder, mixer: mx, acts, phase: 'wait', pt: 0, stepT: 0, from: null, to: null, dur: 1 };
+    } catch (e) { console.warn('runner build failed:', e); }
+  }
   scene.add(g);
-  return { g, doorX, flickWin, mist, mixers, stars, liveLamp, t: 0, gustT: 1.5, cardI: 0 };
+  return { g, doorX, flickWin, mist, mixers, stars, liveLamp, runner, shakeT: 0, t: 0, gustT: 1.5, cardI: 0 };
 }
 const CINE_CARDS = [
   [2, 'COLLEGE HILL', ['Williamson, West Virginia']],
@@ -970,6 +1065,9 @@ const CINE_CARDS = [
 function startCinematic() {
   cine = buildExterior();
   state = 'CINE';
+  // night air, not corridor air — outside you can see the building loom.
+  // The interior fog comes back the moment the doors take you.
+  fog.density = 0.02;
   Audio2.gust(0.2);
   dolly.rotation.set(0, 0, 0);
   dolly.position.set(cine.doorX - camera.position.x, 0, -46 - camera.position.z);
@@ -996,6 +1094,72 @@ function cineUpdate(dt) {
     c.liveLamp.light.intensity = c.liveLamp.base * k;
     c.liveLamp.mats.forEach((m2) => { m2.emissiveIntensity = on ? 0.7 + Math.random() * 0.5 : 0.03; });
   }
+  // ---- the runner on the grounds ----
+  const R = c.runner;
+  if (R) {
+    R.mixer.update(dt);
+    const moveTo = (p) => { R.obj.position.set(p[0], 0, p[1]); };
+    const startMove = (from, to, dur) => { R.from = from; R.to = to; R.dur = dur; R.pt = 0; };
+    const stepMove = () => {
+      R.pt += dt;
+      const k = Math.min(1, R.pt / R.dur);
+      const x = R.from[0] + (R.to[0] - R.from[0]) * k, z = R.from[1] + (R.to[1] - R.from[1]) * k;
+      moveTo([x, z]);
+      R.obj.rotation.y = Math.atan2(R.to[0] - R.from[0], R.to[1] - R.from[1]);
+      // frantic footfalls, panned to where it is
+      R.stepT -= dt;
+      if (R.stepT <= 0) { R.stepT = 0.16; const pan = Math.max(-1, Math.min(1, (x - c.doorX) / 24)); Audio2.footstepPan(pan, 0.16); }
+      return k >= 1;
+    };
+    if (R.phase === 'wait' && c.t >= 4.3) {
+      R.phase = 'distant';
+      Audio2.growlPan(0.8, 0.14);   // something big, off in the dark to your right
+      showSubtitle('Something is moving out there. Fast.', 3);
+    } else if (R.phase === 'distant' && c.t >= 6.1) {
+      R.phase = 'approach';
+      R.obj.visible = true;
+      if (R.acts.run) { R.acts.run.reset().setLoop(THREE.LoopRepeat, Infinity).play(); R.acts.run.timeScale = 1.6; }
+      startMove([c.doorX + 36, -30], [c.doorX + 8.5, -2.4], 1.9);
+    } else if (R.phase === 'approach') {
+      if (stepMove()) {
+        R.phase = 'slam';
+        if (R.acts.run) R.acts.run.fadeOut(0.08);
+        if (R.acts.slam) { R.acts.slam.reset().setLoop(THREE.LoopOnce, 1).fadeIn(0.05).play(); R.acts.slam.clampWhenFinished = true; }
+        R.obj.rotation.y = Math.PI;   // face the wall it just hit
+        Audio2.crash(0.7); Audio2.thud(0.9); Audio2.screechPan(0.5, 0.16);
+        comfortBlink(0.9); haptic(0.9, 140);
+        c.shakeT = 0.55;
+        showSubtitle('IT HIT THE BUILDING.', 2.5);
+        R.pt = 0;
+      }
+    } else if (R.phase === 'slam') {
+      R.pt += dt;
+      if (R.pt > 1.15) {
+        R.phase = 'rage';
+        if (R.acts.rage) { R.acts.rage.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play(); }
+        if (R.acts.slam) R.acts.slam.fadeOut(0.3);
+      }
+    } else if (R.phase === 'rage') {
+      // it heaves against the wall, facing nothing — until you get near the doors
+      if (Math.random() < dt * 0.7) Audio2.breathPan(0.35, 0.12);
+      if (dolly.position.z > -9.5) {
+        R.phase = 'flee';
+        if (R.acts.rage) R.acts.rage.fadeOut(0.1);
+        if (R.acts.run) { R.acts.run.reset().fadeIn(0.05).play(); R.acts.run.timeScale = 1.9; }
+        Audio2.screechPan(0.6, 0.22);
+        startMove([c.doorX + 8.5, -2.4], [c.doorX + 52, -24], 1.7);
+        showSubtitle('It looked at you. And it RAN.', 3);
+      }
+    } else if (R.phase === 'flee') {
+      if (stepMove()) { R.obj.visible = false; R.phase = 'gone'; }
+    }
+  }
+  // wall-slam shake — a hard jolt that dies fast (kept small for VR comfort)
+  if (c.shakeT > 0) {
+    c.shakeT -= dt;
+    const a = Math.max(0, c.shakeT / 0.55) * 0.05;
+    dolly.position.x += (Math.random() - 0.5) * a;
+  }
   // mist drift + wind
   c.mist.position.x = Math.sin(c.t * 0.15) * 2;
   c.gustT -= dt;
@@ -1013,6 +1177,7 @@ function cineUpdate(dt) {
 function endCinematic() {
   if (!cine) return;
   hideBigPanel();
+  fog.density = 0.055;   // the building's air closes back in
   Audio2.creak(); Audio2.slam();
   comfortBlink(1);
   disposeGroup(cine.g); cine = null;
@@ -1555,6 +1720,8 @@ function loadHeroModels() {
     ['playgroundG', 'horror/playground/scene.gltf'], ['carouselG', 'horror/carousel/scene.gltf'],
     // the Matron herself — a hooded apparition, frozen mid-reach (set-piece, not a hunter)
     ['matronW', 'horror/matron/scene.gltf'],
+    // the thing that lives on the grounds — the walk-up runner (cinematic scare)
+    ['runner096', 'horror/scp096/scene.gltf'],
   ];
   monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
   // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms

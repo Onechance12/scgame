@@ -1,0 +1,11 @@
+Model Information:
+* title:	SCP-096 Reanimated
+* source:	https://sketchfab.com/3d-models/scp-096-reanimated-9e0b35c9485d4b51864a232e9653cc3a
+* author:	Sealife Fan 3 (https://sketchfab.com/SealifeFan3)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "SCP-096 Reanimated" (https://sketchfab.com/3d-models/scp-096-reanimated-9e0b35c9485d4b51864a232e9653cc3a) by Sealife Fan 3 (https://sketchfab.com/SealifeFan3) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
