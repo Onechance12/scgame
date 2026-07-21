@@ -63,11 +63,31 @@ license.txt from Sketchfab.
               https://sketchfab.com/3d-models/fantasma-ghost-phantom-ecc1f2ccf6fc43b48f791b06398b8cfe
               (Marcos.Andre — https://sketchfab.com/Marcos.Andre — CC-BY-4.0)
 
-  The Crawler (a low cryptid):
-    hidebehind/ "The Hide Behind"  by Nightfoxy3D
-              https://sketchfab.com/3d-models/the-hide-behind-c23e1e455cae423ca3a457576f7c74d8
-              (Nightfoxy3D — https://sketchfab.com/Nightfoxymc — CC-BY-4.0)
+  The Crawler (a mutated human that drags itself along the floor):
+    horror/crawler2/ "Crawling mutated human"  by Elisey
+              https://sketchfab.com/3d-models/crawling-mutated-human-a87532a3e89947159cc1303008c06eaf
+              (Elisey — https://sketchfab.com/dwelfster — CC-BY-4.0)
 
-Materials were converted to metallic-roughness and re-tinted in-engine; the
-underlying meshes/rigs/animations and textures are the authors' work, used
-under CC-BY-4.0. This project is a non-commercial fan tribute.
+HOSPITAL FURNITURE — assets/models/horror/ (CC-BY-4.0; attribution REQUIRED,
+given here). Textures downscaled to 512px and materials aged in-engine for
+web/headset weight; meshes and textures are the authors' work.
+    hospbed/      "Hospital Bed"                by loxfear
+                  https://sketchfab.com/3d-models/hospital-bed-f8c13a19e84343e7b644c19f7b9488d3
+    horrorbed/    "Horror Bed"                  by denis_cliofas
+                  https://sketchfab.com/3d-models/horror-bed-88af775b40f14f788293e865c62537f4
+    gurney/       "PS1 Horror Hospital Gurney"  by Jan_Strydom
+                  https://sketchfab.com/3d-models/ps1-horror-hospital-gurney-7fce61ac484343959e25208bc75c08ff
+    wheelchair/   "wheelchair (horror game hospital)"     by japan3d
+                  https://sketchfab.com/3d-models/wheelchair-horror-game-hospital-5d1fb333230e46f7a1090304e4b39536
+    rewheelchair/ "RE: wheelchair (horror game hospital)" by japan3d
+                  https://sketchfab.com/3d-models/re-wheelchair-horror-game-hospital-97bd7574406d4df38d54ec4ac1f18c40
+    clock/        "Grandfather Clock"           by CalebCaliber
+                  https://sketchfab.com/3d-models/grandfather-clock-0f5f7c841caa4cda8171c55f1843a62d
+    caftable/     "Cafeteria Table Scary Baboon" by ScaryBaboonArchiver
+                  https://sketchfab.com/3d-models/cafeteria-table-scary-baboon-2aa1e5705ba64436aced838f35f3d5af
+    bin/          "Garbage Bin Scary Baboon"    by ScaryBaboonRipper
+                  https://sketchfab.com/3d-models/garbage-bin-scary-baboon-5b0c9258aed946fa9bc7793dc01ae338
+
+Materials were converted to metallic-roughness where needed and re-tinted
+in-engine; the underlying meshes/rigs/animations and textures are the authors'
+work, used under CC-BY-4.0. This project is a non-commercial fan tribute.

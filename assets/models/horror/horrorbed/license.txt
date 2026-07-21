@@ -1,0 +1,11 @@
+Model Information:
+* title:	Horror Bed
+* source:	https://sketchfab.com/3d-models/horror-bed-88af775b40f14f788293e865c62537f4
+* author:	denis_cliofas (https://sketchfab.com/denis_cliofas)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Horror Bed" (https://sketchfab.com/3d-models/horror-bed-88af775b40f14f788293e865c62537f4) by denis_cliofas (https://sketchfab.com/denis_cliofas) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

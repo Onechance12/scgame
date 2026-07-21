@@ -785,6 +785,9 @@ function buildFloor(fi) {
     }
   }
 
+  // real hospital furniture scattered through the wards, halls and rooms
+  try { placeHorrorProps(fi); } catch (e) { console.warn('horror props failed:', e); }
+
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
 
@@ -979,11 +982,16 @@ function loadHeroModels() {
     ['anne', 'sketchfab/anne/scene.gltf'],
     ['wolfram', 'sketchfab/wolfram/scene.gltf'],
     ['fantasma', 'sketchfab/fantasma/scene.gltf'],
-    ['hidebehind', 'sketchfab/hidebehind/scene.gltf'],
+    ['crawler2', 'horror/crawler2/scene.gltf'],   // the crawling mutated human
     // legacy CC0 (set-pieces + fallback)
     ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
   ];
   monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
+  // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms
+  const HPROPS = { hospbed: 'hospbed', horrorbed: 'horrorbed', gurney: 'gurney', wheelchair: 'wheelchair',
+    rewheelchair: 'rewheelchair', clock: 'clock', caftable: 'caftable', bin: 'bin' };
+  Object.entries(HPROPS).forEach(([k, d]) => loads.push(
+    L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   return Promise.all(loads).then(() => {
     window.HeroModels = MODELS; window.MobModels = MOB;
     if (MOB.ghost) MODELS.ghostGLB = MOB.ghost.scene;   // keep chapel/altar set-pieces working
@@ -1185,6 +1193,70 @@ function addDocMesh(d) {
   docMeshes.set(d.id, g);
 }
 
+// ---- real horror furniture (CC-BY hospital props) ----
+// Each model ships at a different authored scale, so normalize by bounding box to
+// a real-world size, ground it, age the material, then register a collision box.
+const HPROP_CFG = {
+  hospbed:     { by: 'long', size: 2.05, tint: 0x8a8f86, tintAmt: 0.25 },
+  horrorbed:   { by: 'long', size: 2.00, tint: 0x7a6a5a, tintAmt: 0.25 },
+  gurney:      { by: 'long', size: 2.05, tint: 0x9098a0, tintAmt: 0.20 },
+  wheelchair:  { by: 'h',    size: 1.10, tint: 0x60666e, tintAmt: 0.30 },
+  rewheelchair:{ by: 'h',    size: 1.10, tint: 0x60666e, tintAmt: 0.30 },
+  clock:       { by: 'h',    size: 2.10, tint: 0x3a2a1a, tintAmt: 0.35 },
+  caftable:    { by: 'long', size: 1.70, tint: 0x556070, tintAmt: 0.25 },
+  bin:         { by: 'h',    size: 1.00, tint: 0x2c3a2c, tintAmt: 0.30 },
+};
+function makeHProp(key, wx, wz, yaw) {
+  const src = (window.HeroModels || {})[key];
+  const cfg = HPROP_CFG[key];
+  if (!src || !cfg) return null;
+  const obj = src.clone();
+  let box = new THREE.Box3().setFromObject(obj);
+  const sz = box.getSize(new THREE.Vector3());
+  const ref = cfg.by === 'h' ? (sz.y || 1) : (Math.max(sz.x, sz.z) || 1);
+  obj.scale.setScalar(cfg.size / ref);
+  box = new THREE.Box3().setFromObject(obj);
+  const ctr = box.getCenter(new THREE.Vector3());
+  obj.position.x -= ctr.x; obj.position.z -= ctr.z; obj.position.y -= box.min.y;
+  obj.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.2); o.frustumCulled = true; } });
+  const grp = new THREE.Group();
+  grp.add(obj); grp.rotation.y = yaw; grp.position.set(wx, cfg.wall ? WALL_H * 0.5 : 0, wz);
+  return { grp, wall: !!cfg.wall };
+}
+function placeHorrorProps(fi) {
+  const HM = window.HeroModels || {};
+  if (!HM.hospbed && !HM.gurney) return;   // props didn't load — skip quietly
+  const g = data.floors[fi].grid;
+  const rooms = data.floors[fi].rooms || [];
+  let seed = 90210 + fi * 7919;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const yaw4 = () => Math.floor(rnd() * 4) * (Math.PI / 2);
+  const grp = new THREE.Group();
+  const isFloor = (tx, ty) => g[ty] && g[ty][tx] === TILE.FLOOR;
+  const place = (key, tx, ty, yaw) => {
+    if (!isFloor(tx, ty)) return;
+    const p = makeHProp(key, (tx + 0.5) * TILE_M, (ty + 0.5) * TILE_M, yaw);
+    if (!p) return;
+    grp.add(p.grp);
+    if (!p.wall) { const b = new THREE.Box3().setFromObject(p.grp); propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); }
+  };
+  const corner = (r) => [Math.max(r.x + 1, Math.min(r.x + r.w - 2, r.x + (rnd() < 0.5 ? 1 : r.w - 2))),
+                         Math.max(r.y + 1, Math.min(r.y + r.h - 2, r.y + (rnd() < 0.5 ? 1 : r.h - 2)))];
+  const BEDS = ['ward', 'recovery', 'iso', 'room207', 'maternity', 'er', 'quarters', 'mose'];
+  rooms.forEach((r) => {
+    const tag = r.tag || '';
+    if (BEDS.includes(tag)) {
+      let [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4());
+      if (r.w * r.h > 34 && rnd() < 0.6) { [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4()); }
+    }
+    if (['surgery', 'admitting'].includes(tag)) { const [x, y] = corner(r); place('gurney', x, y, yaw4()); }
+    if (['waiting', 'lobby', 'station', 'recovery'].includes(tag) && rnd() < 0.7) { const [x, y] = corner(r); place(rnd() < 0.5 ? 'wheelchair' : 'rewheelchair', x, y, yaw4()); }
+    if (['lobby', 'chapel', 'matron'].includes(tag)) { const [x, y] = corner(r); place('clock', x, y, yaw4()); }
+    if (['cafeteria', 'kitchen'].includes(tag)) { const [x, y] = corner(r); place('caftable', x, y, yaw4()); }
+    if (['bath', 'storage', 'laundry', 'morgue', 'boiler', 'incinerator', 'pharmacy'].includes(tag) && rnd() < 0.7) { const [x, y] = corner(r); place('bin', x, y, yaw4()); }
+  });
+  floorGroup.add(grp);
+}
 // ---- ritual chamber ----
 function ritualMats() {
   if (ritMats) return ritMats;
@@ -1254,8 +1326,8 @@ const MOBMAP = {
   child: { key: 'fantasma', targetH: 1.15, translucent: true, opacity: 0.66, tint: 0xdfe8f0, tintAmt: 0.4, fly: true, aura: 'rgba(190,210,235,0.5)', auraS: 1.8, yaw: 0 },
   // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
   mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
-  // The Crawler — the Hide-Behind, a low wrong thing
-  crawler: { key: 'hidebehind', targetH: 1.55, low: true, translucent: false, opacity: 1, tint: 0x171420, tintAmt: 0.5, emissive: 0x0a0010, aura: 'rgba(80,10,20,0.5)', auraS: 1.9, yaw: 0 },
+  // The Crawler — a mutated human dragging itself along the floor (prone, so targetH is its low height)
+  crawler: { key: 'crawler2', targetH: 0.62, translucent: false, opacity: 1, tint: 0x6a5a52, tintAmt: 0.4, emissive: 0x120404, aura: 'rgba(80,10,20,0.5)', auraS: 2.0, yaw: 0 },
   // The Ash — a charred human shape wreathed in living embers (the 1926 fire's dead)
   ash: { key: 'wolfram', targetH: 1.95, translucent: false, opacity: 1, tint: 0x140b06, tintAmt: 0.78, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: Math.PI },
 };
