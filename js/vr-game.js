@@ -870,6 +870,37 @@ function buildExterior() {
       g.add(t);
     });
   }
+  // the 1928 lampposts line the path — two dead for decades, and the last one,
+  // nearest the doors, still sputtering off the same sick current as the window
+  let liveLamp = null;
+  const lampSrc = (window.HeroModels || {}).streetlamp;
+  if (lampSrc) {
+    [[-4.5, -32, false], [4.8, -18, false], [-4.2, -6, true]].forEach(([ox, oz, alive]) => {
+      const lp = lampSrc.clone();
+      let b = new THREE.Box3().setFromObject(lp);
+      const h = (b.max.y - b.min.y) || 1;
+      lp.scale.setScalar(3.6 / h);
+      b = new THREE.Box3().setFromObject(lp);
+      const c4 = b.getCenter(new THREE.Vector3());
+      lp.position.set(doorX + ox - c4.x, -b.min.y, oz - c4.z);
+      const emissives = [];
+      lp.traverse((o) => {
+        if (!(o.isMesh && o.material)) return;
+        o.material = o.material.clone();
+        if (o.material.emissive && (o.material.emissive.r + o.material.emissive.g + o.material.emissive.b) > 0.2) {
+          if (alive) emissives.push(o.material);
+          else { o.material.emissive.setHex(0x000000); if (o.material.color) o.material.color.setHex(0x1a1c20); }   // burnt out
+        } else if (o.material.color) o.material.color.multiplyScalar(0.5);
+      });
+      if (alive) {
+        const pl = new THREE.PointLight(0xffd9a0, 1.1, 13, 2);
+        pl.position.set(doorX + ox, 3.3, oz);
+        g.add(pl);
+        liveLamp = { light: pl, mats: emissives, base: 1.1 };
+      }
+      g.add(lp);
+    });
+  }
   // the hospital's transformer cabinet, rusted dead beside the doors
   const boxSrc = (window.HeroModels || {}).elecbox;
   if (boxSrc) {
@@ -907,7 +938,7 @@ function buildExterior() {
   const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(225,230,240,0.95)'), transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
   moon.scale.set(9, 9, 1); moon.position.copy(moonHalo.position); g.add(moon);
   scene.add(g);
-  return { g, doorX, flickWin, mist, mixers, stars, t: 0, gustT: 1.5, cardI: 0 };
+  return { g, doorX, flickWin, mist, mixers, stars, liveLamp, t: 0, gustT: 1.5, cardI: 0 };
 }
 const CINE_CARDS = [
   [2, 'COLLEGE HILL', ['Williamson, West Virginia']],
@@ -936,6 +967,13 @@ function cineUpdate(dt) {
   if (c.mixers) c.mixers.forEach((m) => m.update(dt));
   // the stars breathe, barely
   if (c.stars) c.stars.material.opacity = 0.82 + Math.sin(c.t * 0.7) * 0.08 + Math.sin(c.t * 2.3) * 0.04;
+  // the last lamppost sputters on the building's dying current
+  if (c.liveLamp) {
+    const on = Math.random() < 0.94;
+    const k = on ? (0.6 + Math.random() * 0.6) : 0.04;
+    c.liveLamp.light.intensity = c.liveLamp.base * k;
+    c.liveLamp.mats.forEach((m2) => { m2.emissiveIntensity = on ? 0.7 + Math.random() * 0.5 : 0.03; });
+  }
   // mist drift + wind
   c.mist.position.x = Math.sin(c.t * 0.15) * 2;
   c.gustT -= dt;
@@ -1511,7 +1549,9 @@ function loadHeroModels() {
     // the children's bear — ceramic, googly-eyed, and wrong in the dark
     scarebear: 'scarebear',
     // dead oaks for the hillside, and the hospital's rusted transformer
-    oaktrees: 'oaktrees', elecbox: 'elecbox' };
+    oaktrees: 'oaktrees', elecbox: 'elecbox',
+    // the 1928 grounds lamps — two dead, one still trying
+    streetlamp: 'streetlamp' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)

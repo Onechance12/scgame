@@ -190,6 +190,8 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
     elecbox/       "Rusty Electric Box"             by randombug  (facade + boiler room)
                    https://sketchfab.com/3d-models/rusty-electric-box-2d7b31aeab5f4b90991e137dd3786fad
                    (texture downscaled to 512)
+    streetlamp/    "Street light lamp"              by amurin  (the 1928 grounds lamps)
+                   https://sketchfab.com/3d-models/street-light-lamp-78339c366835415fbc58032e99268590
 
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
