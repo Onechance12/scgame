@@ -75,6 +75,7 @@ const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
 let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
+let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
 function applyBrightness() {
@@ -901,6 +902,8 @@ function buildFloor(fi) {
   try { placeHorrorProps(fi); } catch (e) { console.warn('horror props failed:', e); }
   // blood, drips and grime on the floors of the worst rooms
   try { placeDecals(fi); } catch (e) { console.warn('decals failed:', e); }
+  // cobwebs, ceiling pipes, light shafts, drifting fog + ceiling drips
+  try { addAtmosphere(fi); } catch (e) { console.warn('atmosphere failed:', e); }
 
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
@@ -1236,7 +1239,127 @@ function addCandle(wx, wz) {
     new THREE.MeshBasicMaterial({ color: 0xffd07a }));
   flame.position.copy(light.position);
   floorGroup.add(flame);
-  candleLights.push({ light, base: 1.4 });
+  // a soft warm glow halo so the flame reads as a bright bloom in the dark
+  const halo = glowSprite('rgba(255,190,110,0.9)', 0.9, wx, 1.12, wz, 0.7);
+  candleLights.push({ light, base: 1.4, halo });
+}
+// ============================================================ atmosphere pass
+// Cobwebs in the corners, pipes and conduit along the ceilings, volumetric light
+// shafts under the corridor fixtures, low drifting fog, and water dripping from
+// the ceilings of the wet rooms. Runs once per floor build.
+let webTex = null;
+function cobwebTex() {
+  if (webTex) return webTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.strokeStyle = 'rgba(210,214,220,0.5)'; x.lineWidth = 1;
+  for (let i = 0; i < 9; i++) { x.beginPath(); x.moveTo(4, 4); const a = (i / 9) * (Math.PI / 2); x.lineTo(4 + Math.cos(a) * 150, 4 + Math.sin(a) * 150); x.stroke(); }
+  for (let r = 14; r < 128; r += 15) { x.beginPath(); for (let i = 0; i <= 9; i++) { const a = (i / 9) * (Math.PI / 2); const px = 4 + Math.cos(a) * r, py = 4 + Math.sin(a) * r; i ? x.lineTo(px, py) : x.moveTo(px, py); } x.stroke(); }
+  return (webTex = new THREE.CanvasTexture(c));
+}
+function addAtmosphere(fi) {
+  fogWisps = []; atmoDrips = []; atmoShafts = [];
+  const rooms = data.floors[fi].rooms || [];
+  const g = data.floors[fi].grid;
+  let seed = 31337 + fi * 613;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const webMat = new THREE.MeshBasicMaterial({ map: cobwebTex(), transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, fog: true });
+  const pipeMat = new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.8, metalness: 0.3 });
+  const wetRooms = ['bath', 'morgue', 'boiler', 'incinerator', 'laundry', 'kitchen', 'autopsy', 'storage'];
+
+  rooms.forEach((r) => {
+    // cobwebs strung across the top corners
+    const nWeb = 1 + Math.floor(rnd() * 3);
+    for (let i = 0; i < nWeb; i++) {
+      const cx = (rnd() < 0.5 ? r.x + 0.9 : r.x + r.w - 0.9), cz = (rnd() < 0.5 ? r.y + 0.9 : r.y + r.h - 0.9);
+      const web = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), webMat);
+      web.position.set(cx * TILE_M, WALL_H - 0.5 - rnd() * 0.4, cz * TILE_M);
+      web.rotation.set(-0.5, rnd() * 6.28, rnd() * 0.6); floorGroup.add(web);
+    }
+    // dripping water in the wet rooms
+    if (wetRooms.includes(r.tag) && rnd() < 0.85) {
+      const dx = (r.x + 1 + Math.floor(rnd() * Math.max(1, r.w - 2))), dz = (r.y + 1 + Math.floor(rnd() * Math.max(1, r.h - 2)));
+      if (g[dz] && g[dz][dx] === TILE.FLOOR) addDrip(dx + 0.5, dz + 0.5);
+    }
+    // a thin, low ground-haze drifting through the bigger/worse rooms
+    if (r.w >= 4 && r.h >= 4 && rnd() < 0.5) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(140,150,165,0.35)'), transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.NormalBlending, fog: true }));
+      const sz = 3.5 + rnd() * 2.5; s.scale.set(sz, sz * 0.34, 1);   // wide + flat = a haze, not a ball
+      s.position.set((r.cx + 0.5) * TILE_M, 0.28 + rnd() * 0.15, (r.cy + 0.5) * TILE_M);
+      floorGroup.add(s);
+      fogWisps.push({ s, x0: s.position.x, z0: s.position.z, phase: rnd() * 6.28, amp: 1 + rnd() * 1.3, tgt: 0.05 + rnd() * 0.06 });
+    }
+  });
+
+  // corridors: ceiling pipes running the length + light shafts under the pendants
+  [data.CORR_TOP, data.CORR_BOT].forEach((cy, ci) => {
+    if (cy == null) return;
+    const pz = (cy + 0.5) * TILE_M;
+    for (const off of [-0.6, 0.0, 0.7]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.05 + rnd() * 0.03, 0.05, (World.W - 8) * TILE_M, 7), pipeMat);
+      pipe.rotation.z = Math.PI / 2; pipe.position.set((World.W / 2) * TILE_M, WALL_H - 0.18 - Math.abs(off) * 0.12, pz + off);
+      floorGroup.add(pipe);
+    }
+    for (let x = 6; x < World.W - 6; x += 10 + Math.floor(rnd() * 4)) {
+      if (g[cy] && g[cy][x] === TILE.FLOOR) {
+        const shaft = lightShaft((x + 0.5) * TILE_M, pz, 0xbcd0e8, 0.7, 0.035);
+        atmoShafts.push({ m: shaft, base: 0.035, phase: rnd() * 6.28 });
+      }
+    }
+  });
+  // the odd faint god-ray from a tall room fixture
+  rooms.forEach((r) => { if (r.w >= 5 && rnd() < 0.3) { const shaft = lightShaft((r.cx + 0.5) * TILE_M, (r.cy + 0.5) * TILE_M, 0xffe6b0, 0.85, 0.03); atmoShafts.push({ m: shaft, base: 0.03, phase: rnd() * 6.28 }); } });
+}
+function addDrip(wx, wz) {
+  const N = 5, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = wx * TILE_M + (Math.random() - 0.5) * 0.1; pos[i * 3 + 1] = WALL_H - Math.random() * WALL_H; pos[i * 3 + 2] = wz * TILE_M + (Math.random() - 0.5) * 0.1; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9fb4c4, size: 0.05, transparent: true, opacity: 0.7, depthWrite: false }));
+  floorGroup.add(pts);
+  atmoDrips.push({ pts, pos, wx: wx * TILE_M, wz: wz * TILE_M, vy: new Float32Array(N).map(() => 1 + Math.random() * 2) });
+  // a small dark puddle where it lands
+  const pud = new THREE.Mesh(new THREE.CircleGeometry(0.35, 12), new THREE.MeshStandardMaterial({ color: 0x10161c, roughness: 0.25, metalness: 0.4, transparent: true, opacity: 0.85 }));
+  pud.rotation.x = -Math.PI / 2; pud.position.set(wx * TILE_M, 0.015, wz * TILE_M); floorGroup.add(pud);
+}
+function updateAtmosphere(dt) {
+  const t = performance.now() / 1000;
+  for (const w of fogWisps) {
+    w.s.position.x = w.x0 + Math.sin(t * 0.12 + w.phase) * w.amp;
+    w.s.position.z = w.z0 + Math.cos(t * 0.09 + w.phase) * w.amp * 0.6;
+    w.s.material.opacity += (w.tgt - w.s.material.opacity) * Math.min(1, dt * 0.6);
+  }
+  for (const d of atmoDrips) {
+    const p = d.pos; let moved = false;
+    for (let i = 0; i < p.length; i += 3) {
+      p[i + 1] -= d.vy[i / 3] * dt; moved = true;
+      if (p[i + 1] < 0.05) { p[i + 1] = WALL_H - 0.1; }
+    }
+    if (moved) d.pts.geometry.attributes.position.needsUpdate = true;
+  }
+  for (const s of atmoShafts) { s.m.material.opacity = s.base * (0.65 + Math.abs(Math.sin(t * 0.7 + s.phase)) * 0.7); }
+}
+// ---- shared glow (fake bloom) + volumetric light shaft helpers ----
+function glowSprite(hex, size, x, y, z, opacity) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: opacity == null ? 0.6 : opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+  s.scale.set(size, size, 1); s.position.set(x, y, z); floorGroup.add(s); return s;
+}
+let shaftTex = null;
+function lightShaftTex() {
+  if (shaftTex) return shaftTex;
+  const c = document.createElement('canvas'); c.width = 32; c.height = 128; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, 'rgba(255,255,255,0.5)'); g.addColorStop(0.5, 'rgba(255,255,255,0.14)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 32, 128);
+  return (shaftTex = new THREE.CanvasTexture(c));
+}
+// a soft cone of light falling from a ceiling fixture to the floor (VR-cheap, no real light)
+function lightShaft(wx, wz, color, radius, opacity) {
+  const geo = new THREE.ConeGeometry(radius || 0.85, WALL_H - 0.2, 14, 1, true);
+  const mat = new THREE.MeshBasicMaterial({ map: lightShaftTex(), color: color || 0xffe6b0, transparent: true,
+    opacity: opacity == null ? 0.09 : opacity, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(wx, (WALL_H - 0.2) / 2 + 0.1, wz);   // apex at the ceiling fixture, spreading to the floor
+  floorGroup.add(m);
+  return m;
 }
 function addStairs(wx, wz, up) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: .95 });
@@ -1294,7 +1417,10 @@ function addItemMesh(it) {
   const mesh = new THREE.Mesh(
     isRite ? new THREE.OctahedronGeometry(0.2, 0) : new THREE.IcosahedronGeometry(0.16, 0),
     new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: isRite ? 0.8 : 1.1, roughness: .3 }));
-  g.add(mesh);   // emissive glow only — no per-item PointLight (Quest perf)
+  g.add(mesh);   // emissive core — no per-item PointLight (Quest perf)
+  // a soft additive glow halo so pickups bloom and are findable in the dark
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,255,255,0.85)'), color: col, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.scale.set(0.7, 0.7, 1); g.add(glow);
   if (isRite) {  // a faint halo ring so relics feel special and findable
     const halo = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.015, 6, 20),
       new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, fog: false }));
@@ -2374,7 +2500,7 @@ function render() {
 
 function spinItems(dt) {
   itemMeshes.forEach((g) => { if (g.userData.spin) { g.userData.spin.rotation.y += dt * 1.5; g.position.y = 1.1 + Math.sin(performance.now() / 400) * 0.08; } });
-  candleLights.forEach((c) => { c.light.intensity = c.base * (0.75 + Math.random() * 0.35); });
+  candleLights.forEach((c) => { const f = 0.75 + Math.random() * 0.35; c.light.intensity = c.base * f; if (c.halo) c.halo.material.opacity = 0.55 * f + 0.15; });
   docMeshes.forEach((g) => { g.rotation.y += dt * 0.6; g.position.y = 1.0 + Math.sin(performance.now() / 500) * 0.06; });
   if (ritual && player && player.floor === ritual.floor) {
     ritual.nodes.forEach((n) => {
@@ -2737,6 +2863,7 @@ function update(dt) {
   stickBtnWas = !!stickBtn;
 
   updateDust(dt);
+  updateAtmosphere(dt);
   // flickering fixtures + animated toys + the haunted nursery + wall children
   updateFixtures(dt);
   animateProps(dt);
