@@ -292,6 +292,11 @@ const World = (() => {
     // Each floor's stairwell needs its key, found one floor below it (a chain).
     addItem(1, 'kitchen', 'key', 'key_stairs0', 0, 1);   // basement — the cook held it
     addItem(1, 'kitchen', 'weapon', 'crowbar', -1, -1);  // a rusted crowbar behind the stove — iron for the dead
+    // the rest of the arsenal, scattered where you'd expect to find each one
+    addItem(2, 'ward', 'weapon', 'axe', 1, 0);        // a fire axe in the patient-ward case
+    addItem(0, 'autopsy', 'weapon', 'cleaver', 1, 0); // a bone cleaver left on the autopsy slab
+    addItem(0, 'boiler', 'weapon', 'pipe', -1, 0);    // a lead pipe wrenched off the boiler
+    addItem(3, 'supply', 'weapon', 'sledge', -1, 1);  // a sledgehammer in the upstairs maintenance closet
     addItem(1, 'records', 'key', 'key_stairs2', -1, 0);  // 2nd floor — filed in Records
     addItem(2, 'station', 'key', 'key_stairs3', 1, 0);   // 3rd floor — the nurses' station ring
     addItem(3, 'recovery', 'key', 'key_stairs4', 1, 0);  // 4th floor — left in Recovery

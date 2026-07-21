@@ -83,7 +83,8 @@ function fovNow() { return Math.min(120, Math.max(60, OPTS.fov | 0 || 72)); }
 function applyFov() { if (!camera) return; camera.fov = fovNow(); camera.updateProjectionMatrix(); }
 let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
-let heldWeapon = null, swingT = 0, swingCd = 0, weaponTaught = false, swingQueued = false;  // the crowbar
+let swingT = 0, swingCd = 0, weaponTaught = false, swingQueued = false;  // weapon swing state
+let deskUseDown = false;   // desktop: left-mouse held (brandish / use)
 let phoneRang = false;   // the 3:33 AM payphone (once a night)
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
@@ -214,7 +215,7 @@ function saveState() {
     v: 2, realMode, startEpoch,
     floor: player.floor, x: player.x, y: player.y,
     fear: player.fear, battery: player.battery, hasLight: player.hasLight, faith: player.faith,
-    inv: player.inv, keys: player.keys, rite: player.rite,
+    inv: player.inv, keys: player.keys, rite: player.rite, weapons: player.weapons, tool: player.tool,
     itemsTaken: data.items.filter((i) => i.taken).map((i) => i.id),
     objectives: data.objectives.map((o) => o.done),
     docs: documents.filter((d) => d.found).map((d) => d.id),
@@ -260,7 +261,7 @@ function checkXR() {
       xrSupported = ok;
       if (ok) {
         note.innerHTML = 'Headset detected. Press <b>ENTER IN VR</b> and put it on. ' +
-          'Left stick walk · right stick snap-turn · trigger interact · right grip = flashlight (or SWING the crowbar once you carry it — <b>B</b> becomes the light) · hold <b>A</b> to raise the cross · hold left grip for the spirit box · <b>Y</b> opens your pack on your wrist · click sticks to crouch / jump.';
+          'Left hand holds the <b>flashlight</b> (<b>B</b> toggles); right hand is your <b>tool hand</b> — press <b>A</b> to cycle bare → cross → weapons, then <b>squeeze the grip</b> to raise the cross or swing a weapon. Left stick walk (shove to run) · right stick snap-turn · trigger interact · hold left grip for the spirit box · tap your <b>watch</b> for pack & settings · click sticks to crouch / jump.';
       } else {
         btnVR.disabled = true; btnVR.style.opacity = .5;
         note.innerHTML = 'No VR headset on this device. On a <b>Meta Quest</b>, open this page in the Quest browser (served over HTTPS) and the VR button lights up. Use <b>Play on Desktop</b> here.';
@@ -298,9 +299,9 @@ function setupControllers() {
       } else if (hand === 'right') {
         sources.right = c;
         sources.rightGrip = (c === controller1) ? grip1 : grip2;
-        attachFlashlightTo(c);
         dressGrip(sources.rightGrip, 'right');
       }
+      mountFlashlightHand();   // the light rides your off (move) hand; tools ride the dominant one
     });
     c.addEventListener('disconnected', () => { c.userData.inputSource = null; });
     c.addEventListener('selectstart', () => onTrigger(c));       // interact
@@ -310,11 +311,17 @@ function setupControllers() {
 }
 
 function attachFlashlightTo(c) {
-  // move the flashlight from the camera onto the right controller
-  camera.remove(flashlight); camera.remove(flashlight.target);
+  if (!c) return;
+  if (flashlight.parent) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); }
   c.add(flashlight); c.add(flashlight.target);
   flashlight.position.set(0, 0, 0);
   flashlight.target.position.set(0, 0, -1);
+}
+// the flashlight lives in your OFF (move) hand so the dominant hand is free for
+// the cross or a weapon — the two-handed loadout the whole system is built around
+function mountFlashlightHand() {
+  const off = OPTS.swapHands ? sources.right : sources.left;
+  if (off) attachFlashlightTo(off);
 }
 
 function makeHandMesh() {
@@ -518,9 +525,9 @@ function onSqueezeStart(c) {
   if (state !== 'PLAY') return;
   const R = OPTS.swapHands ? sources.left : sources.right;
   const L = OPTS.swapHands ? sources.right : sources.left;
-  // dominant grip: swing the crowbar once you carry it (B toggles the light then);
-  // before that, it's the flashlight switch
-  if (c === R) { if (player.inv.weapon) swingQueued = true; else toggleFlash(); }
+  // dominant grip USES whatever's in that hand: swing a weapon (cross brandish is
+  // a held state, read live in wantsBrandish). Off grip = the spirit box.
+  if (c === R) { if (currentWeapon()) swingQueued = true; }
   else if (c === L) startSpirit();
 }
 function onSqueezeEnd(c) {
@@ -756,7 +763,7 @@ function startDesktop(saved) {
   document.getElementById('vr-hud').classList.add('show');
   document.getElementById('vr-crosshair').style.display = 'block';
   document.getElementById('controls-hint').textContent =
-    'WASD move · mouse look · Space jump · Z crouch · F flashlight · E interact · R hold up CROSS · G/click swing CROWBAR · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
+    'WASD move · Shift run · mouse look · Space jump · Z crouch · F flashlight · E interact · X cycle held item · hold LMB/R raise CROSS · LMB/G swing WEAPON · Q spirit box · C drink · V medkit · Tab case file · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
   heroReady.then(() => newGame(saved));
@@ -782,6 +789,7 @@ function newGame(saved) {
     aim: 0, fear: 8, stamina: 100, battery: 100, faith: 100,
     // you START with the flashlight in your hand and lit — no fumbling in the dark
     hasLight: true, lightOn: true, hidden: false, inv: {}, keys: {}, rite: {},
+    weapons: {}, tool: 'bare',   // the dominant-hand loadout: bare → cross → weapons
   };
   // A settling-in grace: for the first ~100s of a fresh night the dead stay in
   // their dens and won't hunt, fear can't kill, and the game teaches you.
@@ -829,6 +837,7 @@ function restoreFrom(s) {
   player.faith = s.faith == null ? 100 : s.faith;
   player.hasLight = !!s.hasLight; player.lightOn = false;
   player.inv = s.inv || {}; player.keys = s.keys || {}; player.rite = s.rite || {};
+  player.weapons = s.weapons || {}; player.tool = s.tool || 'bare';
   (s.itemsTaken || []).forEach((id) => { const it = data.items.find((i) => i.id === id); if (it) it.taken = true; });
   (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
@@ -2077,7 +2086,10 @@ function loadHeroModels() {
   const PACKITEMS = {
     brokenclock: ['clockpack', 'clock007'], brokenclock2: ['clockpack', 'clock010'],
     cobwebA: ['cobwebpack', 'cobweb002'], cobwebB: ['cobwebpack', 'cobweb004'], cobwebC: ['cobwebpack', 'cobweb006'],
-    crowbar: ['weapons', 'crowbarobj'],
+    // the arsenal — a hospital's worth of things to swing at the dead
+    crowbar: ['weapons', 'crowbarobj'], w_bat: ['weapons', 'baseballbatobj'], w_machete: ['weapons', 'macheteobj'],
+    w_cleaver: ['weapons', 'cleaverobj'], w_axe: ['weapons', 'axeobj'], w_pipe: ['weapons', 'metalpipeobj'],
+    w_sledge: ['weapons', 'sledgehammerobj'],
   };
   return Promise.all(loads).then(() => {
     // extract named sub-objects from packs into standalone, upright, centred models
@@ -3230,14 +3242,49 @@ function mountHeld(g, kind) {
   }
   return g.userData.gripMounted;
 }
-function wantsBrandish() {
-  if (!player || !player.inv || !player.inv.cross) return false;
-  if (!isVR) return !!keys['r'];
-  // VR: hold the right-hand A button (index 4)
-  const rs = OPTS.swapHands ? sources.left : sources.right;
-  const gp = rs && rs.userData.inputSource && rs.userData.inputSource.gamepad;
-  return !!(gp && gp.buttons && gp.buttons[4] && gp.buttons[4].pressed);
+// ================= the loadout: flashlight in one hand, a tool in the other =====
+// Your off hand holds the light. Your dominant hand holds ONE tool at a time —
+// bare, the iron cross, or any weapon you've found — and you cycle which with A
+// (X on desktop). The dominant grip USES whatever's in it: hold to brandish the
+// cross, squeeze to swing a weapon. Weapons can't kill the dead, but a solid hit
+// knocks them back and sends them recoiling — room to run.
+const WEAPONS = {
+  crowbar: { name: 'Crowbar', model: 'crowbar', scale: 0.52, reach: 2.6, cone: 1.15, cd: 0.9, scare: 1.7, knock: 0.6, heavy: false },
+  pipe: { name: 'Lead Pipe', model: 'w_pipe', scale: 0.6, reach: 2.7, cone: 1.1, cd: 0.9, scare: 1.7, knock: 0.7, heavy: false },
+  bat: { name: 'Baseball Bat', model: 'w_bat', scale: 0.66, reach: 2.8, cone: 1.2, cd: 0.85, scare: 1.9, knock: 0.8, heavy: false },
+  machete: { name: 'Machete', model: 'w_machete', scale: 0.5, reach: 2.4, cone: 1.0, cd: 0.7, scare: 1.3, knock: 0.4, heavy: false },
+  cleaver: { name: 'Bone Cleaver', model: 'w_cleaver', scale: 0.34, reach: 2.2, cone: 0.95, cd: 0.65, scare: 1.2, knock: 0.35, heavy: false },
+  axe: { name: 'Fire Axe', model: 'w_axe', scale: 0.62, reach: 2.7, cone: 1.1, cd: 1.05, scare: 2.4, knock: 1.0, heavy: true },
+  sledge: { name: 'Sledgehammer', model: 'w_sledge', scale: 0.72, reach: 2.9, cone: 1.15, cd: 1.35, scare: 3.0, knock: 1.4, heavy: true },
+};
+const WEAPON_ORDER = ['crowbar', 'pipe', 'bat', 'machete', 'cleaver', 'axe', 'sledge'];
+const weaponMeshes = {};
+let prevABtn = false;
+function currentWeapon() { return (player && player.tool && WEAPONS[player.tool]) ? WEAPONS[player.tool] : null; }
+function toolList() {
+  const list = ['bare'];
+  if (player.inv && player.inv.cross) list.push('cross');
+  WEAPON_ORDER.forEach((k) => { if (player.weapons && player.weapons[k]) list.push(k); });
+  return list;
 }
+function toolLabel(t) { return t === 'bare' ? 'Empty hands' : t === 'cross' ? 'the Iron Cross' : WEAPONS[t].name; }
+function cycleTool(dir) {
+  const list = toolList();
+  if (list.length <= 1) { showSubtitle('Nothing to hold yet — find the cross in the chapel, or a weapon in the wards.', 2.8); return; }
+  let i = list.indexOf(player.tool); if (i < 0) i = 0;
+  player.tool = list[(i + (dir || 1) + list.length) % list.length];
+  showSubtitle('In hand: ' + toolLabel(player.tool), 1.8);
+  Audio2.pickup(); haptic(0.3, 40, OPTS.swapHands ? 'left' : 'right');
+}
+function wantsBrandish() {
+  if (!player || !player.inv || !player.inv.cross || player.tool !== 'cross') return false;
+  if (!isVR) return !!keys['r'] || deskUseHeld();
+  // VR: hold the dominant grip while the cross is equipped
+  const dom = OPTS.swapHands ? sources.left : sources.right;
+  const gp = dom && dom.userData.inputSource && dom.userData.inputSource.gamepad;
+  return !!(gp && gp.buttons && gp.buttons[1] && gp.buttons[1].pressed);
+}
+function deskUseHeld() { return !!deskUseDown; }
 function updateWard(dt) {
   if (!heldCross) heldCross = buildHeldCross();
   mountHeld(heldCross, 'cross');
@@ -3259,8 +3306,8 @@ function updateWard(dt) {
   } else {
     player.faith = Math.min(100, player.faith + dt * (nearCandle() ? 22 : 11));
   }
-  // visual: raise + glow the cross while brandishing
-  heldCross.visible = !!player.inv.cross && (brandishing || (isVR));   // in VR it's always in hand; on desktop only when raised
+  // visual: raise + glow the cross while brandishing (only when it's the equipped tool)
+  heldCross.visible = player.tool === 'cross' && (brandishing || isVR);   // in VR it's always in hand; on desktop only when raised
   const glow = heldCross.userData.glow, aura = heldCross.userData.aura;
   const targetGlow = brandishing ? 2.4 + Math.sin(performance.now() / 90) * 0.6 : 0;
   glow.intensity += (targetGlow - glow.intensity) * Math.min(1, dt * 10);
@@ -3271,77 +3318,72 @@ function updateWard(dt) {
   }   // in-hand (VR): the player raises their own arm — the glow does the talking
 }
 
-// ---- the crowbar: a swing that knocks the dead back a step ----
-function buildHeldWeapon() {
+// ---- weapons: each swing knocks the dead back and sends them recoiling ----
+function buildHeldWeaponOf(kind) {
+  const cfg = WEAPONS[kind];
   const g = new THREE.Group();
-  const src = (window.HeroModels || {}).crowbar;
+  const src = (window.HeroModels || {})[cfg.model];
   if (src) {
     const m = src.clone();
     const box = new THREE.Box3().setFromObject(m); const sz = box.getSize(new THREE.Vector3());
-    const ref = Math.max(sz.x, sz.y, sz.z) || 1; m.scale.setScalar(0.52 / ref);
+    const ref = Math.max(sz.x, sz.y, sz.z) || 1; m.scale.setScalar(cfg.scale / ref);
     const c2 = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()); m.position.sub(c2);
-    m.rotation.set(0.5, 0.3, -0.9);   // gripped, hook up
+    m.rotation.set(0.5, 0.3, -0.9);   // gripped, head up
     m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.frustumCulled = false; } });
     g.add(m);
-  } else { // fallback: a dark iron bar
+  } else {
     const mat = new THREE.MeshStandardMaterial({ color: 0x3a3e46, metalness: .6, roughness: .5 });
     g.add(mkBox(0.05, 0.5, 0.05, mat, 0, 0, 0));
   }
-  g.position.set(-0.2, -0.2, -0.44);   // held in the lower-left of view
-  g.visible = false; camera.add(g);
+  g.position.set(-0.2, -0.2, -0.44); g.visible = false; camera.add(g);
   return g;
 }
+function weaponMesh(kind) { return weaponMeshes[kind] || (weaponMeshes[kind] = buildHeldWeaponOf(kind)); }
 function wantsSwing() {
-  if (!player || !player.inv || !player.inv.weapon) return false;
-  if (!isVR) return !!keys['g'] || swingQueued;   // NOT 'f' — that's the flashlight
-  // VR: the dominant-grip squeezestart event queues exactly one swing (no held-repeat)
-  return swingQueued;
+  if (!currentWeapon()) return false;
+  if (!isVR) return !!keys['g'] || swingQueued;
+  return swingQueued;   // VR: the dominant-grip squeezestart queues one swing
 }
-function updateWeapon(dt) {
-  if (!heldWeapon) heldWeapon = buildHeldWeapon();
+function doSwing(cfg) {
+  swingT = 0.3; swingCd = cfg.cd; Audio2.swish(0.1);
+  camera.getWorldDirection(tmpV2);
+  const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
+  const grid = data.floors[player.floor].grid;
+  let landed = false;
+  ents.forEach((e) => {
+    if (e.floor !== player.floor) return;
+    const dx = e.x - player.x, dy = e.y - player.y, d = Math.hypot(dx, dy);
+    if (d > cfg.reach) return;
+    const ang = Math.abs(normAng(Math.atan2(dx, dy) - fYaw));
+    if (ang > cfg.cone) return;
+    e.warded = Math.max(e.warded || 0, cfg.scare);   // it recoils and flees…
+    e.slow = Math.max(e.slow || 0, cfg.scare + 1);   // …and staggers
+    const len = d || 1; if (e.moveDirect) e.moveDirect(grid, e.x + (dx / len) * 4, e.y + (dy / len) * 4, cfg.knock);   // knocked back a step
+    landed = true;
+  });
+  if (landed) {
+    Audio2.thud(cfg.heavy ? 0.7 : 0.5); Audio2.screechPan(0, 0.08);
+    player.fear = Math.max(0, player.fear - (cfg.heavy ? 6 : 4));
+    haptic(cfg.heavy ? 0.85 : 0.55, cfg.heavy ? 90 : 60);
+    if (!weaponTaught) { weaponTaught = true; showSubtitle('The ' + cfg.name.toLowerCase() + ' connects — it reels back and breaks away. Steel scares the dead; it won’t put them down for good.', 5); }
+  } else haptic(0.2, 40);
+}
+function updateMelee(dt) {
   if (swingCd > 0) swingCd -= dt;
   if (swingT > 0) swingT -= dt;
-  const wanted = wantsSwing(); swingQueued = false;   // a click buys one swing attempt
-  if (wanted && swingCd <= 0 && swingT <= 0 && !brandishing) {
-    swingT = 0.3; swingCd = 0.95;
-    Audio2.swish(0.1);
-    // catch anything close and roughly ahead of you
-    camera.getWorldDirection(tmpV2);
-    const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
-    let landed = false;
-    ents.forEach((e) => {
-      if (e.floor !== player.floor) return;
-      const d = Math.hypot(e.x - player.x, e.y - player.y);
-      if (d > 2.6) return;
-      const ang = Math.abs(normAng(Math.atan2(e.x - player.x, e.y - player.y) - fYaw));
-      if (ang > 1.15) return;   // ~65° cone
-      e.warded = Math.max(e.warded || 0, 1.3);   // it recoils…
-      e.slow = 2.4;                              // …and staggers
-      landed = true;
-    });
-    if (landed) {
-      Audio2.thud(0.5); Audio2.screechPan(0, 0.07);
-      player.fear = Math.max(0, player.fear - 4);
-      haptic(0.5, 60);
-      if (!weaponTaught) { weaponTaught = true; showSubtitle('The iron connects — it reels back. Iron stings the dead, but it won’t stop them.', 4.5); }
-    }
-  }
-  // visual: idle sway low, whip through an arc while swinging (mount-aware)
-  const onGrip = mountHeld(heldWeapon, 'weapon');
-  heldWeapon.visible = !!player.inv.weapon && !brandishing;
-  const sw = swingT > 0 ? (0.3 - swingT) / 0.3 : 0;               // 0→1 over the swing
-  const arc = sw > 0 ? Math.sin(sw * Math.PI) : 0;                // out and back
-  if (onGrip) {   // in-hand: the player's arm is the swing — a short snap for feedback
-    heldWeapon.rotation.x = -0.7 - arc * 1.1;
-    heldWeapon.rotation.z = arc * 0.2;
-    heldWeapon.position.y = arc * 0.02;
-    heldWeapon.position.z = -0.03 - arc * 0.08;
-  } else {        // desktop view-model: the full whip
-    heldWeapon.rotation.x = -arc * 1.5;
-    heldWeapon.rotation.z = arc * 0.5;
-    heldWeapon.position.y = -0.2 + arc * 0.1;
-    heldWeapon.position.z = -0.44 - arc * 0.16;
-  }
+  const cfg = currentWeapon();
+  // hide any weapon that isn't the one in hand
+  for (const k in weaponMeshes) if (k !== player.tool) weaponMeshes[k].visible = false;
+  if (!cfg) { swingQueued = false; return; }
+  const g = weaponMesh(player.tool);
+  const wanted = wantsSwing(); swingQueued = false;
+  if (wanted && swingCd <= 0 && swingT <= 0 && !brandishing) doSwing(cfg);
+  const onGrip = mountHeld(g, 'weapon');
+  g.visible = !brandishing;
+  const sw = swingT > 0 ? (0.3 - swingT) / 0.3 : 0;
+  const arc = sw > 0 ? Math.sin(sw * Math.PI) : 0;
+  if (onGrip) { g.rotation.set(-arc * 1.1, 0, arc * 0.2); g.position.set(0, arc * 0.02, -0.03 - arc * 0.08); }
+  else { g.rotation.set(-arc * 1.5, 0, arc * 0.5); g.position.set(-0.2, -0.2 + arc * 0.1, -0.44 - arc * 0.16); }
 }
 
 // ============================================================ entity audio
@@ -3544,11 +3586,15 @@ function vrLocomotion(dt) {
     snapTurn(rx > 0 ? -Math.PI / 6 : Math.PI / 6);
     snapCooldown = 0.3;
   }
-  // B on the turn hand = flashlight (edge-detected) — vital once the grip swings the crowbar
+  // B on the turn hand = flashlight (edge-detected) — the light lives on your OTHER hand now
   const gT = turnSrc && turnSrc.userData.inputSource && turnSrc.userData.inputSource.gamepad;
   const bNow = !!(gT && gT.buttons && gT.buttons[5] && gT.buttons[5].pressed);
   if (bNow && !prevBBtn && state === 'PLAY') toggleFlash();
   prevBBtn = bNow;
+  // A on the tool hand = cycle what you're holding (bare → cross → weapons)
+  const aNow = !!(gT && gT.buttons && gT.buttons[4] && gT.buttons[4].pressed);
+  if (aNow && !prevABtn && state === 'PLAY') cycleTool(1);
+  prevABtn = aNow;
   // stick clicks: move-hand = crouch toggle, turn-hand = jump
   const gM = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
   const smNow = !!(gM && gM.buttons && gM.buttons[3] && gM.buttons[3].pressed);
@@ -3592,6 +3638,7 @@ function bindDesktopInput() {
     if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
     if (k === ' ' && (state === 'PLAY' || state === 'INTRO') && jumpY <= 0 && !crouched) { jumpVel = 2.7; jumpY = 0.001; }
     if (k === 'z' && state === 'PLAY') crouched = !crouched;
+    if (k === 'x' && state === 'PLAY') cycleTool(1);
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
     if ((k === 'enter' || k === 'escape') && state === 'INTRO') skipCine();
   });
@@ -3603,10 +3650,10 @@ function bindDesktopInput() {
   cv.addEventListener('mousedown', (e) => {
     if (isVR) return;
     if (document.pointerLockElement !== cv) cv.requestPointerLock && cv.requestPointerLock();
-    else if (state === 'PLAY' && e.button === 0) swingQueued = true;   // left click swings the crowbar once locked in
+    else if (state === 'PLAY' && e.button === 0) { swingQueued = true; deskUseDown = true; }   // left click: swing / raise the equipped tool
     desk.dragging = true;
   });
-  window.addEventListener('mouseup', () => desk.dragging = false);
+  window.addEventListener('mouseup', (e) => { desk.dragging = false; if (e.button === 0) deskUseDown = false; });
   window.addEventListener('mousemove', (e) => {
     if (isVR || (state !== 'PLAY' && state !== 'INTRO')) return;
     if (document.pointerLockElement === cv) {
@@ -3754,15 +3801,20 @@ function pickupItem(it) {
     case 'candlekit': player.inv.candles = (player.inv.candles || 0) + 3; showSubtitle('Candles — their light steadies your heart.', 3); break;
     case 'key': player.keys[it.id] = true; showSubtitle('A key: ' + keyLabel(it.id), 3); break;
     case 'ward':
-      player.inv.cross = true;
-      showSubtitle('A heavy iron crucifix. Hold it up (R / right-hand A button) to drive the dead back — while your faith holds.', 6);
-      break;
-    case 'weapon':
-      player.inv.weapon = true;
+      player.inv.cross = true; player.tool = 'cross';
       showSubtitle(isVR
-        ? 'A rusted crowbar. SQUEEZE the right grip to swing — iron knocks the dead back a step. Your light lives on B now.'
-        : 'A rusted crowbar. Swing it (G or left-click) — iron knocks the dead back a step. It will not kill what is already dead.', 6);
+        ? 'A heavy iron cross — now in your dominant hand. HOLD that grip to raise it and drive the dead back while your faith holds. Press A to switch hands-items.'
+        : 'A heavy iron cross. Hold R (or left-click) to raise it and drive the dead back while your faith holds. Press X to switch what you hold.', 6);
       break;
+    case 'weapon': {
+      const kind = WEAPONS[it.id] ? it.id : 'crowbar';
+      player.weapons = player.weapons || {}; player.weapons[kind] = true; player.inv.weapon = true; player.tool = kind;
+      const cfg = WEAPONS[kind];
+      showSubtitle(isVR
+        ? 'A ' + cfg.name + ' — in your tool hand. SQUEEZE the dominant grip to swing; a solid hit knocks the dead back and sends them fleeing. Press A to cycle what you hold.'
+        : 'A ' + cfg.name + '. Left-click / G to swing; a solid hit knocks the dead back and sends them fleeing. Press X to cycle what you hold. It won’t kill them — but it buys you room.', 6);
+      break;
+    }
   }
 }
 function keyLabel(id) {
@@ -4297,7 +4349,7 @@ function update(dt) {
     onCatch: (e) => { deathBy = catchLine(e); lastKiller = e.name; die(); },
   };
   updateWard(dt);   // apply the cross's ward BEFORE the dead act this frame (no lag)
-  updateWeapon(dt); // and the crowbar swing, same frame-order guarantee
+  updateMelee(dt);  // and the weapon swing, same frame-order guarantee
   let nearest = Infinity, hunting = false;
   const eDt = dt * Survival.entityTimeScale();
   ents.forEach((e) => {
@@ -4719,8 +4771,9 @@ function drawWristMenu() {
   const lines = [];
   lines.push(['🔦', 'Flashlight ' + (player.lightOn ? 'ON' : 'off') + ' — ' + Math.round(player.battery) + '%', '#8aff9e']);
   lines.push(['🔋', 'Spare batteries: ' + sv.batteries + '/' + sv.maxBatteries, '#9aa7b0']);
-  if (player.inv.cross) lines.push(['✝', 'Warding Cross — faith ' + Math.round(player.faith) + '%', '#e8cf7a']);
-  if (player.inv.weapon) lines.push(['⚒', 'Crowbar — ' + (swingCd > 0 ? 'recovering…' : 'ready'), '#b8c2cc']);
+  lines.push(['✊', 'In hand: ' + toolLabel(player.tool) + (currentWeapon() && swingCd > 0 ? ' (recovering)' : ''), '#e8cf7a']);
+  if (player.inv.cross) lines.push(['✝', 'Iron Cross — faith ' + Math.round(player.faith) + '%', '#e8cf7a']);
+  if (player.weapons) { const ws = WEAPON_ORDER.filter((k) => player.weapons[k]).map((k) => WEAPONS[k].name); if (ws.length) lines.push(['⚒', 'Weapons: ' + ws.join(', '), '#b8c2cc']); }
   if (player.inv.emf) lines.push(['📶', 'EMF reader', '#7ad0ff']);
   if (player.inv.spiritbox) lines.push(['📻', 'Spirit box (hold left grip)', '#c99cff']);
   lines.push(['🍶', 'Quiet Draughts: ' + sv.draughts + '/' + sv.maxDraughts, '#9ae0c8']);
