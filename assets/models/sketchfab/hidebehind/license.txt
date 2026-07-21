@@ -1,0 +1,11 @@
+Model Information:
+* title:	The Hide Behind
+* source:	https://sketchfab.com/3d-models/the-hide-behind-c23e1e455cae423ca3a457576f7c74d8
+* author:	Nightfoxy3D (https://sketchfab.com/Nightfoxymc)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "The Hide Behind" (https://sketchfab.com/3d-models/the-hide-behind-c23e1e455cae423ca3a457576f7c74d8) by Nightfoxy3D (https://sketchfab.com/Nightfoxymc) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

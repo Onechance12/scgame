@@ -42,4 +42,32 @@ Per-room floor textures (Poly Haven, CC0, 1K diffuse):
   rusty_metal_04, painted_plaster_wall
 
 Monster/apparition models in assets/models/monsters/ — see licenses.txt there.
-In-game: ghost.glb + skeleton.glb (CC0, Kenney Graveyard Kit via OpenGameArt).
+Set-pieces / fallback: ghost.glb + skeleton.glb (CC0, Kenney Graveyard Kit via
+OpenGameArt); skeleton_warrior.glb (CC0, KayKit Skeletons by Kay Lousberg).
+
+PRIMARY APPARITION CAST — assets/models/sketchfab/ (CC-BY-4.0; attribution
+REQUIRED by license, given here). Each folder also keeps the original
+license.txt from Sketchfab.
+
+  The Grey Nurse / Night Nurse / The Ash use models by "fred346b":
+    helene/   "The Heilwald Loophole: Nurse Helene"  by fred346b
+              https://sketchfab.com/3d-models/the-heilwald-loophole-nurse-helene-35931f182462420bb670c12081e62394
+    anne/     "The Heilwald Loophole: Nurse Anne"    by fred346b
+              https://sketchfab.com/3d-models/the-heilwald-loophole-nurse-anne-ca19eac8d198487798eddb9ecc3c24dc
+    wolfram/  "The Heilwald Loophole: Wolfram"       by fred346b
+              https://sketchfab.com/3d-models/the-heilwald-loophole-wolfram-dd3831d3381f4ae19385244233c74351
+              (fred346b — https://sketchfab.com/fred346b — CC-BY-4.0)
+
+  The Child (a floating phantom):
+    fantasma/ "Fantasma Ghost Phantom"  by Marcos.Andre
+              https://sketchfab.com/3d-models/fantasma-ghost-phantom-ecc1f2ccf6fc43b48f791b06398b8cfe
+              (Marcos.Andre — https://sketchfab.com/Marcos.Andre — CC-BY-4.0)
+
+  The Crawler (a low cryptid):
+    hidebehind/ "The Hide Behind"  by Nightfoxy3D
+              https://sketchfab.com/3d-models/the-hide-behind-c23e1e455cae423ca3a457576f7c74d8
+              (Nightfoxy3D — https://sketchfab.com/Nightfoxymc — CC-BY-4.0)
+
+Materials were converted to metallic-roughness and re-tinted in-engine; the
+underlying meshes/rigs/animations and textures are the authors' work, used
+under CC-BY-4.0. This project is a non-commercial fan tribute.

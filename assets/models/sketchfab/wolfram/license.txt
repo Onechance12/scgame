@@ -1,0 +1,11 @@
+Model Information:
+* title:	The Heilwald Loophole: Wolfram
+* source:	https://sketchfab.com/3d-models/the-heilwald-loophole-wolfram-dd3831d3381f4ae19385244233c74351
+* author:	fred346b (https://sketchfab.com/fred346b)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "The Heilwald Loophole: Wolfram" (https://sketchfab.com/3d-models/the-heilwald-loophole-wolfram-dd3831d3381f4ae19385244233c74351) by fred346b (https://sketchfab.com/fred346b) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

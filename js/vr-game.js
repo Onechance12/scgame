@@ -951,10 +951,21 @@ function loadHeroModels() {
     L.loadAsync('assets/models/' + id + '/' + id + '_1k.gltf')
       .then((g) => { MODELS[k] = g.scene; })
       .catch((e) => console.warn('hero model failed:', id)));
-  // CC0 apparition models WITH animation clips (Kenney, Quaternius, KayKit)
+  // apparition models WITH animation clips.
+  // Primary cast: Sketchfab "The Heilwald Loophole" nurses + creatures (CC-BY-4.0, credited in CREDITS.txt).
+  // Fallback cast: Kenney/Quaternius/KayKit (CC0) — kept loaded for set-pieces.
   const MOB = {};
-  const monsters = [['ghost', 'ghost.glb'], ['skel', 'skeleton.glb'], ['demon', 'monster.glb'], ['kaykit', 'skeleton_warrior.glb']];
-  monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/monsters/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
+  const monsters = [
+    // real horror cast (gltf dirs)
+    ['helene', 'sketchfab/helene/scene.gltf'],
+    ['anne', 'sketchfab/anne/scene.gltf'],
+    ['wolfram', 'sketchfab/wolfram/scene.gltf'],
+    ['fantasma', 'sketchfab/fantasma/scene.gltf'],
+    ['hidebehind', 'sketchfab/hidebehind/scene.gltf'],
+    // legacy CC0 (set-pieces + fallback)
+    ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
+  ];
+  monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
   return Promise.all(loads).then(() => {
     window.HeroModels = MODELS; window.MobModels = MOB;
     if (MOB.ghost) MODELS.ghostGLB = MOB.ghost.scene;   // keep chapel/altar set-pieces working
@@ -1199,11 +1210,18 @@ function auraTex(hex) {
 }
 // kind -> animated model + spectral styling
 const MOBMAP = {
-  nurse: { key: 'ghost', targetH: 1.85, translucent: true, opacity: 0.72, tint: 0xcfe0f0, aura: 'rgba(150,180,220,0.5)', auraS: 2.6, yaw: 0 },
-  child: { key: 'ghost', targetH: 1.05, translucent: true, opacity: 0.7, tint: 0xdfe8f0, aura: 'rgba(190,210,235,0.5)', auraS: 1.7, yaw: 0 },
-  mose: { key: 'kaykit', targetH: 2.0, translucent: false, opacity: 1, tint: 0x39323f, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: 0 },
-  crawler: { key: 'skel', targetH: 1.2, low: true, translucent: false, opacity: 1, tint: 0x2a2a34, emissive: 0x0a0010, aura: 'rgba(80,10,20,0.5)', auraS: 1.7, yaw: 0 },
-  // ash intentionally omitted — uses its char-core + ember-swarm builder (the demon model didn't read well)
+  // The Grey Nurse — Nurse Helene, drained pale & half-there
+  nurse: { key: 'helene', targetH: 1.78, translucent: true, opacity: 0.8, tint: 0xbcccdd, tintAmt: 0.34, aura: 'rgba(150,180,220,0.5)', auraS: 2.4, yaw: Math.PI },
+  // The Night Nurse — Nurse Anne, sicklier, a charger
+  nurse2: { key: 'anne', targetH: 1.8, translucent: true, opacity: 0.82, tint: 0xaecdb4, tintAmt: 0.3, aura: 'rgba(140,200,150,0.45)', auraS: 2.4, yaw: Math.PI },
+  // The Child — Fantasma, a small floating phantom
+  child: { key: 'fantasma', targetH: 1.15, translucent: true, opacity: 0.66, tint: 0xdfe8f0, tintAmt: 0.4, fly: true, aura: 'rgba(190,210,235,0.5)', auraS: 1.8, yaw: 0 },
+  // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
+  mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
+  // The Crawler — the Hide-Behind, a low wrong thing
+  crawler: { key: 'hidebehind', targetH: 1.55, low: true, translucent: false, opacity: 1, tint: 0x171420, tintAmt: 0.5, emissive: 0x0a0010, aura: 'rgba(80,10,20,0.5)', auraS: 1.9, yaw: 0 },
+  // The Ash — a charred human shape wreathed in living embers (the 1926 fire's dead)
+  ash: { key: 'wolfram', targetH: 1.95, translucent: false, opacity: 1, tint: 0x140b06, tintAmt: 0.78, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: Math.PI },
 };
 function auraSprite(rec, grp, hex, size, y) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -1228,33 +1246,41 @@ function ensureEntityMesh(e) {
     try {
       const src = MOB[map.key];
       const model = skeletonClone(src.scene);
-      let box = new THREE.Box3().setFromObject(model);
-      const h = (box.max.y - box.min.y) || 1;
-      model.scale.setScalar(map.targetH / h);
-      if (map.low) model.scale.y *= 0.55;
-      box = new THREE.Box3().setFromObject(model);
-      model.position.y = -box.min.y + (map.fly ? 0.4 : 0);
-      model.traverse((o) => {
-        if (!o.isMesh || !o.material) return;
-        o.frustumCulled = false;
-        o.material = o.material.clone();
-        if (o.material.color) o.material.color.lerp(new THREE.Color(map.tint), 0.55);
-        if (o.material.emissive && map.emissive != null) o.material.emissive.setHex(map.emissive);
-        if (map.translucent) { o.material.transparent = true; o.material.opacity = map.opacity; o.material.depthWrite = false; }
-      });
-      grp.add(model); rec.hasModel = true; rec.yaw = map.yaw || 0;
+      // Set up animation FIRST so we can pose the rig to a real idle frame before
+      // measuring — bind-pose bounds are unreliable for these skinned rigs.
       if (src.animations && src.animations.length) {
         rec.mixer = new THREE.AnimationMixer(model);
         const find = (...keys) => { for (const k of keys) { const c = src.animations.find((a) => a.name.toLowerCase().includes(k)); if (c) return c; } return null; };
         rec.clips = {
-          idle: find('flying_idle', 'idle', 'static') || src.animations[0],
-          walk: find('walking_a', 'walk', 'flying_idle') || null,
-          run: find('running_a', 'sprint', 'run', 'fast_flying') || null,
+          idle: find('flying_idle', 'idle', 'static', 'take 001') || src.animations[0],
+          walk: find('walking_a', 'walk', 'approach', 'flying_idle') || null,
+          run: find('running_a', 'sprint', 'run', 'charge', 'overwhelm', 'fast_flying') || null,
         };
         rec.clips.walk = rec.clips.walk || rec.clips.idle;
         rec.clips.run = rec.clips.run || rec.clips.walk;
-        rec.action = rec.mixer.clipAction(rec.clips.idle); rec.action.play(); rec.cur = rec.clips.idle;
+        rec.mixer.clipAction(rec.clips.idle).play();
+        rec.mixer.update(0);   // pose to the first idle frame for an accurate bounds read
       }
+      // Height-normalize using PRECISE (skinned-aware) bounds so every apparition
+      // lands at human scale with its feet on the floor, regardless of authored scale.
+      model.updateMatrixWorld(true);
+      let box = new THREE.Box3().setFromObject(model, true);
+      const h = (box.max.y - box.min.y) || 1;
+      model.scale.setScalar(map.targetH / h);
+      if (map.low) model.scale.y *= 0.62;
+      model.updateMatrixWorld(true);
+      box = new THREE.Box3().setFromObject(model, true);
+      model.position.y = -box.min.y + (map.fly ? 0.3 : 0);
+      model.traverse((o) => {
+        if (!o.isMesh || !o.material) return;
+        o.frustumCulled = false;
+        o.material = o.material.clone();
+        if (o.material.color) o.material.color.lerp(new THREE.Color(map.tint), map.tintAmt != null ? map.tintAmt : 0.55);
+        if (o.material.emissive && map.emissive != null) o.material.emissive.setHex(map.emissive);
+        if (map.translucent) { o.material.transparent = true; o.material.opacity = map.opacity; o.material.depthWrite = false; }
+      });
+      grp.add(model); rec.hasModel = true; rec.yaw = map.yaw || 0;
+      if (rec.mixer) { rec.action = rec.mixer.clipAction(rec.clips.idle); rec.action.play(); rec.cur = rec.clips.idle; }
       if (e.kind === 'ash') buildEmbers(rec, grp);
       auraSprite(rec, grp, map.aura, map.auraS, map.targetH * 0.6);
       grp.visible = false; scene.add(grp); entityMeshes.set(e, rec); return rec;
@@ -1280,7 +1306,7 @@ function ensureEntityMesh(e) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
     s.scale.set(size, size, 1); s.position.y = y; grp.add(s); rec.aura = s;
   };
-  if (e.kind === 'nurse') {           // the Grey Nurse: layered pale gown, black eye-pits
+  if (e.kind === 'nurse' || e.kind === 'nurse2') {  // the Nurses: layered pale gown, black eye-pits
     shroud(0xdfe4ea, 0.42, 0.16, 0.55, 1.75, 0.88);
     shroud(0xaab4c0, 0.30, 0.20, 0.66, 1.85, 0.92);
     shroud(0x8a95a2, 0.18, 0.26, 0.8, 1.9, 0.95);
