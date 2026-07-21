@@ -742,10 +742,18 @@ function loadTextures() {
   Object.keys(TEX.rooms).forEach((k) => {
     TEX.roomMats[k] = new THREE.MeshStandardMaterial({ map: TEX.rooms[k], color: 0x93969c, roughness: .95 });
   });
-  // Horror wall skins — a different grimy wall per floor (peeling, rust, mould, grunge)
-  TEX.hwall = [load('horror/wall_f1.jpg', 1, 1.2), load('horror/wall_f2.jpg', 1, 1.2),
-               load('horror/wall_f3.jpg', 1, 1.2), load('horror/wall_f4.jpg', 1, 1.2)];
-  TEX.hwallBase = load('horror/wall_base.jpg', 1.4, 1.4);
+  // Interior wall skins: two good high-res plaster bases (own instances at repeat 1,1 —
+  // world-space UVs in buildWallGeometry carry the tiling, so no per-tile "cheese" copy).
+  const wRose = load('wall_diff.jpg', 1, 1), wRoseN = load('wall_nor.jpg', 1, 1, false),
+        wGrey = load('painted_plaster_wall_diff.jpg', 1, 1);
+  // one tinted material per floor so each level still reads distinct
+  TEX.wallMats = [
+    new THREE.MeshStandardMaterial({ map: wGrey, color: 0x8d94a0, roughness: .95 }),                    // 1 cool institutional grey
+    new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x9c8f8b, roughness: .94 }), // 2 faded ward rose
+    new THREE.MeshStandardMaterial({ map: wGrey, color: 0x82927c, roughness: .96 }),                    // 3 damp mould grey-green
+    new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x847b76, roughness: .96 }), // 4 dim, dust-warm
+  ];
+  TEX.wallMatBase = new THREE.MeshStandardMaterial({ map: wGrey, color: 0x64696a, roughness: .97 });    // 0 cold damp concrete-grey
   // blood / drip / grime decals (RGBA, alpha baked from luminance) — no tiling
   const loadDecal = (file) => { const t = L.load('assets/textures/' + file, undefined, undefined, () => {}); if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
   TEX.blood = ['blood1', 'blood2', 'blood3'].map((n) => loadDecal('horror/decals/' + n + '.png'));
@@ -772,6 +780,35 @@ function disposeGroup(g) {
     if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose()); }
   });
   scene.remove(g);
+}
+
+// Build wall geometry as exposed faces only, with continuous WORLD-SPACE UVs so the
+// texture flows across tiles instead of copy-pasting the same image every 2 m.
+function buildWallGeometry(g) {
+  const solid = (x, y) => (x < 0 || y < 0 || x >= World.W || y >= World.H) ? true : (g[y][x] === TILE.WALL);
+  const H = WALL_H, TW = 3.0, vTop = H / 3.2;   // one texture ≈ 3 m wide, full wall height tall
+  const pos = [], nor = [], uv = [], idx = [];
+  let vi = 0;
+  const quad = (v0, v1, v2, v3, nx, ny, nz, u0, u1) => {
+    pos.push(v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2], v3[0], v3[1], v3[2]);
+    for (let k = 0; k < 4; k++) nor.push(nx, ny, nz);
+    uv.push(u0, 0, u1, 0, u1, vTop, u0, vTop);
+    idx.push(vi, vi + 1, vi + 2, vi, vi + 2, vi + 3); vi += 4;
+  };
+  for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) {
+    if (g[y][x] !== TILE.WALL) continue;
+    const x0 = x * TILE_M, x1 = (x + 1) * TILE_M, z0 = y * TILE_M, z1 = (y + 1) * TILE_M;
+    if (!solid(x, y - 1)) quad([x1, 0, z0], [x0, 0, z0], [x0, H, z0], [x1, H, z0], 0, 0, -1, x1 / TW, x0 / TW);
+    if (!solid(x, y + 1)) quad([x0, 0, z1], [x1, 0, z1], [x1, H, z1], [x0, H, z1], 0, 0, 1, x0 / TW, x1 / TW);
+    if (!solid(x - 1, y)) quad([x0, 0, z0], [x0, 0, z1], [x0, H, z1], [x0, H, z0], -1, 0, 0, z0 / TW, z1 / TW);
+    if (!solid(x + 1, y)) quad([x1, 0, z1], [x1, 0, z0], [x1, H, z0], [x1, H, z1], 1, 0, 0, z1 / TW, z0 / TW);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  return geo;
 }
 
 function buildFloor(fi) {
@@ -812,43 +849,24 @@ function buildFloor(fi) {
     floorGroup.add(pl);
   });
 
-  // count walls -> instanced
-  let wallCount = 0;
-  for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) if (g[y][x] === TILE.WALL) wallCount++;
-  const wallGeo = new THREE.BoxGeometry(TILE_M, WALL_H, TILE_M);
-  // horror wall skin per floor (basement uses the mossy-stone skin); Poly Haven as fallback
-  const hw = fi === 0 ? TEX.hwallBase : (TEX.hwall && TEX.hwall[fi - 1]);
-  const wallMat = new THREE.MeshStandardMaterial({
-    map: hw || (fi === 0 ? TEX.wall2D : TEX.wallD),
-    normalMap: hw ? null : (fi === 0 ? TEX.wall2N : TEX.wallN),
-    color: hw ? 0x9aa0a8 : 0xb7bac0, roughness: .96,
-  });
-  const walls = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
+  // walls — exposed-face geometry with continuous world-space UVs (no per-tile repeat),
+  // one tinted plaster material per floor so levels stay distinct
+  const wallMat = fi === 0 ? TEX.wallMatBase : (TEX.wallMats[(fi - 1) % TEX.wallMats.length] || TEX.wallMats[0]);
+  const walls = new THREE.Mesh(buildWallGeometry(g), wallMat);
   walls.castShadow = true; walls.receiveShadow = true;
-  const m4 = new THREE.Matrix4();
-  let wi = 0;
+  floorGroup.add(walls);
+  // fixtures the grid still drives: doors, candles, stairs, exits, hide-lockers
   for (let y = 0; y < World.H; y++) {
     for (let x = 0; x < World.W; x++) {
       const t = g[y][x];
       const wx = (x + 0.5) * TILE_M, wz = (y + 0.5) * TILE_M;
-      if (t === TILE.WALL) {
-        m4.makeTranslation(wx, WALL_H / 2, wz);
-        walls.setMatrixAt(wi++, m4);
-      } else if (t === TILE.DOOR || t === TILE.LOCKED) {
-        addDoor(x, y, wx, wz, t === TILE.LOCKED);
-      } else if (t === TILE.CANDLE) {
-        addCandle(wx, wz);
-      } else if (t === TILE.UP || t === TILE.DOWN) {
-        addStairs(wx, wz, t === TILE.UP);
-      } else if (t === TILE.EXIT) {
-        addExit(wx, wz);
-      } else if (t === TILE.HIDE) {
-        addLocker(wx, wz);
-      }
+      if (t === TILE.DOOR || t === TILE.LOCKED) addDoor(x, y, wx, wz, t === TILE.LOCKED);
+      else if (t === TILE.CANDLE) addCandle(wx, wz);
+      else if (t === TILE.UP || t === TILE.DOWN) addStairs(wx, wz, t === TILE.UP);
+      else if (t === TILE.EXIT) addExit(wx, wz);
+      else if (t === TILE.HIDE) addLocker(wx, wz);
     }
   }
-  walls.instanceMatrix.needsUpdate = true;
-  floorGroup.add(walls);
 
   // furniture + fixtures (props.js)
   propSolids = []; flickers = []; emberProp = null;
