@@ -134,3 +134,11 @@ tools/fetch-asset.sh ph-hdri  dikhololo_night     # Poly Haven HDRI (1k hdr)
 tools/fetch-asset.sh acg      Rock030             # ambientCG material (1k jpg zip)
 ```
 Everything downloaded is CC0 — record CC-BY/RF items in `CREDITS.txt`.
+
+## ✅ Proven monster-model downloads (fetched & verified in-repo)
+
+Live in `assets/models/monsters/` (all CC0, all rigged/animated):
+- **Kenney Graveyard Kit** (ghost, skeleton + shared colormap) — direct zip:
+  `https://opengameart.org/sites/default/files/kenney_graveyard-kit_5.0.zip`
+- **Quaternius "Demon"** — via Poly Pizza model page `poly.pizza/m/Mo2ky6vkf8`
+- **KayKit Skeletons 1.0** (warrior kept; mage/minion trimmed) — `kaylousberg.itch.io/kaykit-skeletons`

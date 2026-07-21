@@ -40,3 +40,6 @@ Per-room floor textures (Poly Haven, CC0, 1K diffuse):
   floor_tiles_06, large_floor_tiles_02, old_linoleum_flooring_01,
   wood_floor_worn, worn_concrete_floor, dirty_carpet, old_mosaic_floor,
   rusty_metal_04, painted_plaster_wall
+
+Monster/apparition models in assets/models/monsters/ — see licenses.txt there.
+In-game: ghost.glb + skeleton.glb (CC0, Kenney Graveyard Kit via OpenGameArt).

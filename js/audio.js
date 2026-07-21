@@ -682,6 +682,23 @@ const Audio2 = (() => {
     }
   }
 
+  // Outdoor wind gust — a slow filtered-noise swell.
+  function gust(vol) {
+    if (!started) return;
+    const t = now();
+    const s = noiseSource();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(240, t);
+    lp.frequency.linearRampToValueAtTime(700, t + 1.6);
+    lp.frequency.linearRampToValueAtTime(200, t + 3.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol || 0.16, t + 1.4);
+    g.gain.linearRampToValueAtTime(0.0001, t + 3.6);
+    s.connect(lp); lp.connect(g); g.connect(master);
+    s.start(t); s.stop(t + 3.7);
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -693,7 +710,7 @@ const Audio2 = (() => {
     pickup, stinger, dread, chase, setMasterVolume, suspend, resume, isStarted,
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
-    footstepPan, laughPan, chains, crash, thud,
+    footstepPan, laughPan, chains, crash, thud, gust,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

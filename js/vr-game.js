@@ -59,6 +59,17 @@ let moodLights = [];           // per-room coloured lights
 let heroReady = Promise.resolve();
 let dust = null, dustBase = null;
 let stepT = 0, lastTileType = -1, lowBatWarned = false;
+// player options (persisted): swapHands = move on right stick; walkLook = hold A/X to glide; bright = dim-lights mode
+const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true },
+  (() => { try { return JSON.parse(localStorage.getItem('collegehill_opts')) || {}; } catch (e) { return {}; } })());
+function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
+let hemi = null, lanternLight = null, stickBtnWas = false;
+function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
+function applyBrightness() {
+  if (ambient) ambient.intensity = OPTS.bright ? 0.26 : 0.10;
+  if (hemi) hemi.intensity = OPTS.bright ? 0.4 : 0.22;
+  if (renderer) renderer.toneMappingExposure = OPTS.bright ? 1.35 : 1.2;
+}
 let carter = null, carterTimer = 50;   // the chain-dragging apparition
 let fallingDebris = [], debrisKept = [], dropCooldown = 25;
 let morgueScared = false, sceneAnims = [];
@@ -117,7 +128,9 @@ function init() {
   ambient = new THREE.AmbientLight(0x3a4652, 0.10);
   scene.add(ambient);
   // hemisphere gives cheap depth (cool from above, rot from below)
-  scene.add(new THREE.HemisphereLight(0x2c3a4c, 0x0c0906, 0.22));
+  hemi = new THREE.HemisphereLight(0x2c3a4c, 0x0c0906, 0.22);
+  scene.add(hemi);
+  applyBrightness();
   const moon = new THREE.DirectionalLight(0x25406a, 0.08);
   moon.position.set(6, 20, 4);
   scene.add(moon);
@@ -271,6 +284,7 @@ function makeHandMesh() {
 }
 
 function onTrigger(c) {
+  if (state === 'CINE') { endCinematic(); return; }   // skip the approach
   if (state === 'DEAD' || state === 'WIN' || state === 'MENU') { restartFromPanel(); return; }
   if (state !== 'PLAY') return;
   if (c === sources.left && !interactTarget) { Survival.drink(); return; }  // left trigger: drink
@@ -358,6 +372,15 @@ function bindUI() {
   on('btn-restart-win', () => newGame());
   on('mode-night', () => setMode(false));
   on('mode-24', () => setMode(true));
+  const optBtn = (id, key, label) => {
+    const el = document.getElementById(id); if (!el) return;
+    const paint = () => { el.textContent = label(OPTS); el.classList.toggle('selected', !!OPTS[key]); };
+    el.onclick = () => { OPTS[key] = !OPTS[key]; saveOpts(); applyBrightness(); paint(); };
+    paint();
+  };
+  optBtn('opt-bright', 'bright', (o) => '💡 Lights: ' + (o.bright ? 'DIM' : 'PITCH-DARK'));
+  optBtn('opt-swap', 'swapHands', (o) => '🕹 Move stick: ' + (o.swapHands ? 'RIGHT' : 'LEFT'));
+  optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold A/X to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
   on('btn-resume-save', () => {
     const s = loadSave(); if (!s) return;
     if (xrSupported) enterVR(s); else startDesktop(s);
@@ -434,9 +457,8 @@ function newGame(saved) {
   state = 'PLAY';
   Audio2.startAmbient();
   if (realMode) requestWake();
-  if (saved) { showSubtitle('You come back to yourself where you left off. It never left.', 4); }
-  else runIntro(0);
-  saveState();
+  if (saved) { showSubtitle('You come back to yourself where you left off. It never left.', 4); saveState(); }
+  else startCinematic();   // the walk up College Hill
 }
 
 function restoreFrom(s) {
@@ -456,6 +478,98 @@ function restoreFrom(s) {
     ritual.done = !!s.ritualDone;
     for (let i = 0; i < (s.ritualLit || 0) && i < ritual.nodes.length; i++) ritual.nodes[i].lit = true;
   }
+}
+
+// ============================================================ the approach
+// A first-person cinematic: you walk up College Hill through the mist toward
+// the dark hospital, wind gusting, one window flickering. Trigger/Enter skips.
+let cine = null;
+function buildExterior() {
+  const g = new THREE.Group();
+  const lobbyR = data.floors[1].rooms.find((r) => r.tag === 'lobby');
+  const doorX = (lobbyR ? lobbyR.cx + 0.5 : 12) * TILE_M;
+  // ground
+  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(160, 160),
+    new THREE.MeshStandardMaterial({ color: 0x131510, roughness: 1 }));
+  gnd.rotation.x = -Math.PI / 2; gnd.position.set(doorX, -0.02, -40); g.add(gnd);
+  // facade
+  const wallM = new THREE.MeshStandardMaterial({ map: TEX.wallD, color: 0x7a7d84, roughness: .95 });
+  const fac = new THREE.Mesh(new THREE.BoxGeometry(46, 15, 2), wallM);
+  fac.position.set(doorX, 7.5, -1); g.add(fac);
+  // window grid — dead panes, one alive and flickering
+  const winM = new THREE.MeshStandardMaterial({ color: 0x05070c, emissive: 0x0a1524, emissiveIntensity: .5 });
+  let flickWin = null;
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 9; c++) {
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.2), (r === 2 && c === 6) ? winM.clone() : winM);
+    w.position.set(doorX - 20 + c * 5, 3.4 + r * 3.4, 0.02);
+    if (r === 2 && c === 6) { flickWin = w; w.material.emissive.setHex(0x8a5a1a); }
+    g.add(w);
+  }
+  // door + steps
+  const door = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.4, 0.3),
+    new THREE.MeshStandardMaterial({ map: TEX.doorD, color: 0x6a5a46, roughness: .9 }));
+  door.position.set(doorX, 1.7, 0.1); g.add(door);
+  const steps = new THREE.Mesh(new THREE.BoxGeometry(5, 0.5, 3),
+    new THREE.MeshStandardMaterial({ color: 0x3a3c40, roughness: 1 }));
+  steps.position.set(doorX, 0.25, 1.6); g.add(steps);
+  // mist
+  const N = 260, mp = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { mp[i * 3] = doorX + (Math.random() - 0.5) * 70; mp[i * 3 + 1] = Math.random() * 2.2; mp[i * 3 + 2] = -Math.random() * 55; }
+  const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(mp, 3));
+  const mist = new THREE.Points(mg, new THREE.PointsMaterial({ color: 0x8a93a0, size: 0.9, transparent: true, opacity: 0.10, depthWrite: false }));
+  mist.frustumCulled = false; g.add(mist);
+  scene.add(g);
+  return { g, doorX, flickWin, mist, t: 0, gustT: 1.5, cardI: 0 };
+}
+const CINE_CARDS = [
+  [2, 'COLLEGE HILL', ['Williamson, West Virginia']],
+  [9, '1928 — 1988', ['Four floors. A basement below them.', 'Never emptied.']],
+  [17, 'THEY KNOW YOU ARE COMING', ['The chain on the doors will hold until dawn.']],
+];
+function startCinematic() {
+  cine = buildExterior();
+  state = 'CINE';
+  Audio2.gust(0.2);
+  dolly.rotation.set(0, 0, 0);
+  dolly.position.set(cine.doorX - camera.position.x, 0, -46 - camera.position.z);
+  comfortBlink(1);
+}
+function cineUpdate(dt) {
+  const c = cine; if (!c) return;
+  c.t += dt;
+  // slow walk toward the doors with a breath of sway
+  const speed = 2.0;
+  dolly.position.z += speed * dt;
+  dolly.position.x = (c.doorX - camera.position.x) + Math.sin(c.t * 0.7) * 0.35;
+  vignette.material.opacity = Math.max(vignette.material.opacity, 0.35);
+  // flickering upstairs window
+  if (c.flickWin) c.flickWin.material.emissiveIntensity = Math.random() < 0.06 ? 0.05 : 0.5 + Math.random() * 0.5;
+  // mist drift + wind
+  c.mist.position.x = Math.sin(c.t * 0.15) * 2;
+  c.gustT -= dt;
+  if (c.gustT <= 0) { c.gustT = 4 + Math.random() * 4; Audio2.gust(0.1 + Math.random() * 0.12); if (Math.random() < 0.35) Audio2.creak(); }
+  // title cards
+  const card = CINE_CARDS[c.cardI];
+  if (card && c.t >= card[0]) { showBigPanel(card[1], card[2], '#cfd6de'); c.cardI++; }
+  if (c.t > 6 && c.cardI === 1 && Math.random() < dt * 0.2) Audio2.whisper(0.4);
+  // arrive at the steps
+  const camZ = dolly.position.z + camera.position.z;
+  if (camZ >= -3.2) endCinematic();
+}
+function endCinematic() {
+  if (!cine) return;
+  hideBigPanel();
+  Audio2.creak(); Audio2.slam();
+  comfortBlink(1);
+  disposeGroup(cine.g); cine = null;
+  const sp = World.spawn(data);
+  placeDollyAtTile(sp.x + 0.5, sp.y + 0.5);
+  dolly.rotation.set(0, 0, 0);
+  state = 'PLAY';
+  clock.getDelta();
+  showSubtitle('The doors close behind you. The chain rattles down outside.', 4.5);
+  setTimeout(() => showSubtitle('Find the flashlight. It is darker in here than out there.', 4), 4800);
+  saveState();
 }
 
 const INTRO = [
@@ -630,6 +744,30 @@ function buildFloor(fi) {
   // the ritual chamber (basement only)
   if (ritual && fi === ritual.floor) { try { buildRitual(); } catch (e) { console.warn('ritual failed:', e); } }
 
+  // model set-pieces: a skeleton kneels at the ritual altar; a ghost circles the chapel
+  const HM = window.HeroModels || {};
+  if (fi === 0 && HM.skelGLB && ritual) {
+    const sk = HM.skelGLB.clone();
+    sk.scale.set(1.25, 1.25, 1.25);
+    sk.position.set((ritual.cx + 1.6) * TILE_M, 0, (ritual.cy + 0.5) * TILE_M);
+    sk.lookAt((ritual.cx + 0.5) * TILE_M, 0.8, (ritual.cy + 0.5) * TILE_M);
+    floorGroup.add(sk);
+  }
+  if (fi === 4 && HM.ghostGLB) {
+    const ch = data.floors[4].rooms.find((r) => r.tag === 'chapel');
+    if (ch) {
+      const pivot = new THREE.Group();
+      pivot.position.set((ch.cx + 0.5) * TILE_M, 2.1, (ch.cy + 0.5) * TILE_M);
+      const gh = HM.ghostGLB.clone();
+      gh.scale.set(2.2, 2.2, 2.2);
+      gh.position.x = 2.2;
+      gh.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.7; } });
+      pivot.add(gh);
+      floorGroup.add(pivot);
+      animatedProps.push({ obj: pivot, kind: 'spin', phase: 0 });
+    }
+  }
+
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
 
@@ -654,6 +792,13 @@ function toggleJournal() {
   html += '<li><b>Mose Blackburn</b> — 1962; went out a third-floor window. Swears he did not jump.</li>';
   html += '<li><b>The Children</b> — the basement ward; bound here by the night staff so the beds stayed full.</li>';
   html += '<li><b>The Ash</b> — what the incinerator kept, and what the ritual could set loose.</li>';
+  html += '</ul><h3>Side Quests</h3><ul>';
+  const sv = Survival.state();
+  html += `<li class="${sv.teddies.length >= 7 ? 'done' : ''}">${sv.teddies.length >= 7 ? '✔' : '○'} <b>The Seven Teddies</b> — ${sv.teddies.length}/7 found. All seven earn the children's blessing.</li>`;
+  html += `<li class="${sv.safeOpened ? 'done' : ''}">${sv.safeOpened ? '✔' : '○'} <b>The Matron's Safe</b> — three dates from the Case File open it (4th floor).</li>`;
+  html += `<li class="${(ritual && ritual.done) ? 'done' : ''}">${(ritual && ritual.done) ? '✔' : '○'} <b>The Binding Ritual</b> — five candles and a voice, in the basement.</li>`;
+  html += `<li class="${sv.lantern ? 'done' : ''}">${sv.lantern ? '✔' : '○'} <b>The Chapel Lantern</b> — a backup light hangs in the chapel.</li>`;
+  html += `<li>○ <b>Gear</b> — 🔋${sv.batteries}/${sv.maxBatteries} spares · 🍶${sv.draughts}/${sv.maxDraughts} · ⚕${sv.medkits} · ${sv.backpack ? '🎒 backpack' : 'no backpack yet'}</li>`;
   html += '</ul><h3>Documents</h3>';
   const found = documents.filter((d) => d.found);
   if (!found.length) html += '<p class="hint">Nothing filed yet. Search the rooms — letters, patient files, newspaper clippings, a diary.</p>';
@@ -788,11 +933,14 @@ function loadHeroModels() {
   const defs = { bed: 'GothicBed_01', rocker: 'Rockingchair_01', chair: 'WoodenChair_01',
     table: 'WoodenTable_01', cabinet: 'drawer_cabinet', boiler: 'barrel_stove', candles: 'brass_candleholders' };
   const MODELS = {};
-  return Promise.all(Object.entries(defs).map(([k, id]) =>
+  const loads = Object.entries(defs).map(([k, id]) =>
     L.loadAsync('assets/models/' + id + '/' + id + '_1k.gltf')
       .then((g) => { MODELS[k] = g.scene; })
-      .catch((e) => console.warn('hero model failed:', id))
-  )).then(() => { window.HeroModels = MODELS; });
+      .catch((e) => console.warn('hero model failed:', id)));
+  // CC0 apparition models (Kenney)
+  loads.push(L.loadAsync('assets/models/monsters/ghost.glb').then((g) => { MODELS.ghostGLB = g.scene; }).catch(() => {}));
+  loads.push(L.loadAsync('assets/models/monsters/skeleton.glb').then((g) => { MODELS.skelGLB = g.scene; }).catch(() => {}));
+  return Promise.all(loads).then(() => { window.HeroModels = MODELS; });
 }
 
 // ---- atmosphere: dappled flashlight cookie + dust motes in the beam ----
@@ -930,7 +1078,7 @@ function addLocker(wx, wz) {
   floorGroup.add(m);
 }
 
-const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a };
+const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a };
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
@@ -994,40 +1142,97 @@ function buildRitual() {
 }
 
 // ---- entity meshes ----
+// spectral apparitions: layered translucent shrouds, glow auras, ember swarms
+let auraTexCache = {};
+function auraTex(hex) {
+  if (auraTexCache[hex]) return auraTexCache[hex];
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 4, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,0.85)'); g.addColorStop(0.35, hex); g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  return (auraTexCache[hex] = new THREE.CanvasTexture(c));
+}
 function ensureEntityMesh(e) {
   if (entityMeshes.has(e)) return entityMeshes.get(e);
   const grp = new THREE.Group();
-  let bodyColor = 0xaeb8c0, headColor = 0xe7edf2, emis = 0x0, scale = 1;
-  if (e.kind === 'nurse') { bodyColor = 0x9aa7b0; headColor = 0xd7dde3; emis = 0x20242a; }
-  else if (e.kind === 'mose') { bodyColor = 0x20181a; headColor = 0x241a1a; emis = 0x080000; }
-  else if (e.kind === 'child') { bodyColor = 0x8b95a0; headColor = 0xaab4be; scale = 0.55; emis = 0x101418; }
-  else if (e.kind === 'ash') { bodyColor = 0x120a08; headColor = 0x1a0e08; emis = 0x180800; }
-  else if (e.kind === 'crawler') { bodyColor = 0x14121a; headColor = 0x1a1620; emis = 0x0a0010; }
-
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.28 * scale, 0.42 * scale, 1.5 * scale, 10),
-    new THREE.MeshStandardMaterial({ color: bodyColor, emissive: emis, emissiveIntensity: .6, roughness: 1 }));
-  body.position.y = 0.75 * scale; body.castShadow = true; grp.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22 * scale, 12, 12),
-    new THREE.MeshStandardMaterial({ color: headColor, emissive: emis, emissiveIntensity: .5, roughness: 1 }));
-  head.position.y = 1.65 * scale; head.castShadow = true; grp.add(head);
-  // eyes
-  const eyeMat = new THREE.MeshBasicMaterial({ color: e.kind === 'mose' ? 0xff3020 : 0x05070a });
-  [-0.08, 0.08].forEach((ex) => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035 * scale, 6, 6), eyeMat);
-    eye.position.set(ex * scale, 1.68 * scale, 0.19 * scale); grp.add(eye);
+  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null };
+  const shroud = (color, op, r0, r1, h, y) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 12, 1, true),
+      new THREE.MeshStandardMaterial({ color, transparent: true, opacity: op, roughness: 1, side: THREE.DoubleSide, depthWrite: false }));
+    m.position.y = y; grp.add(m); rec.gown.push(m); return m;
+  };
+  const head = (color, op, r, y) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 12),
+      new THREE.MeshStandardMaterial({ color, transparent: true, opacity: op, roughness: 1 }));
+    m.position.y = y; grp.add(m); return m;
+  };
+  const eyes = (color, r, y, spread, glowing) => [-spread, spread].forEach((ex) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 6),
+      glowing ? new THREE.MeshBasicMaterial({ color }) : new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    m.position.set(ex, y, 0.16); grp.add(m);
   });
-  if (e.kind === 'ash') {
+  const aura = (hex, size, y) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+    s.scale.set(size, size, 1); s.position.y = y; grp.add(s); rec.aura = s;
+  };
+  if (e.kind === 'nurse') {           // the Grey Nurse: layered pale gown, black eye-pits
+    shroud(0xdfe4ea, 0.42, 0.16, 0.55, 1.75, 0.88);
+    shroud(0xaab4c0, 0.30, 0.20, 0.66, 1.85, 0.92);
+    shroud(0x8a95a2, 0.18, 0.26, 0.8, 1.9, 0.95);
+    head(0xd8dde4, 0.8, 0.19, 1.86);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.26), new THREE.MeshStandardMaterial({ color: 0xeef2f6, transparent: true, opacity: 0.85 }));
+    cap.position.y = 2.02; grp.add(cap);
+    eyes(0x000000, 0.032, 1.88, 0.075, false);
+    aura('rgba(150,180,220,0.5)', 2.6, 1.1);
+  } else if (e.kind === 'mose') {     // Mose: a tall shadow, burning eyes
+    shroud(0x0a0a0e, 0.92, 0.2, 0.6, 2.0, 1.0);
+    shroud(0x14141c, 0.5, 0.28, 0.78, 2.1, 1.05);
+    head(0x0c0c10, 0.95, 0.2, 2.12);
+    eyes(0xff2a18, 0.035, 2.14, 0.08, true);
+    aura('rgba(60,10,10,0.55)', 2.8, 1.2);
+  } else if (e.kind === 'child') {    // the Child: small, too bright, hollow eyes
+    shroud(0xe8ecf0, 0.5, 0.1, 0.34, 0.95, 0.48);
+    shroud(0xc2cad2, 0.28, 0.14, 0.42, 1.0, 0.5);
+    head(0xe4e9ee, 0.85, 0.13, 1.05);
+    eyes(0x000000, 0.024, 1.07, 0.052, false);
+    aura('rgba(190,210,235,0.5)', 1.7, 0.6);
+  } else if (e.kind === 'crawler') {  // the Crawler: a low black wrongness
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0x0a0810, transparent: true, opacity: 0.9, roughness: 1 }));
+    body.scale.set(1.3, 0.45, 1.8); body.position.y = 0.3; grp.add(body); rec.gown.push(body);
+    head(0x0e0c14, 0.95, 0.16, 0.5);
+    eyes(0xff2a18, 0.03, 0.52, 0.07, true);
+    aura('rgba(80,10,20,0.5)', 1.6, 0.35);
+  } else {                            // the Ash: a swarm of embers around a char core
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0x0c0806, roughness: 1, transparent: true, opacity: 0.9 }));
+    core.position.y = 1.1; grp.add(core); rec.gown.push(core);
+    const N = 110, ep = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const a = Math.random() * 6.28, r = 0.3 + Math.random() * 0.7;
+      ep[i * 3] = Math.cos(a) * r; ep[i * 3 + 1] = 0.2 + Math.random() * 1.9; ep[i * 3 + 2] = Math.sin(a) * r;
+    }
+    const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.BufferAttribute(ep, 3));
+    rec.embers = new THREE.Points(eg, new THREE.PointsMaterial({ color: 0xff6a1e, size: 0.045, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    grp.add(rec.embers);
     const glow = new THREE.PointLight(0xff5a1e, 0.8, 4, 2); glow.position.y = 1; grp.add(glow);
     grp.userData.ember = glow;
+    aura('rgba(255,90,20,0.55)', 3.0, 1.1);
   }
-  if (e.kind === 'crawler') grp.scale.set(1.2, 0.42, 1.5); // low, long, wrong
   grp.visible = false;
   scene.add(grp);
-  const rec = { group: grp, body, head };
   entityMeshes.set(e, rec);
   return rec;
+}
+// per-frame spectral motion: float, sway, breathe, swirl
+function animateGhost(rec, e, dt) {
+  const t = performance.now() / 1000 + rec.phase;
+  const hunt = e.state === Entities.S.HUNT;
+  rec.group.position.y = Math.sin(t * (hunt ? 3.2 : 1.6)) * 0.07 + (e.kind === 'child' ? 0 : 0.05);
+  rec.gown.forEach((m2, i) => { m2.rotation.y = Math.sin(t * 0.8 + i) * 0.15; m2.rotation.z = Math.sin(t * 1.1 + i * 2) * 0.05; });
+  if (rec.aura) { rec.aura.material.opacity = (hunt ? 0.6 : 0.35) + Math.sin(t * 5) * 0.12; }
+  if (rec.embers) { rec.embers.rotation.y += dt * (hunt ? 3.5 : 1.2); }
 }
 
 // ============================================================ locomotion
@@ -1084,18 +1289,33 @@ function vrLocomotion(dt) {
   // heading = camera yaw in world
   camera.getWorldDirection(tmpV);
   const yaw = Math.atan2(tmpV.x, tmpV.z); // forward
-  const [lx, ly] = readAxes(sources.left);
+  const moveSrc = OPTS.swapHands ? sources.right : sources.left;
+  const turnSrc = OPTS.swapHands ? sources.left : sources.right;
+  const [lx, ly] = readAxes(moveSrc);
   if (lx || ly) {
     const speed = 4.2;   // m/s — VR walking wants to feel a touch brisk
-    // forward is -y stick; strafe is x
+    // forward is -y stick; strafe is x. Right vector = yaw - 90° (was +90°: inverted!)
     const fwd = -ly, str = lx;
-    const dz = (Math.cos(yaw) * fwd + Math.cos(yaw + Math.PI / 2) * str);
-    const dx = (Math.sin(yaw) * fwd + Math.sin(yaw + Math.PI / 2) * str);
+    const dz = (Math.cos(yaw) * fwd + Math.cos(yaw - Math.PI / 2) * str);
+    const dx = (Math.sin(yaw) * fwd + Math.sin(yaw - Math.PI / 2) * str);
     const step = speed * dt / TILE_M;
     moveDolly(dx * step, dz * step);
   }
-  // snap turn on right stick x
-  const [rx] = readAxes(sources.right);
+  // look-to-walk option: hold A/X (or either grip button 4/5) to glide where you look
+  if (OPTS.walkLook) {
+    const pressed = [sources.left, sources.right].some((c) => {
+      const g = c && c.userData.inputSource && c.userData.inputSource.gamepad;
+      return g && g.buttons && ((g.buttons[4] && g.buttons[4].pressed) || (g.buttons[5] && g.buttons[5].pressed));
+    });
+    if (pressed) {
+      camera.getWorldDirection(tmpV);
+      const l = Math.hypot(tmpV.x, tmpV.z) || 1;
+      const step = 3.4 * dt / TILE_M;
+      moveDolly((tmpV.x / l) * step, (tmpV.z / l) * step);
+    }
+  }
+  // snap turn on the other stick's x
+  const [rx] = readAxes(turnSrc);
   snapCooldown -= dt;
   if (Math.abs(rx) > 0.7 && snapCooldown <= 0) {
     snapTurn(rx > 0 ? -Math.PI / 6 : Math.PI / 6);
@@ -1129,7 +1349,9 @@ function bindDesktopInput() {
     if (k === 'tab') { e.preventDefault(); toggleJournal(); }
     if (k === 'c' && state === 'PLAY') Survival.drink();
     if (k === 'v' && state === 'PLAY') Survival.useMedkit();
+    if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
+    if ((k === 'enter' || k === ' ' || k === 'e') && state === 'CINE') endCinematic();
   });
   window.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase(); keys[k] = false;
@@ -1217,7 +1439,7 @@ function interact() {
 }
 
 function pickupItem(it) {
-  if (['draught', 'backpack', 'medkit', 'teddy'].includes(it.type)) {
+  if (['draught', 'backpack', 'medkit', 'teddy', 'battery', 'lantern'].includes(it.type)) {
     if (Survival.onPickup(it)) {
       it.taken = true;
       const m2 = itemMeshes.get(it.id);
@@ -1408,6 +1630,7 @@ function tryUnlockAhead() {
 function render() {
   const dt = Math.min(clock.getDelta(), 0.1);   // tolerate frame dips without eating movement
   if (state === 'PLAY') update(dt);
+  else if (state === 'CINE') { cineUpdate(dt); tickSubtitle(dt); vignette.material.opacity *= 0.995; }
   else if (state === 'MENU') { camera.position.set(0, EYE, 0); }
   spinItems(dt);
   renderer.render(scene, camera);
@@ -1442,13 +1665,13 @@ function updateFixtures(dt) {
       const flick = Math.random() < 0.22;
       f.on = !flick;
       f.tube.material.emissiveIntensity = f.on ? 0.9 : 0.06;
-      if (f.light) f.light.intensity = f.on ? f.base : 0.05;
+      if (f.light) f.light.intensity = f.on ? f.base * lightMul() : 0.05;
       if (flick && Math.random() < 0.4) Audio2.buzz(0.03);
     }
   }
   if (emberProp) emberProp.traverse((o) => { if (o.material && o.material.emissive && o.material.emissiveIntensity > 0.5) o.material.emissiveIntensity = 1.1 + Math.random() * 0.9; });
   for (const m of moodLights) {
-    m.light.intensity = black ? 0 : m.base * (0.72 + Math.random() * 0.4);
+    m.light.intensity = black ? 0 : m.base * lightMul() * (0.72 + Math.random() * 0.4);
   }
 }
 
@@ -1717,6 +1940,7 @@ function update(dt) {
       // face the player
       rec.group.lookAt(camera.getWorldPosition(tmpV2).x, 0, camera.getWorldPosition(tmpV2).z);
       if (e.kind === 'ash' && rec.group.userData.ember) rec.group.userData.ember.intensity = 0.5 + Math.random();
+      animateGhost(rec, e, eDt);
       const d = Math.hypot(e.x - player.x, e.y - player.y);
       nearest = Math.min(nearest, d);
       if (e.state === Entities.S.HUNT) hunting = true;
@@ -1743,6 +1967,24 @@ function update(dt) {
   // dying flashlight panics once
   if (player.lightOn && player.battery < 20 && !lowBatWarned) { lowBatWarned = true; showSubtitle('The flashlight is dying. Find batteries — or learn the dark.', 3.5); }
   if (player.battery >= 45) lowBatWarned = false;
+
+  // the backup lantern: warm 360° glow that follows you, flickering like flame
+  if (!lanternLight) {
+    lanternLight = new THREE.PointLight(0xffb45a, 0, 9, 2);
+    scene.add(lanternLight);
+  }
+  const lantOn = Survival.lanternActive();
+  if (lantOn) {
+    camera.getWorldPosition(tmpV);
+    lanternLight.position.set(tmpV.x, tmpV.y - 0.45, tmpV.z);
+    lanternLight.intensity = 2.6 * (0.85 + Math.random() * 0.3);
+  } else lanternLight.intensity = 0;
+  // VR: clicking the move stick toggles the lantern
+  const mvSrc = OPTS.swapHands ? sources.right : sources.left;
+  const mg = mvSrc && mvSrc.userData.inputSource && mvSrc.userData.inputSource.gamepad;
+  const stickBtn = mg && mg.buttons && mg.buttons[3] && mg.buttons[3].pressed;
+  if (stickBtn && !stickBtnWas) Survival.toggleLantern();
+  stickBtnWas = !!stickBtn;
 
   updateDust(dt);
   // flickering fixtures + animated toys + the haunted nursery + wall children
@@ -1812,6 +2054,7 @@ function beamHits(ex, ey) {
 }
 function isPlayerLit() {
   if (player.lightOn && player.battery > 0) return true;
+  if (Survival.lanternActive()) return true;
   const g = data.floors[player.floor].grid;
   for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
     const yy = Math.floor(player.y) + j, xx = Math.floor(player.x) + i;

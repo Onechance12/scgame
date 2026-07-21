@@ -17,6 +17,11 @@ const Survival = (() => {
     maxDraughts: 2,      // backpack raises to 5
     backpack: false,
     medkits: 0,
+    batteries: 0,        // spare flashlight batteries (auto-loaded at empty)
+    maxBatteries: 2,     // backpack raises to 5
+    lantern: false,      // the backup lantern
+    lanternOn: false,
+    lanternFuel: 100,
     teddies: [],         // collected teddy ids
     blessed: false,      // all 7 teddies -> the children's blessing
     safeOpened: false,
@@ -118,8 +123,22 @@ const Survival = (() => {
         H.subtitle('A Quiet Draught (' + S.draughts + '/' + S.maxDraughts + '). Drink it (C / left trigger) for five minutes of peace.', 4.5);
         break;
       case 'backpack':
-        S.backpack = true; S.maxDraughts = 5; A.pickup();
-        H.subtitle('An orderly’s backpack. You can carry five draughts and real supplies now.', 4);
+        S.backpack = true; S.maxDraughts = 5; S.maxBatteries = 5; A.pickup();
+        // pre-packed: someone left in a hurry and never came back for it
+        S.batteries += 2; S.draughts = Math.min(S.maxDraughts, S.draughts + 1); S.medkits++;
+        H.subtitle('An orderly’s backpack — pre-packed: 2 batteries, a draught, a medkit. They never came back for it.', 5);
+        break;
+      case 'battery': {
+        const p = H.player();
+        if (p.battery < 55) { p.battery = Math.min(100, p.battery + 45); H.subtitle('Batteries — straight into the flashlight.', 2.5); }
+        else if (S.batteries < S.maxBatteries) { S.batteries++; H.subtitle('Spare batteries pocketed. (' + S.batteries + '/' + S.maxBatteries + ')', 2.5); }
+        else { H.subtitle('No room for more batteries.', 2); return false; }
+        A.pickup();
+        break;
+      }
+      case 'lantern':
+        S.lantern = true; S.lanternOn = true; A.pickup();
+        H.subtitle('An old hurricane lantern. Soft light all around you — toggle it with L (or click the left stick). It burns slow.', 5);
         break;
       case 'medkit':
         S.medkits++; A.pickup();
@@ -215,6 +234,24 @@ const Survival = (() => {
     }
     // peace calms the heart
     if (peaceActive()) { const p = H.player(); p.fear = Math.max(0, p.fear - dt * 2.5); }
+    // auto-load a spare battery the moment the flashlight dies
+    const p = H.player();
+    if (p.battery <= 0.5 && S.batteries > 0) {
+      S.batteries--; p.battery = 100;
+      H.subtitle('You slam in a fresh battery in the dark. (' + S.batteries + ' spare)', 3);
+      H.audio.pickup(); H.save();
+    }
+    // lantern fuel
+    if (S.lanternOn) {
+      S.lanternFuel = Math.max(0, S.lanternFuel - dt * (real ? 0.012 : 0.25));
+      if (S.lanternFuel <= 0) { S.lanternOn = false; H.subtitle('The lantern gutters out.', 2.5); }
+    }
+  }
+  function lanternActive() { return S.lantern && S.lanternOn && S.lanternFuel > 0; }
+  function toggleLantern() {
+    if (!S.lantern) { H.subtitle('You don’t have a lantern. One hangs somewhere in the chapel.', 2.5); return; }
+    if (S.lanternFuel <= 0) { H.subtitle('The lantern is dry.', 2); return; }
+    S.lanternOn = !S.lanternOn; H.audio.pickup();
   }
 
   function entityTimeScale() {
@@ -233,6 +270,9 @@ const Survival = (() => {
     }
     if (S.draughts > 0) bits.push('🍶' + S.draughts);
     if (S.medkits > 0) bits.push('⚕' + S.medkits);
+    if (S.batteries > 0) bits.push('🔋' + S.batteries);
+    if (lanternActive()) bits.push('🏮 ' + Math.round(S.lanternFuel) + '%');
+    else if (S.lantern) bits.push('🏮 off');
     if (S.backpack) bits.push('🎒');
     if (S.teddies.length) bits.push('🧸' + S.teddies.length + '/7');
     return bits.join('  ');
@@ -241,6 +281,7 @@ const Survival = (() => {
   // ---------- persistence ----------
   function serialize() {
     return { draughts: S.draughts, maxDraughts: S.maxDraughts, backpack: S.backpack, medkits: S.medkits,
+      batteries: S.batteries, maxBatteries: S.maxBatteries, lantern: S.lantern, lanternOn: S.lanternOn, lanternFuel: S.lanternFuel,
       teddies: S.teddies, blessed: S.blessed, safeOpened: S.safeOpened,
       peaceUntil: S.peaceUntil, peaceKind: S.peaceKind, sanctumReadyAt: S.sanctumReadyAt,
       lastAlmanacHour: S.lastAlmanacHour };
@@ -253,7 +294,10 @@ const Survival = (() => {
 
   function init(hooks) { H = hooks; }
 
-  return { init, reset, update, onPickup, drink, useMedkit, tryInteract, interactPrompt,
-    peaceActive, entityTimeScale, hudText, serialize, restore };
+  function reset2() {
+    Object.assign(S, { batteries: 0, maxBatteries: 2, lantern: false, lanternOn: false, lanternFuel: 100 });
+  }
+  return { init, reset: () => { reset(); reset2(); }, update, onPickup, drink, useMedkit, tryInteract, interactPrompt,
+    peaceActive, entityTimeScale, hudText, serialize, restore, lanternActive, toggleLantern, state: () => S };
 })();
 if (typeof window !== 'undefined') window.Survival = Survival;

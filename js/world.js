@@ -278,6 +278,10 @@ const World = (() => {
     addItem(1, 'kitchen', 'draught', 'dr2', 1, 1);
     addItem(2, 'station', 'draught', 'dr3', -1, 0);
     addItem(0, 'morgue', 'draught', 'dr4', 1, -1);
+    // the backup lantern + extra batteries
+    addItem(4, 'chapel', 'lantern', 'lantern', 1, -1);
+    addItem(1, 'kitchen', 'battery', 'bat7', -1, 0);
+    addItem(2, 'bath', 'battery', 'bat8');
     // the orderly's backpack + medkits
     addItem(0, 'storage', 'backpack', 'backpack', -1, 0);
     addItem(1, 'er', 'medkit', 'mk1', -1, 1);

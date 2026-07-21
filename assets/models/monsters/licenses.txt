@@ -1,0 +1,6 @@
+All CC0 (public domain), verified by source:
+  ghost.glb, skeleton.glb  — Kenney Graveyard Kit 5.0 via opengameart.org/content/graveyard-kit (credit optional: Kenney)
+  monster.glb              — "Demon" by Quaternius via poly.pizza/m/Mo2ky6vkf8
+  skeleton_warrior.glb     — KayKit Skeletons 1.0 by Kay Lousberg via kaylousberg.itch.io/kaykit-skeletons
+  Textures/colormap.png    — Kenney Graveyard Kit (shared colormap for ghost/skeleton)
+All have rigged animations. skeleton_mage/minion (same KayKit pack) were trimmed to keep the deploy light — re-download via the asset DB if needed.
