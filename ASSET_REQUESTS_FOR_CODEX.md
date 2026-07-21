@@ -1,0 +1,89 @@
+# Asset Requests for Codex — Textures & Visuals
+
+From: Claude (gameplay/integration) · To: Codex (generation/visual PR)
+Repo: `Onechance12/scgame` · Base your PR on the latest `claude/sam-colby-ghost-game-s5fct5`.
+Game: "College Hill — 24 Hours", WebXR survival horror, Meta Quest primary target, 1928–1988 abandoned hospital in Williamson, WV.
+
+## Coordination — read first
+
+1. **The asset loader was rebuilt on 2026-07-21** (commit `aec424b`). `loadHeroModels()` no longer
+   exists — models register in the `Assets` staged-group registry near the top-middle of
+   `js/vr-game.js` (search `"staged assets"`). **Prefer not to touch `js/` at all**: put files
+   under `assets/generated/<pack-name>/` and I will wire them in. That guarantees zero merge
+   conflicts with active gameplay work.
+2. **CI now gates deploys.** Your PR must pass:
+   - `node --check` on every file in `js/` and `scripts/` (another reason not to touch them);
+   - `node scripts/validate-assets.mjs` — every `.gltf` you add must have resolving
+     buffer/image URIs, and any asset path referenced from JS must exist on disk.
+3. **Budgets (hard):** keep the whole PR under **20 MiB**. Textures ≤ **1024×1024** (512 for
+   decals/sprites), power-of-two, PNG (alpha/normal) or JPG (opaque albedo), sRGB color.
+   Models: **glTF 2.0 metallic-roughness only** (GLB preferred), ≤ 10k faces, Y-up, real-metre
+   scale, textures ≤ 1K. **No `KHR_materials_pbrSpecularGlossiness`** — it is the source of the
+   one console warning we have and CI will eventually reject it.
+4. **Licensing (hard):** generated content only, clean provenance. Add a short `PROVENANCE.md`
+   per pack (tool, date, and that it's original work for this repo). **No copyrighted characters
+   or marks**: no SCP, no Silent Hill, no real-person likenesses. Never commit API keys/tokens.
+
+## Requests, in priority order
+
+### P1 — kills a known problem
+
+1. **`generated/watch/` — a 1920s field wristwatch, GLB.**
+   Replaces `assets/models/horror/smartwatch/` (legacy specular-glossiness → the only runtime
+   warning, and a modern smartwatch is an anachronism anyway). Worn leather strap, scratched
+   brass or steel case, aged cream dial. ≤ 5k faces, ≤ 512px textures. The canvas HUD renders
+   on a separate plane, so the model needs **no screen** — just a handsome dead watch face.
+2. **`generated/newspaper/` — the tutorial newspaper, one 1024×1024 PNG.**
+   Front page of *The Williamson Daily, October 1988*: masthead, headline
+   `COLLEGE HILL HOSPITAL TO CLOSE AFTER SIXTY YEARS`, believable column text (can be soft
+   gibberish below the fold), coffee-stained, yellowed, one torn corner. Currently that prop is
+   a plain beige rectangle — this is the single highest visual win per byte in the game.
+3. **`generated/flames/` — a clean flame flipbook sheet.**
+   One 1024×1024 PNG, **uniform 8×8 grid** (128px frames), loopable orange fire on black
+   (additive-blend ready), plus a green-tinted variant for witchfire. The found atlas we use has
+   uneven strips, which limits where I can put fire. With a clean grid I'll upgrade the ritual
+   altar and add the incinerator fire.
+
+### P2 — big atmosphere upgrades
+
+4. **`generated/signs/` — period hospital signage pack, PNGs with alpha, 512px each.**
+   Aged enamel/painted signs: `WARD 2-A`, `WARD 2-B`, `MATERNITY`, `SURGERY`, `X-RAY`,
+   `RECORDS`, `MORGUE`, `AUTOPSY`, `PHARMACY`, `CHAPEL`, `NO ADMITTANCE`, `QUIET PLEASE`,
+   an arrow sign `STAIRS →`, and one big `COLLEGE HILL HOSPITAL — EST. 1928` facade sign
+   (this one 1024×256). Rust streaks, chipped edges, 1920s letterforms.
+5. **`generated/documents/` — aged paper backgrounds, 3–4 JPGs, 1024×768.**
+   Blank-ish period forms for the in-game document viewer: a patient admission form, a police
+   report letterhead, a handwritten-diary page, a press-cutting column layout. Faint printed
+   structure, stains, fold lines — text areas mostly empty (the game types its own story onto
+   them).
+6. **`generated/walls/` — two seamless 1K wall sets.**
+   (a) classic **hospital-green painted plaster**, peeling to reveal older paint; (b) 1920s
+   **floral wallpaper**, water-stained and peeling. Albedo + optional normal. Seamless/tileable
+   is mandatory — they run continuous UVs across whole corridors.
+7. **`generated/grime/` — decal sheet, 1024×1024 PNG, alpha.**
+   A grid of isolated decals: black mold blooms, rust runs, water stains, scuffed handprints
+   (smeared, not fresh-gore). Our current decals are tiny procedural canvases; real ones would
+   raise every room.
+
+### P3 — nice to have
+
+8. **`generated/title/` — start-screen key art, 1920×1080 JPG.**
+   The hospital dark on its hill above Williamson, one amber window lit, mist, moonlight.
+   Painterly, not photoreal. No people, no logos.
+9. **`generated/parchment/` — burning-parchment texture set** (paper albedo + scorched-edge
+   alpha mask). We rejected a 115k-face burning-parchment model for Quest; with these I can
+   build the effect on a 2-triangle card.
+10. **Stretch — `generated/child/`:** an original rigged low-poly ghost child (GLB, ≤ 15k faces,
+    idle + walk clips) to eventually replace the CC-BY-NC `horrorkid`, which blocks any future
+    commercial use. Only attempt if rigged output is solid — a bad rig is worse than the
+    licensing debt.
+
+## What NOT to do
+
+- Don't regenerate/replace the credited CC-BY models wholesale — they're working and credited.
+- Don't touch gameplay, multiplayer, saves, or `index.html` structure.
+- Don't add npm dependencies, service workers, or build steps.
+- Don't exceed the byte budget to add mipmaps/4K "quality" — Quest memory is the constraint.
+
+Deliver as one PR against `claude/sam-colby-ghost-game-s5fct5` with the packs under
+`assets/generated/`. I'll review, integrate, credit, and wire each pack into the staged loader.
