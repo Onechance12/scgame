@@ -854,6 +854,36 @@ function buildExterior() {
   const MOB = window.MobModels || {};
   yard(MOB.playgroundG, doorX - 13, -20, 7.5, 0.5, 0.5);
   yard(MOB.carouselG, doorX + 12, -27, 5.5, -0.4, 0.22);
+  // dead oaks crowd the hillside — dark shapes either side of the path up
+  const oakSrc = (window.HeroModels || {}).oaktrees;
+  if (oakSrc) {
+    [[-24, -14, 0.3, 6.2], [22, -22, 1.8, 7.0], [-19, -36, 3.6, 5.4], [27, -40, 5.1, 6.6], [-30, -46, 2.4, 7.4]].forEach(([ox, oz, yaw, sc]) => {
+      const t = oakSrc.clone();
+      let b = new THREE.Box3().setFromObject(t);
+      const h = (b.max.y - b.min.y) || 1;
+      t.scale.setScalar(sc / h);
+      b = new THREE.Box3().setFromObject(t);
+      const c2 = b.getCenter(new THREE.Vector3());
+      t.position.set(doorX + ox - c2.x, -b.min.y - 0.05, oz - c2.z);
+      t.rotation.y = yaw;
+      t.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.32); o.frustumCulled = false; } });
+      g.add(t);
+    });
+  }
+  // the hospital's transformer cabinet, rusted dead beside the doors
+  const boxSrc = (window.HeroModels || {}).elecbox;
+  if (boxSrc) {
+    const eb = boxSrc.clone();
+    let b = new THREE.Box3().setFromObject(eb);
+    const w = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) || 1;
+    eb.scale.setScalar(2.1 / w);
+    b = new THREE.Box3().setFromObject(eb);
+    const c3 = b.getCenter(new THREE.Vector3());
+    eb.position.set(doorX + 17 - c3.x, -b.min.y, -2.6 - c3.z);
+    eb.rotation.y = 0.15;
+    eb.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.5); } });
+    g.add(eb);
+  }
   // a cold West Virginia night sky: a dome of stars and a low, hazy moon.
   // (procedural — a million-face scan would kill the Quest; this is ~free)
   const NS = 720, sp = new Float32Array(NS * 3), sc2 = new Float32Array(NS * 3);
@@ -1479,7 +1509,9 @@ function loadHeroModels() {
     // real first-person hands for the VR grips
     vrhands: 'vrhands',
     // the children's bear — ceramic, googly-eyed, and wrong in the dark
-    scarebear: 'scarebear' };
+    scarebear: 'scarebear',
+    // dead oaks for the hillside, and the hospital's rusted transformer
+    oaktrees: 'oaktrees', elecbox: 'elecbox' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -2009,6 +2041,7 @@ const HPROP_CFG = {
   // batch 4
   crowbar:     { by: 'long', size: 0.60, tint: 0x5a4a42, tintAmt: 0.20, mount: 'flat' },
   scarebear:   { by: 'h',    size: 0.85, tint: 0x8a7a68, tintAmt: 0.30 },   // the big one in the nursery
+  elecbox:     { by: 'long', size: 1.75, tint: 0x8a8580, tintAmt: 0.15 },
   piano:       { by: 'long', size: 1.55, tint: 0x2a2420, tintAmt: 0.22 },
   planks:      { by: 'long', size: 1.35, tint: 0x6a5236, tintAmt: 0.20, mount: 'wall' },
 };
@@ -2295,6 +2328,7 @@ function placeHorrorProps(fi) {
         break;
       case 'boiler':  // industrial banks + tools scattered on the floor
         wallRow(r, 'N', 'metalcab', 1.0, 0, 2.2, 3);
+        wallRow(r, 'S', 'elecbox', 1.2, Math.PI, 3.2, 1);   // the dead transformer, still humming in your head
         placeIn(r, 'shovel', yaw4());
         centerP(r, 'toolset', yaw4(), r.w * 0.16, 0);
         if (rnd() < 0.5) placeIn(r, 'toolset', yaw4());

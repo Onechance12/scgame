@@ -184,6 +184,12 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
     scarebear/     "Scare Bear"                     by aldenchappellP  (the seven teddies + nursery bear)
                    https://sketchfab.com/3d-models/scare-bear-c0b8ff28d4aa44aa8bb536b1af1c1be3
                    (textures downscaled to 512)
+    oaktrees/      "Oak Trees"                      by DJMaesen  (the hillside grove)
+                   https://sketchfab.com/3d-models/oak-trees-d841c3bcc5324daebee50f45619e05fc
+                   (textures downscaled to 512)
+    elecbox/       "Rusty Electric Box"             by randombug  (facade + boiler room)
+                   https://sketchfab.com/3d-models/rusty-electric-box-2d7b31aeab5f4b90991e137dd3786fad
+                   (texture downscaled to 512)
 
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
