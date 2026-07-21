@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>College Hill Surface + Lighting Kit</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #e7e1d2;
+      --muted: #a39f94;
+      --panel: #151714;
+      --line: #353a33;
+      --accent: #b4a477;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #090b09;
+      font: 16px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 72px; }
+    h1, h2 { letter-spacing: .04em; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin-top: 42px; color: var(--accent); }
+    p { color: var(--muted); }
+    .notice { border-left: 4px solid var(--accent); padding: 10px 14px; background: #12140f; }
+    .hero, .asset, .tile {
+      display: block;
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .hero { aspect-ratio: 16 / 9; object-fit: cover; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .card { padding: 14px; border: 1px solid var(--line); background: var(--panel); }
+    .card h3 { margin: 0 0 10px; font-size: 15px; }
+    .tile { aspect-ratio: 1; background-repeat: repeat; background-size: 25% 25%; }
+    .plaster { background-image: url('materials/peeling-surgical-green-plaster-albedo.jpg'); }
+    .linoleum { background-image: url('materials/checker-hospital-linoleum-albedo.jpg'); }
+    .steel { background-image: url('materials/cream-painted-steel-albedo.jpg'); }
+    .checker {
+      padding: 16px;
+      background-color: #ddd;
+      background-image:
+        linear-gradient(45deg, #888 25%, transparent 25%),
+        linear-gradient(-45deg, #888 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #888 75%),
+        linear-gradient(-45deg, transparent 75%, #888 75%);
+      background-position: 0 0, 0 16px, 16px -16px, -16px 0;
+      background-size: 32px 32px;
+    }
+    .checker img { display: block; width: 100%; }
+    .checker h3 { color: #171915; }
+    .asset { object-fit: contain; }
+    .dark { background: #000; padding: 12px; }
+    .meta { margin: 10px 0 0; font-size: 13px; }
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>College Hill Surface + Lighting Kit</h1>
+    <p class="notice">Review-only proposal. No game code or runtime asset references are changed.</p>
+
+    <h2>Mood target</h2>
+    <img class="hero" src="concept/hospital-corridor-mood.jpg" alt="An abandoned hospital corridor with faded green plaster, checker linoleum, cold window light, fluorescent fixtures, and a distant warm light">
+
+    <h2>4× tiled material inspection</h2>
+    <p>Each square panel repeats its candidate four times on both axes so borders and repeated features are easy to reject.</p>
+    <div class="grid">
+      <article class="card">
+        <h3>Peeling surgical-green plaster</h3>
+        <div class="tile plaster" role="img" aria-label="Repeated peeling green plaster texture"></div>
+      </article>
+      <article class="card">
+        <h3>Checker hospital linoleum</h3>
+        <div class="tile linoleum" role="img" aria-label="Repeated checker hospital linoleum texture"></div>
+      </article>
+      <article class="card">
+        <h3>Cream-painted steel</h3>
+        <div class="tile steel" role="img" aria-label="Repeated cream-painted steel texture"></div>
+      </article>
+    </div>
+
+    <h2>Transparent decal inspection</h2>
+    <div class="grid">
+      <article class="card checker">
+        <h3>On a light receiver</h3>
+        <img class="asset" src="decals/hospital-damage-atlas.png" alt="Sixteen transparent hospital surface-damage decals on a light checker background">
+      </article>
+      <article class="card dark">
+        <h3>On a dark receiver</h3>
+        <img class="asset" src="decals/hospital-damage-atlas.png" alt="Sixteen transparent hospital surface-damage decals on black">
+      </article>
+    </div>
+
+    <h2>Lighting and atmosphere masks</h2>
+    <div class="grid">
+      <article class="card">
+        <h3>2×2 light-cookie atlas</h3>
+        <img class="asset" src="lighting/light-cookie-atlas.png" alt="Four grayscale masks for fluorescent, barred-window, flashlight, and cage-fixture light patterns">
+      </article>
+      <article class="card">
+        <h3>4×4 atmosphere atlas</h3>
+        <img class="asset" src="vfx/atmosphere-particle-atlas.png" alt="Sixteen monochrome fog, dust, ash, drip, ember, and spirit particle sprites">
+      </article>
+    </div>
+
+    <p class="meta">Open the sibling README for technical budgets, cell mappings, provenance, production gates, and Claude's review questions.</p>
+  </main>
+</body>
+</html>
