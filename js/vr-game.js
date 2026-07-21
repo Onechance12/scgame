@@ -374,13 +374,15 @@ function dressGrip(grip, hand) {
     const m = skeletonClone(src);
     // NOTE: GLTFLoader sanitises bone names — 'hand.R_010' arrives as 'handR_010'
     const suff = hand === 'left' ? 'l' : 'r', other = hand === 'left' ? 'r' : 'l';
-    let handBone = null, foreBone = null;
+    let handBone = null, foreBone = null, idxBone = null, pnkBone = null;
     m.traverse((o) => {
       if (!o.isBone) return;
       const n = o.name.toLowerCase();
       if (n.includes('clavicle' + other) || n.includes('deltoid' + other) || n.includes('upper_arm' + other)) o.scale.setScalar(0.0001);   // vanish the other arm
       if (!handBone && n.includes('hand' + suff)) handBone = o;
       if (!foreBone && n.includes('forearm' + suff) && !n.includes('001') && !n.includes('end')) foreBone = o;
+      if (!idxBone && n.includes('palm_index' + suff)) idxBone = o;
+      if (!pnkBone && n.includes('palm_pinky' + suff)) pnkBone = o;
     });
     if (!handBone) return;
     m.updateMatrixWorld(true);
@@ -389,11 +391,30 @@ function dressGrip(grip, hand) {
     const fp = (foreBone || handBone).getWorldPosition(new THREE.Vector3());
     m.scale.setScalar(0.26 / (hp.distanceTo(fp) || 1));
     m.updateMatrixWorld(true);
-    // aim: elbow→wrist should run forward and a touch down, like a held-out arm
+    // FULL-frame aim — aligning only the forearm axis leaves the roll to the bind
+    // pose, which put the palm upside-down on a real Quest. Build a rig basis
+    // (forearm + palm normal from the knuckle line) and map it onto how a hand
+    // actually sits on a Touch controller: wrist forward of the elbow, palm
+    // facing inward around the handle.
     const hp2 = handBone.getWorldPosition(new THREE.Vector3());
     const fp2 = (foreBone || handBone).getWorldPosition(new THREE.Vector3());
-    const q = new THREE.Quaternion().setFromUnitVectors(
-      hp2.clone().sub(fp2).normalize(), new THREE.Vector3(0, -0.22, -1).normalize());
+    const F = hp2.clone().sub(fp2).normalize();                    // elbow → wrist
+    let N;
+    if (idxBone && pnkBone) {
+      const Kn = pnkBone.getWorldPosition(new THREE.Vector3())
+        .sub(idxBone.getWorldPosition(new THREE.Vector3())).normalize();   // across the knuckles
+      N = new THREE.Vector3().crossVectors(F, Kn).normalize();             // palm-ish normal
+      if (hand === 'left') N.negate();                                     // mirrored side, mirrored normal
+    } else N = new THREE.Vector3(0, 1, 0);
+    const K2 = new THREE.Vector3().crossVectors(N, F).normalize();
+    const N2 = new THREE.Vector3().crossVectors(F, K2).normalize();
+    const mRig = new THREE.Matrix4().makeBasis(K2, N2, F);
+    const Ft = new THREE.Vector3(0, 0.32, -0.95).normalize();              // forearm runs back-down to the elbow
+    const NtR = new THREE.Vector3(hand === 'right' ? -1 : 1, 0.22, 0).normalize();   // palm wraps inward
+    const Kt = new THREE.Vector3().crossVectors(NtR, Ft).normalize();
+    const Nt2 = new THREE.Vector3().crossVectors(Ft, Kt).normalize();
+    const mT = new THREE.Matrix4().makeBasis(Kt, Nt2, Ft);
+    const q = new THREE.Quaternion().setFromRotationMatrix(mT.multiply(mRig.transpose()));
     m.quaternion.premultiply(q);
     m.updateMatrixWorld(true);
     m.position.sub(handBone.getWorldPosition(new THREE.Vector3()));   // wrist sits at the grip
@@ -1429,7 +1450,9 @@ function loadHeroModels() {
     // batch 4 — stairwell, piano, boards (CC-BY, credited)
     staircase: 'staircase', piano: 'piano', planks: 'planks',
     // real first-person hands for the VR grips
-    vrhands: 'vrhands' };
+    vrhands: 'vrhands',
+    // the children's bear — ceramic, googly-eyed, and wrong in the dark
+    scarebear: 'scarebear' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -1777,6 +1800,27 @@ const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, sp
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
+  // the seven teddies are REAL bears now — a ceramic children's bear sitting in
+  // the dark, googly eyes catching the flashlight, with a soft locator glow
+  if (it.type === 'teddy' && (window.HeroModels || {}).scarebear) {
+    const bear = window.HeroModels.scarebear.clone();
+    let b = new THREE.Box3().setFromObject(bear);
+    const h = (b.max.y - b.min.y) || 1;
+    bear.scale.setScalar(0.34 / h);
+    b = new THREE.Box3().setFromObject(bear);
+    const ctr = b.getCenter(new THREE.Vector3());
+    bear.position.set(-ctr.x, -b.min.y, -ctr.z);
+    bear.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.map) o.material.map.anisotropy = 4; o.frustumCulled = true; } });
+    let hsh = 0; for (const ch of String(it.id)) hsh = (hsh * 31 + ch.charCodeAt(0)) | 0;
+    bear.rotation.y = (hsh % 628) / 100;   // each bear faces its own way, every night the same
+    g.add(bear);
+    const glowB = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,255,255,0.85)'), color: 0xd8a06a, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glowB.scale.set(0.55, 0.55, 1); glowB.position.y = 0.2; g.add(glowB);
+    g.position.set((it.x + 0.5) * TILE_M, 0.02, (it.y + 0.5) * TILE_M);   // it sits on the floor, like it was left there
+    floorGroup.add(g);
+    itemMeshes.set(it.id, g);
+    return;
+  }
   const isRite = it.type === 'anchor' || it.type === 'censer';
   // Rite relics read as a larger, slowly-turning octahedron in a cold gold — set apart from loot.
   const mesh = new THREE.Mesh(
@@ -1899,6 +1943,7 @@ const HPROP_CFG = {
   cobwebC:     { by: 'long', size: 1.15, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
   // batch 4
   crowbar:     { by: 'long', size: 0.60, tint: 0x5a4a42, tintAmt: 0.20, mount: 'flat' },
+  scarebear:   { by: 'h',    size: 0.85, tint: 0x8a7a68, tintAmt: 0.30 },   // the big one in the nursery
   piano:       { by: 'long', size: 1.55, tint: 0x2a2420, tintAmt: 0.22 },
   planks:      { by: 'long', size: 1.35, tint: 0x6a5236, tintAmt: 0.20, mount: 'wall' },
 };
@@ -2186,7 +2231,11 @@ function placeHorrorProps(fi) {
         if (rnd() < 0.5) placeIn(r, 'toolset', yaw4());
         break;
       case 'ritual':  centerP(r, 'bloodytarp', 0); wallRow(r, 'N', 'candle', 1.3, 0, 1.6, 4); break;
-      case 'nursery': if (rnd() < 0.7) placeIn(r, 'oldtv', yaw4()); if (rnd() < 0.6) placeIn(r, 'voodoohang', 0); break;
+      case 'nursery':
+        if (rnd() < 0.7) placeIn(r, 'oldtv', yaw4());
+        if (rnd() < 0.6) placeIn(r, 'voodoohang', 0);
+        placeIn(r, 'scarebear', yaw4());   // it faces a different way every night
+        break;
     }
     // one small out-of-place touch: a knocked bin or a lone wheelchair
     if (rnd() < 0.45) placeIn(r, rnd() < 0.6 ? 'bin' : 'wheelchair', yaw4());

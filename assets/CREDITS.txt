@@ -181,6 +181,9 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
     matron/        "Terrifying Hooded Horror Woman" [The Matron]  by PurplePoint
                    https://sketchfab.com/3d-models/terrifying-hooded-horror-woman-f59d17be392f4494a5b85d927df48ffd
                    (texture downscaled to 1K)
+    scarebear/     "Scare Bear"                     by aldenchappellP  (the seven teddies + nursery bear)
+                   https://sketchfab.com/3d-models/scare-bear-c0b8ff28d4aa44aa8bb536b1af1c1be3
+                   (textures downscaled to 512)
 
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
