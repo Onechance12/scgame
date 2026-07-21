@@ -1,0 +1,304 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 5593,
+      "max": [
+        24.37902069091797,
+        25.704055786132813,
+        7.496061325073242
+      ],
+      "min": [
+        -23.920982360839844,
+        -22.595947265625,
+        -1.4102305173873901
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 67116,
+      "componentType": 5126,
+      "count": 5593,
+      "max": [
+        1.0,
+        1.0,
+        0.9999994039535522
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -0.9873620867729187
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 5593,
+      "max": [
+        0.9999903440475464,
+        0.9999600648880005,
+        0.9988625049591064,
+        1.0
+      ],
+      "min": [
+        -0.9996511340141296,
+        -0.9998770356178284,
+        -0.9882975220680237,
+        -1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 5593,
+      "max": [
+        0.9727376103401184,
+        0.9989036917686462
+      ],
+      "min": [
+        0.0012517996365204453,
+        0.001433305675163865
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 44744,
+      "componentType": 5126,
+      "count": 5593,
+      "max": [
+        0.9727376103401184,
+        0.9989036917686462
+      ],
+      "min": [
+        0.0012517996365204453,
+        0.001433305675163865
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 29310,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "3dhdscan (https://sketchfab.com/3dhdscan)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/ground-moss-fores-square-2k-8b5699d30035485c9564035bb4458a91",
+      "title": "Ground moss fores square 2k"
+    },
+    "generator": "Sketchfab-12.67.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 117240,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 89488,
+      "byteOffset": 117240,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 134232,
+      "byteOffset": 206728,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 89488,
+      "byteOffset": 340960,
+      "byteStride": 16,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 430448,
+      "uri": "scene.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "textures/ground_moss_1-10k_DiffuseMap_baseColor.jpeg"
+    },
+    {
+      "uri": "textures/ground_moss_1-10k_DiffuseMap_metallicRoughness.png"
+    },
+    {
+      "uri": "textures/ground_moss_1-10k_DiffuseMap_normal.jpeg"
+    }
+  ],
+  "materials": [
+    {
+      "name": "ground_moss_1-10k_DiffuseMap",
+      "normalTexture": {
+        "index": 2
+      },
+      "occlusionTexture": {
+        "index": 1
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0.0,
+        "metallicRoughnessTexture": {
+          "index": 1
+        },
+        "roughnessFactor": 0.898252113
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "ground_moss_1-10k_ground_moss_1-10k_DiffuseMap_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TANGENT": 2,
+            "TEXCOORD_0": 3,
+            "TEXCOORD_1": 4
+          },
+          "indices": 5,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        0.00019851325487252325,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        4.407879725055147e-20,
+        -0.00019851325487252325,
+        0.0,
+        0.0,
+        0.00019851325487252325,
+        4.407879725055147e-20,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "ground_moss_1_10k.FBX"
+    },
+    {
+      "children": [
+        3
+      ],
+      "name": "RootNode"
+    },
+    {
+      "children": [
+        4
+      ],
+      "matrix": [
+        4.371138861980484e-06,
+        -5.551115123125783e-15,
+        99.99999999999991,
+        0.0,
+        99.99999999999991,
+        1.1102230246251565e-14,
+        -4.371138867531599e-06,
+        0.0,
+        -1.6653345369377348e-14,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "ground_moss_1-10k"
+    },
+    {
+      "mesh": 0,
+      "name": "ground_moss_1-10k_ground_moss_1-10k_DiffuseMap_0"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 33071,
+      "wrapT": 33071
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ]
+}

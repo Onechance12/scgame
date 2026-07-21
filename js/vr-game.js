@@ -901,6 +901,28 @@ function buildExterior() {
       g.add(lp);
     });
   }
+  // forty years of neglect: wild grass in every crack, lichened boulders,
+  // moss eating the ground — the hill taking its grounds back
+  const scatter = (srcKey, spots, dark) => {
+    const src = (window.HeroModels || {})[srcKey];
+    if (!src) return;
+    spots.forEach(([ox, oz, yaw, sc]) => {
+      const it = src.clone();
+      let b = new THREE.Box3().setFromObject(it);
+      const ref = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) || 1;
+      it.scale.setScalar(sc / ref);
+      b = new THREE.Box3().setFromObject(it);
+      const cc = b.getCenter(new THREE.Vector3());
+      it.position.set(doorX + ox - cc.x, -b.min.y - 0.02, oz - cc.z);
+      it.rotation.y = yaw;
+      it.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(dark); o.frustumCulled = false; } });
+      g.add(it);
+    });
+  };
+  scatter('wildgrass', [[-3.8, -10, 0.4, 1.6], [4.4, -13, 2.1, 1.3], [-5.2, -24, 1.1, 1.5], [5.6, -29, 3.6, 1.7], [-4.6, -38, 5.2, 1.4],
+    [3.9, -42, 0.9, 1.6], [-11, -17, 2.8, 1.8], [10, -21, 4.4, 1.5], [-15, -30, 1.7, 1.9], [14, -35, 3.1, 1.6], [7.5, -4, 5.6, 1.4], [-8.5, -5, 2.3, 1.7]], 0.42);
+  scatter('mossrock', [[-7, -12, 0.7, 1.1], [8, -26, 2.4, 1.5], [-13, -34, 4.1, 0.8], [12, -9, 1.2, 1.3], [-9, -44, 3.3, 1.0], [16, -44, 5.0, 1.7]], 0.45);
+  scatter('mosspatch', [[-5, -15, 1.0, 2.6], [6, -33, 2.9, 3.1], [-12, -27, 0.3, 2.8], [10, -14, 4.6, 2.4]], 0.5);
   // the hospital's transformer cabinet, rusted dead beside the doors
   const boxSrc = (window.HeroModels || {}).elecbox;
   if (boxSrc) {
@@ -1551,7 +1573,9 @@ function loadHeroModels() {
     // dead oaks for the hillside, and the hospital's rusted transformer
     oaktrees: 'oaktrees', elecbox: 'elecbox',
     // the 1928 grounds lamps — two dead, one still trying
-    streetlamp: 'streetlamp' };
+    streetlamp: 'streetlamp',
+    // the hill is taking the grounds back: wild grass, lichened stone, moss
+    wildgrass: 'wildgrass', mossrock: 'mossrock', mosspatch: 'mosspatch' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)

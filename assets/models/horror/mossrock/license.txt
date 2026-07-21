@@ -1,0 +1,11 @@
+Model Information:
+* title:	Stone with moss
+* source:	https://sketchfab.com/3d-models/stone-with-moss-01fce300303645b4aa3086cce3d4250f
+* author:	Plutonium.software (https://sketchfab.com/plutonium.software)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Stone with moss" (https://sketchfab.com/3d-models/stone-with-moss-01fce300303645b4aa3086cce3d4250f) by Plutonium.software (https://sketchfab.com/plutonium.software) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

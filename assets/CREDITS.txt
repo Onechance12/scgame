@@ -192,6 +192,13 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
                    (texture downscaled to 512)
     streetlamp/    "Street light lamp"              by amurin  (the 1928 grounds lamps)
                    https://sketchfab.com/3d-models/street-light-lamp-78339c366835415fbc58032e99268590
+    wildgrass/     "Real Bush" [wild grass tufts]   by Marbles studio  (textures to 512)
+                   https://sketchfab.com/3d-models/real-bush-62618c3260b142cfb7ef499d75a8d21a
+    mossrock/      "Stone with moss"                by Plutonium.software — CC-BY-NC-4.0
+                   https://sketchfab.com/3d-models/stone-with-moss-01fce300303645b4aa3086cce3d4250f
+                   (non-commercial; this fan tribute is non-commercial. textures to 512)
+    mosspatch/     "Ground moss fores square 2k"    by 3dhdscan  (textures to 512)
+                   https://sketchfab.com/3d-models/ground-moss-fores-square-2k-8b5699d30035485c9564035bb4458a91
 
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
