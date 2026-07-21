@@ -805,7 +805,7 @@ function newGame(saved) {
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   // clear set-piece state so a scare from a previous night can't bleed into this one
   morgueScared = false; carter = null; carterTimer = 50; fallingDebris = []; debrisKept = []; sceneAnims = []; riteClimax = false;
-  dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = [];
+  dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = []; hideSpot = null;
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
   if (wristMenuPanel && wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
@@ -3761,7 +3761,7 @@ function vrLocomotion(dt) {
   const mag = Math.hypot(lx, ly);
   if (mag > 0.92 && !crouched && player.stamina > 1) sprintHold += dt; else sprintHold = 0;
   const sprinting = sprintHold > 0.3 && player.stamina > 1;
-  if ((lx || ly) && !tripping) {
+  if ((lx || ly) && !tripping && !player.hidden) {
     const speed = crouched ? 2.1 : (sprinting ? 6.2 : 4.2);   // m/s — careful / brisk / running
     // forward is -y stick; strafe is x. Right vector = yaw - 90° (was +90°: inverted!)
     const fwd = -ly, str = lx;
@@ -3776,7 +3776,7 @@ function vrLocomotion(dt) {
   else player.stamina = Math.min(100, player.stamina + dt * 12);
   // look-to-walk option: hold X on the MOVE hand only — that hand's Y is the
   // wrist pack, and the other hand's A/B are the cross and the flashlight
-  if (OPTS.walkLook) {
+  if (OPTS.walkLook && !player.hidden) {
     const g = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
     const pressed = g && g.buttons && (g.buttons[4] && g.buttons[4].pressed);
     if (pressed) {
@@ -3811,10 +3811,10 @@ function vrLocomotion(dt) {
   // stick clicks: move-hand = crouch toggle, turn-hand = jump
   const gM = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
   const smNow = !!(gM && gM.buttons && gM.buttons[3] && gM.buttons[3].pressed);
-  if (smNow && !prevStickMove && state === 'PLAY') crouched = !crouched;
+  if (smNow && !prevStickMove && state === 'PLAY' && !player.hidden) crouched = !crouched;
   prevStickMove = smNow;
   const stNow = !!(gT && gT.buttons && gT.buttons[3] && gT.buttons[3].pressed);
-  if (stNow && !prevStickTurn && state === 'PLAY' && jumpY <= 0 && !crouched) { jumpVel = 2.4; jumpY = 0.001; }
+  if (stNow && !prevStickTurn && state === 'PLAY' && jumpY <= 0 && !crouched && !player.hidden) { jumpVel = 2.7; jumpY = 0.001; }
   prevStickTurn = stNow;
   // Y on the move hand: the wrist pack menu
   const yNow = !!(gM && gM.buttons && gM.buttons[5] && gM.buttons[5].pressed);
@@ -3849,8 +3849,8 @@ function bindDesktopInput() {
     if (k === 'c' && state === 'PLAY') Survival.drink();
     if (k === 'v' && state === 'PLAY') Survival.useMedkit();
     if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
-    if (k === ' ' && (state === 'PLAY' || state === 'INTRO') && jumpY <= 0 && !crouched) { jumpVel = 2.7; jumpY = 0.001; }
-    if (k === 'z' && state === 'PLAY') crouched = !crouched;
+    if (k === ' ' && (state === 'PLAY' || state === 'INTRO') && jumpY <= 0 && !crouched && !player.hidden) { jumpVel = 2.7; jumpY = 0.001; }
+    if (k === 'z' && state === 'PLAY' && !player.hidden) crouched = !crouched;
     if (k === 'x' && !e.repeat && state === 'PLAY') xDownAt = performance.now();
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
     if ((k === 'enter' || k === 'escape') && state === 'INTRO') skipCine();
@@ -3896,7 +3896,7 @@ function desktopUpdate(dt) {
   if (keys['a'] || keys['arrowleft']) str -= 1;
   if (keys['d'] || keys['arrowright']) str += 1;
   const sprint = keys['shift'] && player.stamina > 1;
-  if ((fwd || str) && !tripping) {
+  if ((fwd || str) && !tripping && !player.hidden) {
     const speed = crouched ? 1.8 : (sprint ? 6.2 : 3.4);
     const yaw = desk.yaw;
     const dx = -Math.sin(yaw) * fwd + Math.cos(yaw) * str;
@@ -3960,7 +3960,10 @@ function interact() {
   const t = tileAt(player.floor, player.x, player.y);
   if (t === TILE.UP) return changeFloor(1);
   if (t === TILE.DOWN) return changeFloor(-1);
-  if (t === TILE.HIDE) { player.hidden = !player.hidden; showSubtitle(player.hidden ? 'You press into the dark and go still…' : 'You come out.', 2); return; }
+  // hiding is ANCHORED: you tuck into this spot and stay until you interact again.
+  // (Movement is locked while hidden — no walking the halls silent and uncatchable.)
+  if (player.hidden) { leaveHide(); return; }
+  if (t === TILE.HIDE) { enterHide(); return; }
   const it = data.items.find((i) => !i.taken && i.floor === player.floor &&
     Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return pickupItem(it);
@@ -4544,6 +4547,9 @@ function update(dt) {
   updateTrip(dt);
   dolly.position.y = jumpY + crouchLerp + tripY;
   playerTileFromCamera();
+  // hidden = anchored: logical position stays pinned to the hide spot no matter
+  // what the headset (or a stuck stick) does
+  if (player.hidden && hideSpot) { player.x = hideSpot.x; player.y = hideSpot.y; }
 
   // flashlight battery + aim
   if (player.lightOn && player.battery > 0) {
@@ -4736,6 +4742,18 @@ function beamHits(ex, ey) {
   if (da > CONE) return false;
   return Entities.lineOfSight(data.floors[player.floor].grid, player.x, player.y, ex, ey);
 }
+// ---- anchored hiding: enter at a hide tile, leave with Interact — never by walking ----
+let hideSpot = null;
+function enterHide() {
+  hideSpot = { floor: player.floor, x: Math.floor(player.x) + 0.5, y: Math.floor(player.y) + 0.5 };
+  player.hidden = true; player.moving = false; crouched = false;
+  placeDollyAtTile(hideSpot.x, hideSpot.y);
+  showSubtitle('You press into the dark and go still…  (interact again to come out)', 2.5);
+}
+function leaveHide() {
+  player.hidden = false; hideSpot = null;
+  showSubtitle('You come out.', 2);
+}
 function isPlayerLit() {
   if (player.lightOn && player.battery > 0) return true;
   if (Survival.lanternActive()) return true;
@@ -4881,7 +4899,8 @@ function findInteract() {
     if (need && !player.keys[need]) return 'Locked stairwell — needs the key to ' + keyLabel(need);
     return t === TILE.UP ? 'Trigger — climb the stairs up' : 'Trigger — descend the stairs';
   }
-  if (t === TILE.HIDE) return player.hidden ? 'Trigger — leave hiding' : 'Trigger — hide here';
+  if (player.hidden) return 'Trigger — leave hiding';
+  if (t === TILE.HIDE) return 'Trigger — hide here';
   if (t === TILE.EXIT) return 'Trigger — the chained front doors';
   const it = data.items.find((i) => !i.taken && i.floor === player.floor && Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return 'Trigger — take the ' + itemDisplay(it);
