@@ -201,6 +201,20 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
                    https://sketchfab.com/3d-models/ground-moss-fores-square-2k-8b5699d30035485c9564035bb4458a91
     ventvalve/     "Ventilation Valve ceiling/wall" by Mehdi Shahsavan  (textures to 512)
                    https://sketchfab.com/3d-models/ventilation-valve-ceiling-wall-5mb-fadbec3e20754fea815602d72721baae
+    ouija/         "October horror nights - Day 7"  by Carlos Rubio  (the séance circle, ritual room)
+                   https://sketchfab.com/3d-models/october-horror-nights-day-7-7c098ea80c214759be996c1447278eb0
+    wallphone/     "Wallphone victorian horror game" by Renee B  (lobby + the Matron's line)
+                   https://sketchfab.com/3d-models/wallphone-victorian-horror-game-2365af313af24b388847bfc1682b4be6
+    radiator/      "Rusty Radiator"                 by loxfear  (wards, corridors — textures 77MB->2.7MB)
+                   https://sketchfab.com/3d-models/rusty-radiator-37aedf976c6c4264a122f30562ca2aac
+    mirrorh/       "Mirror (horror)"                by BradyL  (bathroom mirrors)
+                   https://sketchfab.com/3d-models/mirror-horror-df7eb9a4e76e43cc82bc29b88cb7cf4f
+    bathcounter/   "Bathroom Counter (horror)"      by BradyL
+                   https://sketchfab.com/3d-models/bathroom-counter-horror-62a37ba67ad5451d810fb56fbe12e63b
+    bloodysofa/    "Bloody Post Apocalyptic sofa"   by Sousinho  (textures 168MB->4.5MB)
+                   https://sketchfab.com/3d-models/bloody-post-apocalyptic-sofa-1f41928026c24b379ef1577ab6c8862f
+    smartwatch/    "Smart watch"                    by JonMxM  (the left-wrist watch in VR)
+                   https://sketchfab.com/3d-models/smart-watch-2c1063b865cb4e35b9de90dfc11c8a65
     scp096/        "SCP-096 Reanimated"             by Sealife Fan 3  (the walk-up runner)
                    https://sketchfab.com/3d-models/scp-096-reanimated-9e0b35c9485d4b51864a232e9653cc3a
                    (textures to 512. SCP-096 originates from the SCP Foundation

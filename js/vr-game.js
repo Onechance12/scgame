@@ -444,6 +444,20 @@ function dressGrip(grip, hand) {
     });
     const holder = new THREE.Group(); holder.userData.handDress = true;
     holder.add(m); grip.add(holder);
+    // the left wrist wears an actual watch — the thing the wrist HUD lives on
+    if (hand === 'left' && (window.HeroModels || {}).smartwatch) {
+      const w = window.HeroModels.smartwatch.clone();
+      let wb = new THREE.Box3().setFromObject(w);
+      const wref = Math.max(wb.max.x - wb.min.x, wb.max.y - wb.min.y, wb.max.z - wb.min.z) || 1;
+      w.scale.setScalar(0.055 / wref);
+      wb = new THREE.Box3().setFromObject(w);
+      const wc = wb.getCenter(new THREE.Vector3());
+      w.position.sub(wc);
+      w.position.add(new THREE.Vector3(0, 0.015, 0.02));   // sits on top of the wrist
+      w.rotation.set(-Math.PI / 2.6, 0, 0);
+      w.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.frustumCulled = false; } });
+      holder.add(w);
+    }
     grip.userData.dressedHand = hand;
     grip.userData.fingers = fingers;
     grip.userData.curl = { t: 0, g: 0 };
@@ -1747,7 +1761,10 @@ function loadHeroModels() {
     // the hill is taking the grounds back: wild grass, lichened stone, moss
     wildgrass: 'wildgrass', mossrock: 'mossrock', mosspatch: 'mosspatch',
     // dead ventilation grilles for the ceilings — things skitter behind them
-    ventvalve: 'ventvalve' };
+    ventvalve: 'ventvalve',
+    // 1928 interior dressing: the séance circle, era phones, heat, mirrors, the lounge
+    ouija: 'ouija', wallphone: 'wallphone', radiator: 'radiator', mirrorh: 'mirrorh',
+    bathcounter: 'bathcounter', bloodysofa: 'bloodysofa', smartwatch: 'smartwatch' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -2279,6 +2296,12 @@ const HPROP_CFG = {
   scarebear:   { by: 'h',    size: 0.85, tint: 0x8a7a68, tintAmt: 0.30 },   // the big one in the nursery
   elecbox:     { by: 'long', size: 1.75, tint: 0x8a8580, tintAmt: 0.15 },
   ventvalve:   { by: 'long', size: 0.55, tint: 0x5a5e64, tintAmt: 0.25, mount: 'ceiling' },
+  ouija:       { by: 'long', size: 2.60, tint: 0xbfc2c8, tintAmt: 0.08, mount: 'flat' },
+  wallphone:   { by: 'h',    size: 0.72, tint: 0x4a3a2c, tintAmt: 0.18, mount: 'wall' },
+  radiator:    { by: 'long', size: 1.15, tint: 0x6a5a4a, tintAmt: 0.22 },
+  mirrorh:     { by: 'h',    size: 0.92, tint: 0x9aa2aa, tintAmt: 0.12, mount: 'wall' },
+  bathcounter: { by: 'long', size: 1.45, tint: 0x8a8578, tintAmt: 0.18 },
+  bloodysofa:  { by: 'long', size: 2.25, tint: 0x6a5f58, tintAmt: 0.20 },
   piano:       { by: 'long', size: 1.55, tint: 0x2a2420, tintAmt: 0.22 },
   planks:      { by: 'long', size: 1.35, tint: 0x6a5236, tintAmt: 0.20, mount: 'wall' },
 };
@@ -2497,6 +2520,7 @@ function placeHorrorProps(fi) {
         wallRow(r, 'N', bed(), 1.5, 0, 2.2, 0, beds);
         if (r.h >= 5) wallRow(r, 'S', bed(), 1.5, Math.PI, 2.2, 0, beds);
         wallRow(r, 'W', 'locker', 0.9, Math.PI / 2, 2.4, 2);
+        if (rnd() < 0.6) wallRow(r, 'E', 'radiator', 0.85, -Math.PI / 2, 3.5, 1);   // 1928 heat, long cold
         // one bed was never emptied — a sheeted body still lies in it
         // (bbox top is the HEADBOARD — the mattress sits well below it)
         if (beds.length && rnd() < 0.3) { const bd = beds[Math.floor(rnd() * beds.length)]; placeTop('deadcovered', bd.wx, bd.wz, bd.yaw, Math.min(bd.top * 0.55, 0.5)); }
@@ -2527,7 +2551,8 @@ function placeHorrorProps(fi) {
         wallRow(r, 'N', 'bookshelf', 1.0, 0, 1.9, 4);
         if (r.w >= 5) wallRow(r, 'S', 'bookshelf', 1.0, Math.PI, 1.9, 3);
         if (r.tag === 'records') wallMount(r, 'evidenceboard');   // the investigation board
-        if (r.tag === 'matron') { centerP(r, 'oldtv', 0, r.w * 0.18, 0); if (rnd() < 0.6) wallMount(r, 'brokenclock'); if (rnd() < 0.6) placeIn(r, 'candle', 0); }
+        if (r.tag === 'matron') { centerP(r, 'oldtv', 0, r.w * 0.18, 0); placeIn(r, 'bloodysofa', yaw4()); wallMount(r, 'wallphone'); if (rnd() < 0.6) wallMount(r, 'brokenclock'); if (rnd() < 0.6) placeIn(r, 'candle', 0); }
+        if (rnd() < 0.4) wallRow(r, 'E', 'radiator', 0.85, -Math.PI / 2, 3.5, 1);
         break;
       case 'dining': { // tables in a tidy grid — abandoned meals still ON them
         const tables = [];
@@ -2551,17 +2576,19 @@ function placeHorrorProps(fi) {
         wallRow(r, 'N', 'wheelchair', 1.6, 0, 1.7);
         if (r.h >= 5) wallRow(r, 'S', 'wheelchair', 1.6, Math.PI, 1.7);
         if (rnd() < 0.8) wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 3, 1);
-        if (r.tag === 'lobby') { wallMount(r, 'brokenclock'); placeIn(r, 'payphone', 0); placeIn(r, 'oldtv', 0); wallMount(r, 'evidenceboard'); if (rnd() < 0.6) wallRow(r, 'S', 'piano', 1.1, Math.PI, 3, 1); }
-        else if (rnd() < 0.5) wallMount(r, 'brokenclock');
+        if (r.tag === 'lobby') { wallMount(r, 'brokenclock'); placeIn(r, 'payphone', 0); wallMount(r, 'wallphone'); placeIn(r, 'oldtv', 0); wallMount(r, 'evidenceboard'); if (rnd() < 0.6) wallRow(r, 'S', 'piano', 1.1, Math.PI, 3, 1); }
+        else { if (rnd() < 0.5) wallMount(r, 'brokenclock'); if (rnd() < 0.7) placeIn(r, 'bloodysofa', yaw4()); }
         break;
       case 'chapel':  // cross at the front, a line of candles before it, an old piano to the side
         centerP(r, 'cross', 0, 0, -(r.h * 0.32));
         wallRow(r, 'N', 'candle', 1.3, 0, 1.5, 4);
         if (rnd() < 0.8) wallRow(r, 'E', 'piano', 1.1, -Math.PI / 2, 3, 1);
         break;
-      case 'bath':    // tubs against one wall, cabinets on the other, a vent overhead
+      case 'bath':    // tubs one wall, counter + MIRROR the other, a vent overhead
         wallRow(r, 'W', 'bloodybath', 1.3, Math.PI / 2, 2.6, 2);
-        wallRow(r, 'E', 'bathcab', 0.9, -Math.PI / 2, 2.4, 2);
+        wallRow(r, 'E', 'bathcounter', 0.9, -Math.PI / 2, 2.6, 1);
+        wallMount(r, 'mirrorh', 'E');   // never trust what it shows you
+        wallRow(r, 'E', 'bathcab', 0.9, -Math.PI / 2, 2.4, 1);
         if (rnd() < 0.8) placeIn(r, 'ventvalve', yaw4());
         break;
       case 'boiler':  // industrial banks + tools scattered on the floor
@@ -2571,7 +2598,11 @@ function placeHorrorProps(fi) {
         centerP(r, 'toolset', yaw4(), r.w * 0.16, 0);
         if (rnd() < 0.5) placeIn(r, 'toolset', yaw4());
         break;
-      case 'ritual':  centerP(r, 'bloodytarp', 0); wallRow(r, 'N', 'candle', 1.3, 0, 1.6, 4); break;
+      case 'ritual':  // the séance circle is still chalked where they left it
+        centerP(r, 'bloodytarp', 0);
+        centerP(r, 'ouija', rnd() * 6.28, r.w * 0.22, r.h * 0.18);
+        wallRow(r, 'N', 'candle', 1.3, 0, 1.6, 4);
+        break;
       case 'nursery':
         if (rnd() < 0.7) placeIn(r, 'oldtv', yaw4());
         if (rnd() < 0.6) placeIn(r, 'voodoohang', 0);
@@ -2595,6 +2626,11 @@ function placeHorrorProps(fi) {
       if (isFloor(x, cy)) place('ceilinglights', x, cy, 0);
       const vx = x + 3;   // a dead vent grille between the pendants
       if (rnd() < 0.6 && isFloor(vx, cy + 1)) place('ventvalve', vx, cy + 1, yaw4());
+      // a cold radiator against the corridor wall every so often
+      if (rnd() < 0.4) {
+        const topSide = cy === data.CORR_TOP;
+        placeW('radiator', (x + 1.5) * TILE_M, (cy + (topSide ? 0.24 : 0.76)) * TILE_M, topSide ? 0 : Math.PI);
+      }
     }
   });
   floorGroup.add(grp);
