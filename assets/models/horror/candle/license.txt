@@ -1,0 +1,11 @@
+Model Information:
+* title:	Lowpoly Candle
+* source:	https://sketchfab.com/3d-models/lowpoly-candle-c5b1ca5b8492426199932f6b1a64a4d9
+* author:	matoteus (https://sketchfab.com/matoteus)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Lowpoly Candle" (https://sketchfab.com/3d-models/lowpoly-candle-c5b1ca5b8492426199932f6b1a64a4d9) by matoteus (https://sketchfab.com/matoteus) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

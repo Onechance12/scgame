@@ -1,0 +1,11 @@
+Model Information:
+* title:	Game Ready - Bloody Tarp
+* source:	https://sketchfab.com/3d-models/game-ready-bloody-tarp-b636393964004ed88ad177ba0cf57267
+* author:	Allan-Jay Branscombe (https://sketchfab.com/AllanJayBranscombe)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Game Ready - Bloody Tarp" (https://sketchfab.com/3d-models/game-ready-bloody-tarp-b636393964004ed88ad177ba0cf57267) by Allan-Jay Branscombe (https://sketchfab.com/AllanJayBranscombe) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

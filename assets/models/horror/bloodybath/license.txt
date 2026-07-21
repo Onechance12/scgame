@@ -1,0 +1,11 @@
+Model Information:
+* title:	Bloody Bathtub - Game Ready
+* source:	https://sketchfab.com/3d-models/bloody-bathtub-game-ready-d6c2486aa8344552830fbb0fb3abfc9d
+* author:	Allan-Jay Branscombe (https://sketchfab.com/AllanJayBranscombe)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Bloody Bathtub - Game Ready" (https://sketchfab.com/3d-models/bloody-bathtub-game-ready-d6c2486aa8344552830fbb0fb3abfc9d) by Allan-Jay Branscombe (https://sketchfab.com/AllanJayBranscombe) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

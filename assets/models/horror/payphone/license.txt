@@ -1,0 +1,11 @@
+Model Information:
+* title:	PSX Public Payphone
+* source:	https://sketchfab.com/3d-models/psx-public-payphone-285381e21fc5425889c8fdf98ee73d16
+* author:	ZwiebelGames (https://sketchfab.com/ZwiebelGames)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "PSX Public Payphone" (https://sketchfab.com/3d-models/psx-public-payphone-285381e21fc5425889c8fdf98ee73d16) by ZwiebelGames (https://sketchfab.com/ZwiebelGames) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

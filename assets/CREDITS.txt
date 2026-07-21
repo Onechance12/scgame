@@ -96,6 +96,31 @@ web/headset weight; meshes and textures are the authors' work.
     bin/          "Garbage Bin Scary Baboon"    by ScaryBaboonRipper
                   https://sketchfab.com/3d-models/garbage-bin-scary-baboon-5b0c9258aed946fa9bc7793dc01ae338
 
+MORE HOSPITAL DRESSING — assets/models/horror/ (all CC-BY-4.0 unless noted;
+attribution REQUIRED, given here). Textures downscaled to 512px, materials aged.
+    examtable/   "Post apocalyptic examination table"  by Sousinho
+    locker/      "Locker"                              by Tiago Lopes
+    metalcab/    "Metal Cabinet"                       by Jakub (Majronator)
+    deadbody/    "Game Ready - Dead Body"              by Allan-Jay Branscombe
+    deadcovered/ "Low Poly Dead Body Covered"          by -Arthur-
+    coffin/      "Wooden Coffin"                       by ShahPid
+    bloodybath/  "Bloody Bathtub - Game Ready"         by Allan-Jay Branscombe
+    bathcab/     "old bathroom cabinet"                by Nullazy
+    oldtv/       "Lowpoly Old TV"                      by matoteus
+    payphone/    "PSX Public Payphone"                 by ZwiebelGames
+    vending/     "Kiosk Machine - Retro Horror Vending Automat" by ZwiebelGames
+    bookshelf/   "PSX Style Wooden Bookshelf"          by My Name Is This
+    candle/      "Lowpoly Candle"                      by matoteus
+    cross/       "Cross"                               by BarnusModels
+    ceilinglights/ "celling lights"                    by blenderer
+    voodoohang/  "Hanging voodoo doll"                 by Sophie (Sofi_EX)
+    shovel/      "Shovel"                              by Homie
+    bloodytarp/  "Game Ready - Bloody Tarp"            by Allan-Jay Branscombe
+    wallblood/   "Abandoned Horror Wall with Blood Splatter" by Vishal Pandey
+    gasstove/    "Old Gas Stove"  by Frice  —  CC-BY-NC-4.0 (non-commercial)
+  Full model pages: sketchfab.com/3d-models/<slug>. This project is a
+  non-commercial fan tribute, compatible with the NC term above.
+
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.

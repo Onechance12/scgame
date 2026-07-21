@@ -1,0 +1,11 @@
+Model Information:
+* title:	Old Gas Stove
+* source:	https://sketchfab.com/3d-models/old-gas-stove-d6eed8abb68840f190979e8a05ca0089
+* author:	Frice (https://sketchfab.com/Frice)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Old Gas Stove" (https://sketchfab.com/3d-models/old-gas-stove-d6eed8abb68840f190979e8a05ca0089) by Frice (https://sketchfab.com/Frice) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

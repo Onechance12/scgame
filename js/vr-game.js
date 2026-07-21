@@ -1003,7 +1003,12 @@ function loadHeroModels() {
   monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
   // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms
   const HPROPS = { hospbed: 'hospbed', horrorbed: 'horrorbed', gurney: 'gurney', wheelchair: 'wheelchair',
-    rewheelchair: 'rewheelchair', clock: 'clock', caftable: 'caftable', bin: 'bin' };
+    rewheelchair: 'rewheelchair', clock: 'clock', caftable: 'caftable', bin: 'bin',
+    // batch 2 — a full hospital's dressing
+    examtable: 'examtable', locker: 'locker', metalcab: 'metalcab', deadbody: 'deadbody', deadcovered: 'deadcovered',
+    coffin: 'coffin', bloodybath: 'bloodybath', bathcab: 'bathcab', oldtv: 'oldtv', payphone: 'payphone',
+    vending: 'vending', bookshelf: 'bookshelf', candle: 'candle', cross: 'cross', ceilinglights: 'ceilinglights',
+    gasstove: 'gasstove', voodoohang: 'voodoohang', shovel: 'shovel', bloodytarp: 'bloodytarp', wallblood: 'wallblood' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   return Promise.all(loads).then(() => {
@@ -1248,11 +1253,33 @@ const HPROP_CFG = {
   clock:       { by: 'h',    size: 2.10, tint: 0x3a2a1a, tintAmt: 0.35 },
   caftable:    { by: 'long', size: 1.70, tint: 0x556070, tintAmt: 0.25 },
   bin:         { by: 'h',    size: 1.00, tint: 0x2c3a2c, tintAmt: 0.30 },
+  // batch 2 — hospital dressing. mount: floor (default, collides) / flat / ceiling / wall (no collision)
+  examtable:   { by: 'long', size: 2.00, tint: 0x9098a0, tintAmt: 0.20 },
+  locker:      { by: 'h',    size: 1.85, tint: 0x6a6a4a, tintAmt: 0.22 },
+  metalcab:    { by: 'h',    size: 1.80, tint: 0x50565e, tintAmt: 0.28 },
+  deadbody:    { by: 'h',    size: 1.70, tint: 0x8a6a66, tintAmt: 0.15 },
+  deadcovered: { by: 'long', size: 1.90, tint: 0x9a9a94, tintAmt: 0.18 },
+  coffin:      { by: 'long', size: 2.00, tint: 0x5a4636, tintAmt: 0.30 },
+  bloodybath:  { by: 'long', size: 1.60, tint: 0xaeb2b0, tintAmt: 0.15 },
+  bathcab:     { by: 'h',    size: 1.40, tint: 0x6a5a44, tintAmt: 0.28 },
+  oldtv:       { by: 'long', size: 0.72, tint: 0x3a3a40, tintAmt: 0.28 },
+  payphone:    { by: 'h',    size: 1.35, tint: 0x30343a, tintAmt: 0.30 },
+  vending:     { by: 'h',    size: 1.90, tint: 0x7a3a3a, tintAmt: 0.22 },
+  bookshelf:   { by: 'h',    size: 1.85, tint: 0x5a4636, tintAmt: 0.28 },
+  candle:      { by: 'h',    size: 0.42, tint: 0xcfc6b0, tintAmt: 0.10, light: true },
+  cross:       { by: 'long', size: 1.15, tint: 0x6a5636, tintAmt: 0.28 },
+  ceilinglights:{ by: 'h',   size: 0.55, tint: 0x44484e, tintAmt: 0.20, mount: 'ceiling' },
+  gasstove:    { by: 'h',    size: 1.00, tint: 0x8a8f92, tintAmt: 0.20 },
+  voodoohang:  { by: 'h',    size: 0.55, tint: 0x9a8a6a, tintAmt: 0.18, mount: 'ceiling' },
+  shovel:      { by: 'long', size: 1.20, tint: 0x5a5250, tintAmt: 0.28 },
+  bloodytarp:  { by: 'long', size: 1.90, tint: 0x6a6a80, tintAmt: 0.12, mount: 'flat' },
+  wallblood:   { by: 'long', size: 1.60, tint: 0x9a9088, tintAmt: 0.10, mount: 'wall' },
 };
 function makeHProp(key, wx, wz, yaw) {
   const src = (window.HeroModels || {})[key];
   const cfg = HPROP_CFG[key];
   if (!src || !cfg) return null;
+  const mount = cfg.mount || 'floor';
   const obj = src.clone();
   let box = new THREE.Box3().setFromObject(obj);
   const sz = box.getSize(new THREE.Vector3());
@@ -1260,15 +1287,58 @@ function makeHProp(key, wx, wz, yaw) {
   obj.scale.setScalar(cfg.size / ref);
   box = new THREE.Box3().setFromObject(obj);
   const ctr = box.getCenter(new THREE.Vector3());
-  obj.position.x -= ctr.x; obj.position.z -= ctr.z; obj.position.y -= box.min.y;
+  obj.position.x -= ctr.x; obj.position.z -= ctr.z;
+  if (mount === 'ceiling') obj.position.y -= box.max.y;        // top flush with the ceiling, hangs down
+  else if (mount === 'wall') obj.position.y -= ctr.y;          // centred on the wall
+  else obj.position.y -= box.min.y;                            // floor / flat: sit on the ground
   obj.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.2); o.frustumCulled = true; } });
   const grp = new THREE.Group();
-  grp.add(obj); grp.rotation.y = yaw; grp.position.set(wx, cfg.wall ? WALL_H * 0.5 : 0, wz);
-  return { grp, wall: !!cfg.wall };
+  grp.add(obj); grp.rotation.y = yaw;
+  const gy = mount === 'ceiling' ? WALL_H - 0.04 : mount === 'wall' ? 1.45 : 0;
+  grp.position.set(wx, gy, wz);
+  if (cfg.light) { const l = new THREE.PointLight(0xffb060, 0.7, 3.4, 2); l.position.y = cfg.size + 0.05; grp.add(l);
+    const fl = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffd48a, fog: false })); fl.position.y = cfg.size + 0.02; grp.add(fl); }
+  return { grp, solid: mount === 'floor' };
 }
+// which props each room type wears, with a spawn chance each. 'bed' picks a bed model.
+const ROOM_PROPS = {
+  surgery:    [['examtable', 1], ['bloodytarp', 0.5], ['metalcab', 0.6], ['ceilinglights', 0.7]],
+  er:         [['examtable', 0.7], ['gurney', 0.6], ['locker', 0.5], ['ceilinglights', 0.7]],
+  admitting:  [['gurney', 0.8], ['payphone', 0.5], ['metalcab', 0.5]],
+  morgue:     [['deadcovered', 1], ['deadbody', 0.8], ['coffin', 0.7], ['examtable', 0.6]],
+  autopsy:    [['examtable', 1], ['deadcovered', 0.7], ['metalcab', 0.5]],
+  xray:       [['metalcab', 0.6], ['examtable', 0.5]],
+  ward:       [['bed', 1], ['locker', 0.6], ['deadcovered', 0.35], ['ceilinglights', 0.6]],
+  recovery:   [['bed', 1], ['wheelchair', 0.6], ['oldtv', 0.4]],
+  iso:        [['bed', 1], ['locker', 0.5], ['wallblood', 0.5]],
+  room207:    [['bed', 1], ['locker', 0.5], ['oldtv', 0.4]],
+  maternity:  [['bed', 1], ['voodoohang', 0.4], ['oldtv', 0.3]],
+  mose:       [['bed', 1], ['locker', 0.5], ['wallblood', 0.4]],
+  quarters:   [['bed', 0.7], ['oldtv', 0.6], ['bookshelf', 0.5]],
+  bath:       [['bloodybath', 0.9], ['bathcab', 0.7]],
+  pharmacy:   [['metalcab', 0.9], ['locker', 0.5]],
+  supply:     [['metalcab', 0.8], ['shovel', 0.4]],
+  storage:    [['metalcab', 0.7], ['shovel', 0.6], ['locker', 0.5]],
+  station:    [['metalcab', 0.7], ['bookshelf', 0.5], ['wheelchair', 0.5]],
+  records:    [['bookshelf', 1], ['metalcab', 0.5]],
+  linen:      [['metalcab', 0.6], ['locker', 0.6]],
+  lobby:      [['clock', 0.8], ['payphone', 0.7], ['vending', 0.7], ['oldtv', 0.4]],
+  waiting:    [['oldtv', 0.7], ['payphone', 0.5], ['vending', 0.5], ['wheelchair', 0.5]],
+  cafeteria:  [['caftable', 0.9], ['vending', 0.7], ['gasstove', 0.5]],
+  kitchen:    [['gasstove', 0.9], ['caftable', 0.7], ['metalcab', 0.5]],
+  chapel:     [['cross', 1], ['candle', 0.9], ['clock', 0.4]],
+  sanctum:    [['cross', 0.8], ['candle', 0.9]],
+  matron:     [['bookshelf', 0.7], ['clock', 0.6], ['candle', 0.6], ['oldtv', 0.4]],
+  ritual:     [['bloodytarp', 0.9], ['candle', 1], ['cross', 0.5]],
+  incinerator:[['shovel', 0.7], ['metalcab', 0.5], ['wallblood', 0.5]],
+  boiler:     [['shovel', 0.6], ['metalcab', 0.5]],
+  laundry:    [['metalcab', 0.6], ['shovel', 0.4]],
+  nursery:    [['voodoohang', 0.6], ['oldtv', 0.4], ['candle', 0.5]],
+  attic:      [['bookshelf', 0.5], ['candle', 0.5], ['voodoohang', 0.4]],
+};
 function placeHorrorProps(fi) {
   const HM = window.HeroModels || {};
-  if (!HM.hospbed && !HM.gurney) return;   // props didn't load — skip quietly
+  if (!HM.hospbed && !HM.examtable) return;   // props didn't load — skip quietly
   const g = data.floors[fi].grid;
   const rooms = data.floors[fi].rooms || [];
   let seed = 90210 + fi * 7919;
@@ -1276,27 +1346,30 @@ function placeHorrorProps(fi) {
   const yaw4 = () => Math.floor(rnd() * 4) * (Math.PI / 2);
   const grp = new THREE.Group();
   const isFloor = (tx, ty) => g[ty] && g[ty][tx] === TILE.FLOOR;
+  const used = new Set();
   const place = (key, tx, ty, yaw) => {
+    const k = tx + ',' + ty;
+    const cfg = HPROP_CFG[key]; const mount = (cfg && cfg.mount) || 'floor';
     if (!isFloor(tx, ty)) return;
+    if ((mount === 'floor' || mount === 'flat') && used.has(k)) return;   // don't stack furniture on one tile
     const p = makeHProp(key, (tx + 0.5) * TILE_M, (ty + 0.5) * TILE_M, yaw);
     if (!p) return;
     grp.add(p.grp);
-    if (!p.wall) { const b = new THREE.Box3().setFromObject(p.grp); propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); }
+    if (p.solid) { const b = new THREE.Box3().setFromObject(p.grp); propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); used.add(k); }
+    else if (mount === 'flat') used.add(k);
   };
   const corner = (r) => [Math.max(r.x + 1, Math.min(r.x + r.w - 2, r.x + (rnd() < 0.5 ? 1 : r.w - 2))),
                          Math.max(r.y + 1, Math.min(r.y + r.h - 2, r.y + (rnd() < 0.5 ? 1 : r.h - 2)))];
-  const BEDS = ['ward', 'recovery', 'iso', 'room207', 'maternity', 'er', 'quarters', 'mose'];
   rooms.forEach((r) => {
-    const tag = r.tag || '';
-    if (BEDS.includes(tag)) {
-      let [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4());
-      if (r.w * r.h > 34 && rnd() < 0.6) { [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4()); }
-    }
-    if (['surgery', 'admitting'].includes(tag)) { const [x, y] = corner(r); place('gurney', x, y, yaw4()); }
-    if (['waiting', 'lobby', 'station', 'recovery'].includes(tag) && rnd() < 0.7) { const [x, y] = corner(r); place(rnd() < 0.5 ? 'wheelchair' : 'rewheelchair', x, y, yaw4()); }
-    if (['lobby', 'chapel', 'matron'].includes(tag)) { const [x, y] = corner(r); place('clock', x, y, yaw4()); }
-    if (['cafeteria', 'kitchen'].includes(tag)) { const [x, y] = corner(r); place('caftable', x, y, yaw4()); }
-    if (['bath', 'storage', 'laundry', 'morgue', 'boiler', 'incinerator', 'pharmacy'].includes(tag) && rnd() < 0.7) { const [x, y] = corner(r); place('bin', x, y, yaw4()); }
+    const list = ROOM_PROPS[r.tag]; if (!list) return;
+    list.forEach(([prop, chance]) => {
+      if (rnd() > chance) return;
+      const key = prop === 'bed' ? (rnd() < 0.5 ? 'hospbed' : 'horrorbed') : prop;
+      const [x, y] = corner(r);
+      place(key, x, y, yaw4());
+    });
+    // a second bed in the big wards
+    if (list.some((p) => p[0] === 'bed') && r.w * r.h > 34 && rnd() < 0.6) { const [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4()); }
   });
   floorGroup.add(grp);
 }

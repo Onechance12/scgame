@@ -1,0 +1,11 @@
+Model Information:
+* title:	Locker
+* source:	https://sketchfab.com/3d-models/locker-e3fde8fe782c41f0b141c9f1b8e13aa5
+* author:	Tiago Lopes (https://sketchfab.com/drobluda)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Locker" (https://sketchfab.com/3d-models/locker-e3fde8fe782c41f0b141c9f1b8e13aa5) by Tiago Lopes (https://sketchfab.com/drobluda) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

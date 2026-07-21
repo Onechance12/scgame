@@ -1,0 +1,11 @@
+Model Information:
+* title:	Wooden Coffin
+* source:	https://sketchfab.com/3d-models/wooden-coffin-c2527af2f71e4993a2abf81e0a7620d0
+* author:	ShahPid (https://sketchfab.com/shsfu)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Wooden Coffin" (https://sketchfab.com/3d-models/wooden-coffin-c2527af2f71e4993a2abf81e0a7620d0) by ShahPid (https://sketchfab.com/shsfu) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
