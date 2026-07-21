@@ -162,6 +162,19 @@ REQUIRED, given here). Heavy textures downscaled (staircase 56M->5.3M).
     planks/        "Wooden Planks"                  by shtran  (boarded-up walls)
                    https://sketchfab.com/3d-models/wooden-planks-3299d83456eb44e0b07da3f31428330e
 
+DEEP-NIGHT CAST, THE CROWBAR & THE YARD — (all CC-BY-4.0; attribution REQUIRED,
+given here). Textures downscaled to 1K for web/headset weight.
+    nightmare1/    "Nightmare creature 3" [The Nightmare]  by Mr.Prizz
+                   https://sketchfab.com/3d-models/nightmare-creature-1-9fb509d207d744babeb5d87a486f7de1
+    wraith/        "Nightmare creature 3" [The Wraith]     by Mr.Prizz
+                   https://sketchfab.com/3d-models/nightmare-creature-3-62862bc678ca4a968bd34b141b31c7eb
+    weapons/       "Low Poly Melee Horror Weapons Pack 1"  by NobleCrowDev  (the crowbar)
+                   https://sketchfab.com/3d-models/low-poly-melee-horror-weapons-pack-1-05524e9513a94b01abf9b79143b02fc3
+    playground/    "Abandoned playground"                  by sergeilihandristov
+                   https://sketchfab.com/3d-models/abandoned-playground-fee40d7bf3e24de5b694d7aa3486066a
+    carousel/      "Abandoned carousel"                    by sergeilihandristov
+                   https://sketchfab.com/3d-models/abandoned-carousel-f472e10e4ed54bd5a0871da3ec753fcc
+
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.

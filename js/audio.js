@@ -861,6 +861,20 @@ const Audio2 = (() => {
     s.connect(hp); hp.connect(g2); g2.connect(master); s.start(t); s.stop(t + 0.65);
   }
 
+  // The crowbar: a fast air-cutting whoosh when swung.
+  function swish(vol) {
+    if (!started) return;
+    const t = now(); const v = vol || 0.1;
+    const s = noiseSource();
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(2600, t + 0.16);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.07);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+    s.connect(bp); bp.connect(g); g.connect(master); s.start(t); s.stop(t + 0.26);
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -873,7 +887,7 @@ const Audio2 = (() => {
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
     footstepPan, laughPan, chains, crash, thud, gust,
-    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan, wardChime,
+    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan, wardChime, swish,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

@@ -241,6 +241,9 @@ const Entities = (() => {
     p = R(2, 'ward');  add({ name: 'Night Nurse', kind: 'nurse2', floor: 2, x: p.x, y: p.y, speed: 1.8, huntSpeed: 3.1, hearing: 6, sight: 8, wakeHour: 2, den: ['ward', 'station', 'room207', 'maternity', 'bath'] });
     p = R(0, 'morgue'); add({ name: 'The Ghoul', kind: 'ghoul', floor: 0, x: p.x, y: p.y, speed: 1.9, huntSpeed: 3.5, hearing: 8, sight: 8, wakeHour: 7, den: ['morgue', 'storage', 'laundry', 'incinerator'] });
     p = R(4, 'quarters'); add({ name: 'The Risen', kind: 'undead', floor: 4, x: p.x, y: p.y, speed: 1.8, huntSpeed: 3.3, hearing: 7, sight: 8, wakeHour: 5, den: ['quarters', 'matron', 'attic', 'chapel', 'bell'] });
+    // Deep-night escalation — the hospital itself starts dreaming
+    p = R(3, 'surgery'); add({ name: 'The Nightmare', kind: 'nightmare', floor: 3, x: p.x, y: p.y, speed: 1.6, huntSpeed: 3.6, hearing: 8, sight: 9, wakeHour: 8, den: ['surgery', 'xray', 'iso', 'recovery', 'ward'] });
+    p = R(4, 'chapel');  add({ name: 'The Wraith', kind: 'wraith', floor: 4, x: p.x, y: p.y, speed: 1.4, huntSpeed: 3.0, hearing: 9, sight: 9, wakeHour: 10, den: ['chapel', 'attic', 'bell', 'matron', 'quarters'] });
     // Infested: a second Crawler stalks the upper wards
     if (opts.extra) { p = R(2, 'ward'); add({ name: 'The Other', kind: 'crawler', floor: 2, x: p.x, y: p.y, speed: 2.6, huntSpeed: 4.4, hearing: 10, sight: 8, wakeHour: 5, den: ['ward', 'maternity', 'station'] }); }
     return list;

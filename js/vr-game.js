@@ -75,6 +75,7 @@ const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
 let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
+let heldWeapon = null, swingT = 0, swingCd = 0, weaponTaught = false;            // the crowbar
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
@@ -634,8 +635,29 @@ function buildExterior() {
   const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(mp, 3));
   const mist = new THREE.Points(mg, new THREE.PointsMaterial({ color: 0x8a93a0, size: 0.9, transparent: true, opacity: 0.10, depthWrite: false }));
   mist.frustumCulled = false; g.add(mist);
+  // the children's playground you pass on the way up — swing set and carousel,
+  // rusted still. In the wind, the carousel turns. Slowly. On its own.
+  const mixers = [];
+  const yard = (gltf, wx, wz, targetW, yaw, slow) => {
+    if (!gltf || !gltf.scene) return;
+    const m = skeletonClone(gltf.scene);
+    let b = new THREE.Box3().setFromObject(m); const sz = b.getSize(new THREE.Vector3());
+    const ref = Math.max(sz.x, sz.z) || 1; m.scale.setScalar(targetW / ref);
+    b = new THREE.Box3().setFromObject(m); const c = b.getCenter(new THREE.Vector3());
+    m.position.set(wx - c.x, -b.min.y - 0.02, wz - c.z); m.rotation.y = yaw;
+    m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.5); o.frustumCulled = false; } });
+    if (gltf.animations && gltf.animations.length) {
+      const mx = new THREE.AnimationMixer(m);
+      const a = mx.clipAction(gltf.animations[0]); a.timeScale = slow; a.play();
+      mixers.push(mx);
+    }
+    g.add(m);
+  };
+  const MOB = window.MobModels || {};
+  yard(MOB.playgroundG, doorX - 13, -20, 7.5, 0.5, 0.5);
+  yard(MOB.carouselG, doorX + 12, -27, 5.5, -0.4, 0.22);
   scene.add(g);
-  return { g, doorX, flickWin, mist, t: 0, gustT: 1.5, cardI: 0 };
+  return { g, doorX, flickWin, mist, mixers, t: 0, gustT: 1.5, cardI: 0 };
 }
 const CINE_CARDS = [
   [2, 'COLLEGE HILL', ['Williamson, West Virginia']],
@@ -660,6 +682,8 @@ function cineUpdate(dt) {
   vignette.material.opacity = Math.max(vignette.material.opacity, 0.35);
   // flickering upstairs window
   if (c.flickWin) c.flickWin.material.emissiveIntensity = Math.random() < 0.06 ? 0.05 : 0.5 + Math.random() * 0.5;
+  // the dead playground stirs — swings sway, the carousel creeps around
+  if (c.mixers) c.mixers.forEach((m) => m.update(dt));
   // mist drift + wind
   c.mist.position.x = Math.sin(c.t * 0.15) * 2;
   c.gustT -= dt;
@@ -1131,8 +1155,12 @@ function loadHeroModels() {
     ['ghoul', 'horror/ghoul/scene.gltf'],         // the Ghoul — basement corpse-eater
     ['closer', 'horror/closer/scene.gltf'],       // the Closer — the Ash's new body
     ['undead', 'horror/undead/scene.gltf'],        // the Risen — a dead patient walking the top floor
+    ['nightmare1', 'horror/nightmare1/scene.gltf'],// the Nightmare — deep-night hunter of the surgical wing
+    ['wraith', 'horror/wraith/scene.gltf'],        // the Wraith — a drifting horror in the attic dark
     // legacy CC0 (set-pieces + fallback)
     ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
+    // exterior set-pieces (animated — the carousel turns on its own)
+    ['playgroundG', 'horror/playground/scene.gltf'], ['carouselG', 'horror/carousel/scene.gltf'],
   ];
   monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
   // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms
@@ -1150,7 +1178,7 @@ function loadHeroModels() {
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
-  const PACKS = { clockpack: 'clockpack', cobwebpack: 'cobwebpack' };
+  const PACKS = { clockpack: 'clockpack', cobwebpack: 'cobwebpack', weapons: 'weapons' };
   const PACKSCENES = {};
   Object.entries(PACKS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { PACKSCENES[k] = g.scene; }).catch((e) => console.warn('pack load failed:', d))));
@@ -1158,6 +1186,7 @@ function loadHeroModels() {
   const PACKITEMS = {
     brokenclock: ['clockpack', 'clock007'], brokenclock2: ['clockpack', 'clock010'],
     cobwebA: ['cobwebpack', 'cobweb002'], cobwebB: ['cobwebpack', 'cobweb004'], cobwebC: ['cobwebpack', 'cobweb006'],
+    crowbar: ['weapons', 'crowbarobj'],
   };
   return Promise.all(loads).then(() => {
     // extract named sub-objects from packs into standalone, upright, centred models
@@ -1481,7 +1510,7 @@ function addLocker(wx, wz) {
   floorGroup.add(m);
 }
 
-const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060, ward: 0xfff0c0 };
+const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060, ward: 0xfff0c0, weapon: 0xb8c2cc };
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
@@ -1606,6 +1635,7 @@ const HPROP_CFG = {
   cobwebB:     { by: 'long', size: 1.30, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
   cobwebC:     { by: 'long', size: 1.15, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
   // batch 4
+  crowbar:     { by: 'long', size: 0.60, tint: 0x5a4a42, tintAmt: 0.20, mount: 'flat' },
   piano:       { by: 'long', size: 1.55, tint: 0x2a2420, tintAmt: 0.22 },
   planks:      { by: 'long', size: 1.35, tint: 0x6a5236, tintAmt: 0.20, mount: 'wall' },
 };
@@ -1945,6 +1975,10 @@ const MOBMAP = {
   ghoul: { key: 'ghoul', targetH: 1.72, translucent: false, opacity: 1, tint: 0x5a5a4a, tintAmt: 0.35, emissive: 0x0a0402, aura: 'rgba(70,30,10,0.5)', auraS: 2.4, yaw: 0 },
   // The Risen — a blood-caked dead patient stalking the top floor
   undead: { key: 'undead', targetH: 1.86, translucent: false, opacity: 1, tint: 0x5a3232, tintAmt: 0.28, emissive: 0x140404, aura: 'rgba(120,20,20,0.5)', auraS: 2.5, yaw: 0 },
+  // The Nightmare — a huge pallid thing that should not run as fast as it does
+  nightmare: { key: 'nightmare1', targetH: 2.15, translucent: false, opacity: 1, tint: 0x4a4046, tintAmt: 0.4, emissive: 0x0c0203, aura: 'rgba(110,20,30,0.55)', auraS: 3.0, yaw: Math.PI },
+  // The Wraith — half-there, drifting above the boards
+  wraith: { key: 'wraith', targetH: 1.92, translucent: true, opacity: 0.85, tint: 0x9aa6bc, tintAmt: 0.32, fly: true, aura: 'rgba(140,160,210,0.5)', auraS: 2.7, yaw: Math.PI },
 };
 function auraSprite(rec, grp, hex, size, y) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -1976,9 +2010,9 @@ function ensureEntityMesh(e) {
         rec.mixer = new THREE.AnimationMixer(model);
         const find = (...keys) => { for (const k of keys) { const c = src.animations.find((a) => a.name.toLowerCase().includes(k)); if (c) return c; } return null; };
         rec.clips = {
-          idle: find('flying_idle', 'idle', 'static', 'take 001') || src.animations[0],
-          walk: find('walking_a', 'walk', 'approach', 'flying_idle') || null,
-          run: find('running_a', 'sprint', 'run', 'charge', 'overwhelm', 'fast_flying') || null,
+          idle: find('flying_idle', 'battle_idle', 'idle', 'static', 'take 001') || src.animations[0],
+          walk: find('walking_a', 'walk_forward', 'walk', 'approach', 'flying_idle') || null,   // *_forward first: some rigs list *_backward earlier
+          run: find('running_a', 'run_forward', 'sprint', 'run', 'charge', 'overwhelm', 'fast_flying') || null,
         };
         rec.clips.walk = rec.clips.walk || rec.clips.idle;
         rec.clips.run = rec.clips.run || rec.clips.walk;
@@ -2176,6 +2210,72 @@ function updateWard(dt) {
   heldCross.position.y += (targetY - heldCross.position.y) * Math.min(1, dt * 9);
 }
 
+// ---- the crowbar: a swing that knocks the dead back a step ----
+function buildHeldWeapon() {
+  const g = new THREE.Group();
+  const src = (window.HeroModels || {}).crowbar;
+  if (src) {
+    const m = src.clone();
+    const box = new THREE.Box3().setFromObject(m); const sz = box.getSize(new THREE.Vector3());
+    const ref = Math.max(sz.x, sz.y, sz.z) || 1; m.scale.setScalar(0.52 / ref);
+    const c2 = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()); m.position.sub(c2);
+    m.rotation.set(0.5, 0.3, -0.9);   // gripped, hook up
+    m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.frustumCulled = false; } });
+    g.add(m);
+  } else { // fallback: a dark iron bar
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3a3e46, metalness: .6, roughness: .5 });
+    g.add(mkBox(0.05, 0.5, 0.05, mat, 0, 0, 0));
+  }
+  g.position.set(-0.2, -0.2, -0.44);   // held in the lower-left of view
+  g.visible = false; camera.add(g);
+  return g;
+}
+function wantsSwing() {
+  if (!player || !player.inv || !player.inv.weapon) return false;
+  if (!isVR) return !!keys['f'];
+  // VR: squeeze the right-hand grip (button index 1)
+  const rs = OPTS.swapHands ? sources.left : sources.right;
+  const gp = rs && rs.userData.inputSource && rs.userData.inputSource.gamepad;
+  return !!(gp && gp.buttons && gp.buttons[1] && gp.buttons[1].pressed);
+}
+function updateWeapon(dt) {
+  if (!heldWeapon) heldWeapon = buildHeldWeapon();
+  if (swingCd > 0) swingCd -= dt;
+  if (swingT > 0) swingT -= dt;
+  if (wantsSwing() && swingCd <= 0 && swingT <= 0 && !brandishing) {
+    swingT = 0.3; swingCd = 0.95;
+    Audio2.swish(0.1);
+    // catch anything close and roughly ahead of you
+    camera.getWorldDirection(tmpV2);
+    const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
+    let landed = false;
+    ents.forEach((e) => {
+      if (e.floor !== player.floor) return;
+      const d = Math.hypot(e.x - player.x, e.y - player.y);
+      if (d > 2.6) return;
+      const ang = Math.abs(normAng(Math.atan2(e.x - player.x, e.y - player.y) - fYaw));
+      if (ang > 1.15) return;   // ~65° cone
+      e.warded = Math.max(e.warded || 0, 1.3);   // it recoils…
+      e.slow = 2.4;                              // …and staggers
+      landed = true;
+    });
+    if (landed) {
+      Audio2.thud(0.5); Audio2.screechPan(0, 0.07);
+      player.fear = Math.max(0, player.fear - 4);
+      haptic(0.5, 60);
+      if (!weaponTaught) { weaponTaught = true; showSubtitle('The iron connects — it reels back. Iron stings the dead, but it won’t stop them.', 4.5); }
+    }
+  }
+  // visual: idle sway low, whip through an arc while swinging
+  heldWeapon.visible = !!player.inv.weapon && !brandishing;
+  const sw = swingT > 0 ? (0.3 - swingT) / 0.3 : 0;               // 0→1 over the swing
+  const arc = sw > 0 ? Math.sin(sw * Math.PI) : 0;                // out and back
+  heldWeapon.rotation.x = -arc * 1.5;
+  heldWeapon.rotation.z = arc * 0.5;
+  heldWeapon.position.y = -0.2 + arc * 0.1;
+  heldWeapon.position.z = -0.44 - arc * 0.16;
+}
+
 // ============================================================ entity audio
 // Every one of the dead is HEARD in surround: cadenced footsteps panned to where
 // it walks, its own voice when it idles nearby, ragged breathing when it is
@@ -2189,11 +2289,14 @@ const HUNT_LINES = {
   ash: 'The embers flare. The Ash begins to drift toward you, crackling.',
   ghoul: 'The gnawing stops. The Ghoul is done with the dead — it wants something fresher.',
   undead: 'The Risen lets out a broken moan and lurches into a run.',
+  nightmare: 'Something enormous unfolds in the dark of the surgical wing — and ROARS.',
+  wraith: 'The cold deepens. The Wraith turns its hollow face toward you and drifts faster.',
 };
 // footstep cadence + weight per kind (interval seconds, volume multiplier)
 const STEP_STYLE = {
   nurse: [0.52, 0.9], nurse2: [0.5, 0.9], mose: [0.62, 1.7], child: [0.3, 0.55],
   crawler: [0.17, 0.45], ghoul: [0.42, 1.1], undead: [0.48, 1.3], ash: [0, 0],   // the Ash doesn't step — it crackles
+  nightmare: [0.66, 1.9], wraith: [0, 0],   // the Wraith glides — you only hear the cold hum
 };
 function panTo(e) {
   camera.getWorldDirection(tmpV2);
@@ -2241,6 +2344,8 @@ function entitySounds(rec, e, dt, d) {
       case 'ghoul': hunt ? Audio2.hissPan(pan, v) : Audio2.gnawPan(pan, v); break;
       case 'undead': Audio2.moanPan(pan, v * 1.2); break;
       case 'ash': Audio2.cracklePan(pan, v); break;
+      case 'nightmare': hunt ? Audio2.growlPan(pan, v * 1.5) : Audio2.breathPan(pan, v * 1.2); break;
+      case 'wraith': hunt ? Audio2.moanPan(pan, v) : Audio2.humPan(pan, v * 0.8); break;
     }
   }
 
@@ -2506,6 +2611,10 @@ function pickupItem(it) {
     case 'ward':
       player.inv.cross = true;
       showSubtitle('A heavy iron crucifix. Hold it up (R / right-hand A button) to drive the dead back — while your faith holds.', 6);
+      break;
+    case 'weapon':
+      player.inv.weapon = true;
+      showSubtitle('A rusted crowbar. Swing it (F / right-hand grip) — iron knocks the dead back a step. It will not kill what is already dead.', 6);
       break;
   }
 }
@@ -3015,6 +3124,7 @@ function update(dt) {
     onCatch: (e) => { deathBy = catchLine(e); die(); },
   };
   updateWard(dt);   // apply the cross's ward BEFORE the dead act this frame (no lag)
+  updateWeapon(dt); // and the crowbar swing, same frame-order guarantee
   let nearest = Infinity, hunting = false;
   const eDt = dt * Survival.entityTimeScale();
   ents.forEach((e) => {
@@ -3332,6 +3442,7 @@ function updateHUD() {
     if (player.inv.emf) bits.push('📶 EMF');
     if (player.inv.spiritbox) bits.push(spiritActive ? '📻 …' : '📻');
     if (player.inv.cross) bits.push((brandishing ? '✝✨ ' : '✝ ') + Math.round(player.faith) + '%');
+    if (player.inv.weapon) bits.push(swingCd > 0 ? '⚒ …' : '⚒');
     Object.keys(player.keys).forEach((id) => bits.push('🗝' + (KEY_SHORT[id] || '')));
     // Unbinding Rite progress: seated/total, carried anchors, censer
     if (ritual && data.rite) {
