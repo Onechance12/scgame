@@ -861,6 +861,29 @@ const Audio2 = (() => {
     s.connect(hp); hp.connect(g2); g2.connect(master); s.start(t); s.stop(t + 0.65);
   }
 
+  // A payphone ringing in an empty building: two-tone electric bell, far too cheerful.
+  function phoneRing(vol) {
+    if (!started) return;
+    const t = now(); const v = vol || 0.08;
+    // one ring = two 1s bursts of a warbling bell
+    for (let burst = 0; burst < 2; burst++) {
+      const bt = t + burst * 2.0;
+      [1180, 1520].forEach((f) => {
+        const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f;
+        const trem = ctx.createOscillator(); trem.type = 'square'; trem.frequency.value = 20;   // the bell clapper
+        const tg = ctx.createGain(); tg.gain.value = 0.5;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, bt);
+        g.gain.linearRampToValueAtTime(v * 0.5, bt + 0.03);
+        g.gain.setValueAtTime(v * 0.5, bt + 0.95);
+        g.gain.exponentialRampToValueAtTime(0.0001, bt + 1.1);
+        trem.connect(tg.gain);
+        o.connect(tg); tg.connect(g); g.connect(master);
+        o.start(bt); o.stop(bt + 1.15); trem.start(bt); trem.stop(bt + 1.15);
+      });
+    }
+  }
+
   // The crowbar: a fast air-cutting whoosh when swung.
   function swish(vol) {
     if (!started) return;
@@ -887,7 +910,7 @@ const Audio2 = (() => {
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
     footstepPan, laughPan, chains, crash, thud, gust,
-    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan, wardChime, swish,
+    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan, wardChime, swish, phoneRing,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

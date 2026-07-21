@@ -76,6 +76,7 @@ function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.string
 let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
 let heldWeapon = null, swingT = 0, swingCd = 0, weaponTaught = false, swingQueued = false;  // the crowbar
+let phoneRang = false;   // the 3:33 AM payphone (once a night)
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
@@ -551,7 +552,7 @@ function newGame(saved) {
   // their dens and won't hunt, fear can't kill, and the game teaches you.
   graceUntil = saved ? 0 : 100;
   onboardStep = saved ? -1 : 0; onboardT = saved ? 0 : 3;
-  hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false;
+  hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false; phoneRang = false;
   deathBy = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   data.objectives.forEach((o) => (o.done = false));
@@ -1008,12 +1009,13 @@ function toggleJournal() {
   html += `<li>○ <b>Gear</b> — 🔋${sv.batteries}/${sv.maxBatteries} spares · 🍶${sv.draughts}/${sv.maxDraughts} · ⚕${sv.medkits} · ${sv.backpack ? '🎒 backpack' : 'no backpack yet'}</li>`;
   const heldKeys = Object.keys(player.keys);
   html += `<li>○ <b>Keys</b> — ${heldKeys.length ? heldKeys.map((id) => '🗝 ' + keyLabel(id)).join(' · ') : 'none yet. The stairwells were locked ward by ward in ’88 — find the keys to climb.'}</li>`;
-  html += '</ul><h3>Documents</h3>';
   const found = documents.filter((d) => d.found);
-  if (!found.length) html += '<p class="hint">Nothing filed yet. Search the rooms — letters, patient files, newspaper clippings, a diary.</p>';
+  html += `</ul><h3>Evidence (${found.length}/${documents.length})</h3>`;
+  if (!found.length) html += '<p class="hint">Nothing filed yet. Search the rooms — letters, patient files, newspaper clippings, a diary. The pages point to the keys, the tools, and the truths.</p>';
   else {
-    html += `<p class="hint">${found.length} of ${documents.length} recovered.</p>`;
     found.forEach((d) => { html += `<div class="casedoc ${d.type}"><b>${d.title}</b><br><span class="hint">${d.body.join('<br>')}</span></div>`; });
+    const left = documents.length - found.length;
+    if (left) html += `<p class="hint">…and ${left} more page${left > 1 ? 's' : ''} still out there in the dark.</p>`;
   }
   el.innerHTML = html + '<p class="tip">TAB TO CLOSE THE FILE</p></div>';
   el.classList.add('show');
@@ -2625,7 +2627,8 @@ function interact() {
   if (ritual && player.floor === ritual.floor && ritualInteract()) return;
   if (t === TILE.EXIT) return tryExit();
   const obj = objectiveHere();
-  if (obj && (obj.type === 'document' || obj.type === 'bell')) return completeObjective(obj);
+  // docId'd truths complete by READING their page, not by standing in the room
+  if (obj && ((obj.type === 'document' && !obj.docId) || obj.type === 'bell')) return completeObjective(obj);
   if (Survival.tryInteract()) return;
   showSubtitle('Nothing here.', 1.2);
 }
@@ -2693,6 +2696,9 @@ function readDocument(doc) {
   if (isVR) showDocPanel(doc); else showDocDom(doc);
   showSubtitle('Added to Case File — ' + doc.title, 3.5);
   player.fear = Math.max(0, player.fear - 3);
+  // some documents ARE the quest: reading the right page completes its truth
+  const o = data.objectives.find((x) => !x.done && x.type === 'document' && x.docId === doc.id);
+  if (o) completeObjective(o);
   saveState();
 }
 
@@ -3145,6 +3151,20 @@ function update(dt) {
   if (autosaveT <= 0) { autosaveT = 10; saveState(); }
   if (docPanelTimer > 0) { docPanelTimer -= dt; if (docPanelTimer <= 0) hideBigPanel(); }
 
+  // 3:33 AM — the payphone in the lobby rings. Nobody has paid the bill since 1988.
+  if (!phoneRang && hour >= 9.55) {
+    phoneRang = true;
+    if (hour > 10.4) { /* resumed a save past 3:33 — the moment has passed */ } else {
+    const here = player.floor === 1;
+    for (let i = 0; i < 4; i++) setTimeout(() => { if (state === 'PLAY') Audio2.phoneRing(here ? 0.09 : 0.035); }, i * 4200);
+    setTimeout(() => { if (state !== 'PLAY') return;
+      showSubtitle(here ? 'The payphone in the lobby is ringing.' : 'Somewhere below, faintly — a payphone is ringing.', 4.5);
+      player.fear = Math.min(100, player.fear + (here ? 7 : 3));
+    }, 900);
+    setTimeout(() => { if (state === 'PLAY' && player.floor === 1) showSubtitle('It stops mid-ring. As if someone answered.', 4); }, 4 * 4200 - 1600);
+    }
+  }
+
   if (isVR) vrLocomotion(dt);
   else desktopUpdate(dt);
   playerTileFromCamera();
@@ -3478,14 +3498,15 @@ function findInteract() {
     }
   }
   const o = objectiveHere();
-  if (o && o.type === 'document') return 'Trigger — read';
+  if (o && o.type === 'document' && !o.docId) return 'Trigger — read';
+  if (o && o.type === 'document' && o.docId) return 'The ledger is here somewhere — find the page';
   if (o && o.type === 'bell') return 'Trigger — ring the dawn bell';
   if (o && o.type === 'spiritbox') return 'Hold left grip — spirit box';
   const sp = Survival.interactPrompt();
   if (sp) return sp;
   return null;
 }
-function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer', ward: 'Warding Cross' })[t] || t; }
+function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer', ward: 'Warding Cross', weapon: 'rusted crowbar', lantern: 'storm lantern' })[t] || t; }
 function itemDisplay(it) { if (it.type === 'anchor') { const a = data.rite.anchors.find((x) => x.key === it.anchor); return a ? a.name : 'Spirit Anchor'; } return itemName(it.type); }
 
 // ============================================================ HUD

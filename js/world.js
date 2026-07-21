@@ -338,8 +338,9 @@ const World = (() => {
       },
       {
         id: 'basement', title: 'Read what the basement burned',
-        hint: 'The Morgue ledger, then survive the incinerator.',
+        hint: 'Find the Morgue Ledger, in the basement morgue. Read it.',
         floor: 0, tag: 'morgue', type: 'document', done: false, lore: 'basement',
+        docId: 'doc_ledger',
       },
       {
         id: 'roof', title: 'Ring the bell at dawn',
@@ -429,6 +430,53 @@ const World = (() => {
       'Do not disturb the basement. Do not relight the candles.',
       'Some doors are locked from the inside for a reason. — Administrator',
     ]);
+    // ---- the quest target the basement truth actually reads ----
+    addDoc(0, 'morgue', 'doc_ledger', 'file', 'Morgue Ledger — the years nobody signed', [
+      'Intake columns, decades of them. NAME / CLAIMED BY / RELEASED TO.',
+      'Whole pages where the last two columns are simply empty.',
+      'A different hand has gone back through and written, over and over,',
+      'in the margin beside the unclaimed: "DOWNSTAIRS." "DOWNSTAIRS." "DOWNSTAIRS."',
+    ], -1, 0);
+    // ---- leads: the tools and keys, tied into the story ----
+    addDoc(1, 'waiting', 'doc_hunter', 'report', 'Investigator’s Pack List — 1997', [
+      'Third visit. If you’re reading this, I didn’t come back for my kit.',
+      'EMF meter — left on the WAITING ROOM bench. It ticks when they’re close.',
+      'Spirit box — filed in RECORDS, under P. For PROOF. They answer on it.',
+      'And listen: carry IRON, or the cross from the chapel. Light stops nothing',
+      'for long, but the old things still flinch from the old answers. — R.T.',
+    ], -1, 1);
+    addDoc(1, 'kitchen', 'doc_cook', 'letter', 'Cook’s Note — taped inside a cupboard', [
+      'To whoever works my kitchen next: the cellar key stays on MY ring,',
+      'and the crowbar stays BEHIND THE STOVE. When the knocking starts',
+      'under the floor at 3 AM, you do not open anything. You knock back',
+      'once, with the iron, and you finish your shift. — E. Odom, 1979',
+    ], 1, -1);
+    addDoc(4, 'chapel', 'doc_chaplain', 'letter', 'The Chaplain’s Last Blessing', [
+      'They asked me to lock the chapel on my way out. I will not.',
+      'I leave the crucifix over the altar — it drove them back the night',
+      'the third floor emptied, when nothing else would. Hold it high and',
+      'hold your FAITH; it burns down like a candle and needs the dark to rest.',
+      'The roof key I leave with God, here, where it has always been.',
+    ], 0, 1);
+    addDoc(2, 'room207', 'doc_207', 'file', 'Room 207 — DO NOT ASSIGN', [
+      'Standing order, night matron, 1971: room 207 is not to be assigned.',
+      'Patients placed there ask to be moved by morning. They all say',
+      'the same thing: someone stands in the corner, counting them.',
+      'The INCINERATOR KEY hangs on the bed rail. Nobody will fetch it.',
+    ], 1, 0);
+    // ---- easter eggs: for the ones who came before you ----
+    addDoc(4, 'attic', 'doc_visitors', 'letter', 'Visitors’ Log — October 2019', [
+      'Two young men with cameras spent a night here, filming the dark.',
+      'Polite boys. Talked TO the building, not about it. Asked permission.',
+      'It liked that. It let them leave — it lets so few things leave —',
+      'and it has been listening for their footsteps on the hill ever since.',
+    ], -1, 1);
+    addDoc(1, 'admitting', 'doc_carousel', 'letter', 'Groundskeeper’s Complaint — 1965', [
+      'Third time this month: the carousel in the children’s yard was',
+      'TURNING at four in the morning. No wind. Gate locked. And before',
+      'you ask — yes, I heard the swings going too, and no, I will not',
+      'be the one to go out there and stop them playing. — W. Justice',
+    ], -1, 1);
 
     // ---------- THE UNBINDING RITE (multi-step end-game build) ----------
     // Four Spirit Anchors, each hidden with one of the dead and GATED behind that
