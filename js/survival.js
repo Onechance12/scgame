@@ -297,7 +297,15 @@ const Survival = (() => {
   function reset2() {
     Object.assign(S, { batteries: 0, maxBatteries: 2, lantern: false, lanternOn: false, lanternFuel: 100 });
   }
-  return { init, reset: () => { reset(); reset2(); }, update, onPickup, drink, useMedkit, tryInteract, interactPrompt,
+  // grant an item outright (no pickup prompt) — used to hand over the kit a
+  // returning player would otherwise collect on the tutorial walk-up
+  function give(type) {
+    if (type === 'lantern') { S.lantern = true; S.lanternFuel = 100; }
+    else if (type === 'backpack') { S.backpack = true; S.maxDraughts = 5; S.maxBatteries = 5; }
+    else if (type === 'battery') { S.batteries = Math.min(S.maxBatteries, S.batteries + 1); }
+    else if (type === 'medkit') { S.medkits++; }
+  }
+  return { init, reset: () => { reset(); reset2(); }, update, onPickup, give, drink, useMedkit, tryInteract, interactPrompt,
     peaceActive, entityTimeScale, hudText, serialize, restore, lanternActive, toggleLantern, state: () => S };
 })();
 if (typeof window !== 'undefined') window.Survival = Survival;

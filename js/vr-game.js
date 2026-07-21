@@ -64,8 +64,12 @@ let dust = null, dustBase = null;
 let stepT = 0, lastTileType = -1, lowBatWarned = false;
 // player options (persisted): swapHands = move on right stick; walkLook = hold A/X to glide; bright = dim-lights mode
 // fov = desktop field of view in degrees (a VR headset's FOV is fixed by its lenses)
-const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true, haunt: 'restless', fov: 72 },
+const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true, haunt: 'restless', fov: 72, skipIntro: false },
   (() => { try { return JSON.parse(localStorage.getItem('collegehill_opts')) || {}; } catch (e) { return {}; } })());
+// once you've walked up the hill once, the game remembers — so "skip the walk-up"
+// can drop you straight inside with the lantern & knowledge you'd have gathered
+function tutorialDone() { try { return localStorage.getItem('collegehill_tut_done') === '1'; } catch (e) { return false; } }
+function setTutorialDone() { try { localStorage.setItem('collegehill_tut_done', '1'); } catch (e) { } }
 // difficulty ("Haunt level"): scales the dead's speed, senses, and numbers
 const HAUNT = {
   faint: { speedMul: 0.82, senseMul: 0.78, extra: false, label: 'FAINT' },
@@ -106,7 +110,12 @@ let controller1, controller2, grip1, grip2;
 let sources = { left: null, right: null };
 let snapCooldown = 0, prevBBtn = false;
 let crouched = false, jumpY = 0, jumpVel = 0, prevStickMove = false, prevStickTurn = false, crouchLerp = 0;
+let tripTimer = 1e9, tripping = false, tripT = 0, tripLen = 0, tripY = 0, sprintHold = 0;   // running wears you down; you go down every 20–45 min
 let wristMenu = false, prevYBtn = false, wristMenuPanel = null, wristMenuCtx = null, wristMenuTex = null, wristMenuT = 0;
+// the watch is a little touch screen: a face with icons you tap with your other
+// hand's fingertip — 🎒 opens the pack, ⚙ opens settings, 🔦 flips your light
+let watchView = 'watch', watchUsed = false, watchArmed = true, watchHover = -1, watchFaceT = 0;
+const _tv1 = new THREE.Vector3(), _tv2 = new THREE.Vector3();
 
 // ---- game state (ported) ----
 let data, ents, player;
@@ -537,12 +546,12 @@ function setupVignette() {
 }
 
 function setupWristPanel() {
-  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 200;
+  const cv = document.createElement('canvas'); cv.width = 384; cv.height = 280;
   wristCtx = cv.getContext('2d');
   wristTex = new THREE.CanvasTexture(cv);
   const mat = new THREE.MeshBasicMaterial({ map: wristTex, transparent: true });
-  wristPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.10), mat);
-  wristPanel.position.set(0, 0.04, -0.06);
+  wristPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.146), mat);
+  wristPanel.position.set(0, 0.055, -0.055);
   wristPanel.rotation.x = -Math.PI / 3;
   wristPanel.visible = false;
   // attached to left grip when connected; add to grip1 now (handedness set later)
@@ -614,6 +623,7 @@ function bindUI() {
     };
     paintF();
   }
+  optBtn('opt-skip', 'skipIntro', (o) => '🚶 Walk-up: ' + (o.skipIntro ? 'SKIP (start inside)' : 'FULL'));
   optBtn('opt-bright', 'bright', (o) => '💡 Lights: ' + (o.bright ? 'DIM' : 'PITCH-DARK'));
   optBtn('opt-swap', 'swapHands', (o) => '🕹 Move stick: ' + (o.swapHands ? 'RIGHT' : 'LEFT'));
   optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold X/Y (move hand) to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
@@ -780,6 +790,9 @@ function newGame(saved) {
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false; phoneRang = false; matronGone = false;
   deathBy = ''; lastKiller = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
+  tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
+  watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
+  if (wristMenuPanel && wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
   data.objectives.forEach((o) => (o.done = false));
 
   if (saved) restoreFrom(saved); else { startEpoch = Date.now(); }
@@ -792,7 +805,19 @@ function newGame(saved) {
   Audio2.startAmbient();
   if (realMode) requestWake();
   if (saved) { showSubtitle('You come back to yourself where you left off. It never left.', 4); saveState(); }
-  else startCinematic();   // the walk up College Hill
+  else if (OPTS.skipIntro) {
+    // straight inside, already carrying what the walk-up would have given you
+    grantTutorialKit();
+    graceUntil = 40;   // a shorter settle than a first-timer's 100 — you know the drill
+    showSubtitle('You already know the way in. The chain’s off the door, the lantern’s on your belt — and they’re waiting.', 5);
+    onboardStep = -1;   // no hand-holding for a veteran
+    saveState();
+  } else startCinematic();   // the walk up College Hill
+}
+// hand a skipping player the kit they'd have collected on the tutorial walk
+function grantTutorialKit() {
+  player.hasLight = true; player.lightOn = true; flashlight.visible = true;
+  if (window.Survival && Survival.give) Survival.give('lantern');
 }
 
 function restoreFrom(s) {
@@ -1260,7 +1285,8 @@ function introAmbient(dt) {
 
 function introLocomotion(dt) {
   const c = cine;
-  if (isVR) updateHands(dt);
+  if (isVR) { updateHands(dt); updateWatch(dt);
+    watchFaceT += dt; if (watchFaceT > 0.2 && data) { watchFaceT = 0; if (watchView === 'watch') drawWrist(data.objectives.filter((o) => o.done).length); } }
   camera.getWorldDirection(tmpV);
   const yaw = Math.atan2(tmpV.x, tmpV.z);
   let fwd = 0, str = 0;
@@ -1331,9 +1357,9 @@ function introSteps(dt) {
   switch (I.step) {
     case 0:   // WATCH
       if (I.stepT === 0) { I.stepT = 1; showBigPanel(CINE_CARDS[0][1], CINE_CARDS[0][2], '#cfd6de'); I.panelT = 4.5;
-        setPrompt(isVR ? 'Turn your left wrist up and check your watch' : 'Check your watch — the hour, and everything in your pack',
-          isVR ? '▶ Press Y' : 'Press TAB'); }
-      if ((isVR && wristMenu) || (!isVR && journalOpen)) { hideBigPanel(); introSetStep(1); }
+        setPrompt(isVR ? 'Turn up your left wrist and tap an icon on your watch' : 'Check your watch — the hour, and everything in your pack',
+          isVR ? 'Tap it  ·  or press Y' : 'Press TAB'); }
+      if ((isVR && watchUsed) || (!isVR && journalOpen)) { hideBigPanel(); introSetStep(1); }
       break;
     case 1:   // FLASHLIGHT
       if (I.stepT === 0) { I.stepT = 1; setPrompt(isVR ? 'Pitch dark on the hill. Thumb your flashlight ON' : 'It is pitch dark. Switch your flashlight ON', isVR ? '▶ Press B' : 'Press F'); }
@@ -1470,6 +1496,7 @@ function endCinematic() {
   startEpoch = Date.now(); elapsed = 0; hour = 0;
   graceUntil = 14;   // a breath to find your feet, then the house comes alive
   onboardStep = 0; onboardT = 4.5;
+  setTutorialDone();   // you've done the walk — next time you can skip straight in
   state = 'PLAY';
   clock.getDelta();
   Audio2.stinger(false);
@@ -3473,21 +3500,31 @@ function readAxes(controller) {
 
 function vrLocomotion(dt) {
   updateHands(dt);   // fingers track the triggers before anything else moves
+  updateWatch(dt);   // and the other hand can be poking the watch's touch screen
   // heading = camera yaw in world
   camera.getWorldDirection(tmpV);
   const yaw = Math.atan2(tmpV.x, tmpV.z); // forward
   const moveSrc = OPTS.swapHands ? sources.right : sources.left;
   const turnSrc = OPTS.swapHands ? sources.left : sources.right;
   const [lx, ly] = readAxes(moveSrc);
-  if (lx || ly) {
-    const speed = crouched ? 2.1 : 4.2;   // m/s — brisk upright, careful when low
+  // shove the stick to the rim to break into a run — costs stamina, and a runner
+  // is louder and more likely to catch a foot
+  const mag = Math.hypot(lx, ly);
+  if (mag > 0.92 && !crouched && player.stamina > 1) sprintHold += dt; else sprintHold = 0;
+  const sprinting = sprintHold > 0.3 && player.stamina > 1;
+  if ((lx || ly) && !tripping) {
+    const speed = crouched ? 2.1 : (sprinting ? 6.2 : 4.2);   // m/s — careful / brisk / running
     // forward is -y stick; strafe is x. Right vector = yaw - 90° (was +90°: inverted!)
     const fwd = -ly, str = lx;
     const dz = (Math.cos(yaw) * fwd + Math.cos(yaw - Math.PI / 2) * str);
     const dx = (Math.sin(yaw) * fwd + Math.sin(yaw - Math.PI / 2) * str);
     const step = speed * dt / TILE_M;
     moveDolly(dx * step, dz * step);
-  }
+    player.moving = true;
+  } else player.moving = false;
+  player.sprinting = sprinting && player.moving;
+  if (player.sprinting) player.stamina = Math.max(0, player.stamina - dt * 24);
+  else player.stamina = Math.min(100, player.stamina + dt * 12);
   // look-to-walk option: hold X on the MOVE hand only — that hand's Y is the
   // wrist pack, and the other hand's A/B are the cross and the flashlight
   if (OPTS.walkLook) {
@@ -3596,8 +3633,8 @@ function desktopUpdate(dt) {
   if (keys['a'] || keys['arrowleft']) str -= 1;
   if (keys['d'] || keys['arrowright']) str += 1;
   const sprint = keys['shift'] && player.stamina > 1;
-  if (fwd || str) {
-    const speed = crouched ? 1.8 : (sprint ? 6 : 3.4);
+  if ((fwd || str) && !tripping) {
+    const speed = crouched ? 1.8 : (sprint ? 6.2 : 3.4);
     const yaw = desk.yaw;
     const dx = -Math.sin(yaw) * fwd + Math.cos(yaw) * str;
     const dz = -Math.cos(yaw) * fwd - Math.sin(yaw) * str;
@@ -3612,6 +3649,37 @@ function desktopUpdate(dt) {
 }
 
 // ============================================================ actions (ported)
+// ---- the stumble: every 20–45 min your legs betray you (sooner if you run) ----
+function startTrip() {
+  tripping = true;
+  tripLen = player.sprinting ? 1.9 : 1.35;
+  tripT = tripLen;
+  tripTimer = 1200 + Math.random() * 1500;   // next one in 20–45 minutes
+  crouched = false;
+  Audio2.thud(0.55); Audio2.footstep(0.09); Audio2.creak();
+  haptic(0.8, 160);
+  comfortBlink(0.8);
+  player.fear = Math.min(100, player.fear + (player.sprinting ? 9 : 5));
+  showSubtitle(player.sprinting
+    ? 'Your foot catches — you go down HARD, palms slapping the cold floor.'
+    : 'You stumble in the dark and drop to a knee.', 3.2);
+}
+function updateTrip(dt) {
+  if (!tripping) {
+    const grace = elapsed < graceUntil;
+    if (!grace && !player.hidden && state === 'PLAY') {
+      tripTimer -= dt * (player.sprinting ? 1.9 : 1);   // running wears you into a fall sooner
+      if (tripTimer <= 0) startTrip();
+    }
+    if (tripY !== 0) tripY += (0 - tripY) * Math.min(1, dt * 8);
+    return;
+  }
+  tripT -= dt;
+  // drop fast onto your hands, sprawl a beat, then push back up to your feet
+  const target = tripT > tripLen - 0.25 ? -0.62 : (tripT > 0.4 ? -0.55 : 0);
+  tripY += (target - tripY) * Math.min(1, dt * 11);
+  if (tripT <= 0) { tripping = false; showSubtitle('You get your feet back under you.', 1.8); }
+}
 function toggleFlash() {
   if (!player.hasLight) return;
   if (player.battery <= 0) { player.lightOn = false; flashlight.visible = false; return; }
@@ -4183,10 +4251,11 @@ function update(dt) {
 
   if (isVR) vrLocomotion(dt);
   else desktopUpdate(dt);
-  // jump arc + crouch height, applied to the rig as one vertical offset
+  // jump arc + crouch height + a stumble dip, applied to the rig as one vertical offset
   if (jumpY > 0) { jumpY += jumpVel * dt; jumpVel -= 9.6 * dt; if (jumpY <= 0) { jumpY = 0; jumpVel = 0; Audio2.thud(0.12); } }
   crouchLerp += ((crouched ? -0.72 : 0) - crouchLerp) * Math.min(1, dt * 8);
-  dolly.position.y = jumpY + crouchLerp;
+  updateTrip(dt);
+  dolly.position.y = jumpY + crouchLerp + tripY;
   playerTileFromCamera();
 
   // flashlight battery + aim
@@ -4571,22 +4640,72 @@ function updateHUD() {
   // in-VR wrist panel
   drawWrist(done);
 }
-// ---- the wrist PACK: press Y (move hand) and your whole kit is on your arm ----
-function toggleWristMenu() {
-  wristMenu = !wristMenu;
-  if (!wristMenuPanel) {
-    const c = document.createElement('canvas'); c.width = 512; c.height = 560;
-    wristMenuCtx = c.getContext('2d');
-    wristMenuTex = new THREE.CanvasTexture(c);
-    if ('colorSpace' in wristMenuTex) wristMenuTex.colorSpace = THREE.SRGBColorSpace;
-    wristMenuPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.26),
-      new THREE.MeshBasicMaterial({ map: wristMenuTex, transparent: true, opacity: 0.96, fog: false, side: THREE.DoubleSide }));
-    wristMenuPanel.position.set(0, 0.20, -0.04);
-    wristMenuPanel.rotation.x = -Math.PI / 3.2;
+// ---- the wrist watch: a touch screen you tap with your other hand ----
+function ensureWristMenuPanel() {
+  if (wristMenuPanel) return;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 560;
+  wristMenuCtx = c.getContext('2d');
+  wristMenuTex = new THREE.CanvasTexture(c);
+  if ('colorSpace' in wristMenuTex) wristMenuTex.colorSpace = THREE.SRGBColorSpace;
+  wristMenuPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.26),
+    new THREE.MeshBasicMaterial({ map: wristMenuTex, transparent: true, opacity: 0.96, fog: false, side: THREE.DoubleSide }));
+  wristMenuPanel.position.set(0, 0.20, -0.04);
+  wristMenuPanel.rotation.x = -Math.PI / 3.2;
+}
+// switch the watch face / pack / settings, showing or hiding the floating panel
+function setWatchView(v) {
+  ensureWristMenuPanel();
+  watchView = v; wristMenu = (v === 'pack'); watchHover = -1; watchArmed = false;
+  const host = wristPanel && wristPanel.parent;
+  if (v === 'watch') { if (wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel); }
+  else if (host) { if (wristMenuPanel.parent !== host) host.add(wristMenuPanel); if (v === 'pack') drawWristMenu(); else drawWatchSettings(); }
+  Audio2.pickup();
+}
+// Y button (or the tutorial) flips the pack open/closed
+function toggleWristMenu() { setWatchView(watchView === 'pack' ? 'watch' : 'pack'); watchUsed = true; }
+// the fingertip of the hand NOT wearing the watch (right hand); falls back to the
+// controller tip if the hand model / finger bones aren't present
+function pokeTip() {
+  const grip = sources.rightGrip; if (!grip) return null;
+  const fs = grip.userData.fingers;
+  if (fs && fs.length) { for (const f of fs) if (f.finger === 'index' && f.seg === 3) return f.b.getWorldPosition(_tv1); }
+  grip.getWorldPosition(_tv1); grip.getWorldDirection(_tv2);
+  return _tv1.add(_tv2.multiplyScalar(0.09));
+}
+// each frame: which button is the fingertip over, and did it press through?
+function updateWatch(dt) {
+  if (!isVR || !wristPanel || !wristPanel.parent) { watchHover = -1; return; }
+  const active = watchView === 'watch'
+    ? { panel: wristPanel, cw: 384, ch: 280, view: 'watch' }
+    : (wristMenuPanel && wristMenuPanel.parent ? { panel: wristMenuPanel, cw: 512, ch: 560, view: watchView } : null);
+  if (!active) { watchHover = -1; return; }
+  const tip = pokeTip(); if (!tip) { watchHover = -1; return; }
+  const lp = active.panel.worldToLocal(tip.clone());
+  const W = active.panel.geometry.parameters.width, H = active.panel.geometry.parameters.height;
+  let hov = -1;
+  if (Math.abs(lp.x) <= W / 2 && Math.abs(lp.y) <= H / 2 && Math.abs(lp.z) < 0.06) {
+    const u = (lp.x + W / 2) / W * active.cw, v = (H / 2 - lp.y) / H * active.ch;
+    const btns = active.view === 'watch' ? watchFaceButtons() : watchMenuButtons(active.view);
+    for (let i = 0; i < btns.length; i++) { const b = btns[i]; if (u >= b.x && u <= b.x + b.w && v >= b.y && v <= b.y + b.h) { hov = i; break; } }
+    if (hov >= 0 && Math.abs(lp.z) < 0.014 && watchArmed) { watchArmed = false; fireWatch(active.view, hov); }
   }
-  const host = wristPanel && wristPanel.parent;   // ride the same wrist as the HUD
-  if (wristMenu && host) { host.add(wristMenuPanel); drawWristMenu(); Audio2.pickup(); }
-  else if (wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
+  if (hov === -1 || Math.abs(lp.z) > 0.03) watchArmed = true;   // re-arm once the finger pulls back
+  if (hov !== watchHover) {
+    watchHover = hov;
+    const done = data ? data.objectives.filter((o) => o.done).length : 0;
+    if (watchView === 'watch') drawWrist(done); else if (watchView === 'pack') drawWristMenu(); else drawWatchSettings();
+  }
+}
+function fireWatch(view, i) {
+  watchUsed = true; haptic(0.4, 45, OPTS.swapHands ? 'left' : 'right');
+  if (view === 'watch') {
+    if (i === 0) setWatchView('pack'); else if (i === 1) setWatchView('settings'); else if (i === 2) { toggleFlash(); Audio2.pickup(); }
+  } else if (view === 'pack') { if (i === 0) setWatchView('watch'); }
+  else if (view === 'settings') {
+    const b = watchMenuButtons('settings')[i];
+    if (b.id === 'back') setWatchView('watch');
+    else { if (b.id === 'haunt') { const k = HAUNT_ORDER.indexOf(OPTS.haunt); OPTS.haunt = HAUNT_ORDER[(k + 1) % 3]; } else OPTS[b.id] = !OPTS[b.id]; saveOpts(); applyBrightness(); drawWatchSettings(); Audio2.pickup(); }
+  }
 }
 function drawWristMenu() {
   if (!wristMenuCtx) return;
@@ -4622,34 +4741,91 @@ function drawWristMenu() {
     c.fillStyle = col; c.fillText(txt.slice(0, 34), 62, y);
     y += 36;
   }
-  c.fillStyle = '#c9a24a'; c.font = "20px 'Special Elite', monospace";
+  c.fillStyle = '#c9a24a'; c.font = "20px 'Special Elite', monospace"; c.textAlign = 'left';
   const next = data.objectives.find((o) => !o.done);
   c.fillText('▶ ' + (next ? next.title.slice(0, 36) : 'Reach the front doors'), 20, 530);
-  c.fillStyle = '#6a7580'; c.font = "17px 'Special Elite', monospace";
-  c.fillText('Y closes · options on the start screen', 20, 552);
+  c.fillStyle = '#6a7580'; c.font = "16px 'Special Elite', monospace";
+  c.fillText('Tap BACK, or press Y', 20, 552);
+  // BACK button — poke it to return to the watch face
+  const bk = watchMenuButtons('pack')[0], hov = watchView === 'pack' && watchHover === 0;
+  c.fillStyle = hov ? 'rgba(201,162,74,0.35)' : 'rgba(255,255,255,0.06)'; roundRectC(c, bk.x, bk.y, bk.w, bk.h, 8); c.fill();
+  c.strokeStyle = hov ? '#e8cf7a' : 'rgba(255,255,255,0.2)'; c.lineWidth = hov ? 3 : 1.5; roundRectC(c, bk.x, bk.y, bk.w, bk.h, 8); c.stroke();
+  c.fillStyle = hov ? '#ffe9a8' : '#cdd6de'; c.font = "22px 'Special Elite', monospace"; c.textAlign = 'center'; c.fillText('↩ BACK', bk.x + bk.w / 2, bk.y + 31);
+  wristMenuTex.needsUpdate = true;
+}
+function drawWatchSettings() {
+  if (!wristMenuCtx) return;
+  const c = wristMenuCtx; c.clearRect(0, 0, 512, 560);
+  c.fillStyle = 'rgba(8,9,14,0.95)'; c.fillRect(0, 0, 512, 560);
+  c.strokeStyle = 'rgba(201,162,74,0.5)'; c.lineWidth = 1; c.strokeRect(3, 3, 506, 554);
+  c.fillStyle = '#e7edf2'; c.font = "30px 'Special Elite', monospace"; c.textAlign = 'left'; c.fillText('SETTINGS', 24, 48);
+  const labels = {
+    bright: '💡 Lights: ' + (OPTS.bright ? 'DIM' : 'PITCH-DARK'),
+    haunt: '💀 Haunt: ' + HAUNT[OPTS.haunt].label,
+    swapHands: '🕹 Move stick: ' + (OPTS.swapHands ? 'RIGHT' : 'LEFT'),
+    skipIntro: '🚶 Walk-up: ' + (OPTS.skipIntro ? 'SKIP' : 'FULL'),
+    back: '↩ BACK TO WATCH',
+  };
+  watchMenuButtons('settings').forEach((b, i) => {
+    const hov = watchHover === i;
+    c.fillStyle = b.id === 'back' ? 'rgba(160,18,18,0.28)' : (hov ? 'rgba(201,162,74,0.3)' : 'rgba(255,255,255,0.05)');
+    roundRectC(c, b.x, b.y, b.w, b.h, 10); c.fill();
+    c.strokeStyle = hov ? '#e8cf7a' : 'rgba(255,255,255,0.2)'; c.lineWidth = hov ? 3 : 1.5; roundRectC(c, b.x, b.y, b.w, b.h, 10); c.stroke();
+    c.fillStyle = hov ? '#ffe9a8' : '#e7edf2'; c.font = "24px 'Special Elite', monospace"; c.textAlign = 'left';
+    c.fillText(labels[b.id], b.x + 20, b.y + 37);
+  });
+  c.fillStyle = '#6a7580'; c.font = "16px 'Special Elite', monospace"; c.fillText('Tap a row with your other hand', 24, 546);
   wristMenuTex.needsUpdate = true;
 }
 
+function roundRectC(c, x, y, w, h, r) {
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+const WATCH_ICONS = [['🎒', 'PACK'], ['⚙', 'SET'], ['🔦', 'LIGHT']];
+function watchFaceButtons() { return [{ x: 12, y: 216, w: 114, h: 54 }, { x: 135, y: 216, w: 114, h: 54 }, { x: 258, y: 216, w: 114, h: 54 }]; }
+function watchMenuButtons(view) {
+  if (view === 'pack') return [{ id: 'back', x: 344, y: 12, w: 152, h: 46 }];
+  if (view === 'settings') return [
+    { id: 'bright', x: 24, y: 74, w: 464, h: 58 }, { id: 'haunt', x: 24, y: 140, w: 464, h: 58 },
+    { id: 'swapHands', x: 24, y: 206, w: 464, h: 58 }, { id: 'skipIntro', x: 24, y: 272, w: 464, h: 58 },
+    { id: 'back', x: 24, y: 352, w: 464, h: 58 },
+  ];
+  return [];
+}
 function drawWrist(done) {
   if (!wristCtx) return;
-  const c = wristCtx; c.clearRect(0, 0, 320, 200);
-  c.fillStyle = 'rgba(6,6,10,0.85)'; c.fillRect(0, 0, 320, 200);
-  c.fillStyle = '#cdd6de'; c.font = "26px 'Special Elite', monospace"; c.textAlign = 'left';
-  c.fillText(fmtClock(), 14, 32);
+  const c = wristCtx; c.clearRect(0, 0, 384, 280);
+  c.fillStyle = 'rgba(6,6,10,0.86)'; c.fillRect(0, 0, 384, 280);
+  c.strokeStyle = 'rgba(201,162,74,0.3)'; c.lineWidth = 2; c.strokeRect(3, 3, 378, 274);
+  c.fillStyle = '#cdd6de'; c.font = "30px 'Special Elite', monospace"; c.textAlign = 'left';
+  c.fillText(fmtClock(), 16, 40);
   c.textAlign = 'right'; c.fillStyle = '#9aa7b0';
-  c.fillText(`Truths ${done}/4` + (player.inv.weapon ? (swingCd > 0 ? '  ⚒…' : '  ⚒') : ''), 306, 32);
+  c.fillText(`Truths ${done}/4` + (player.inv.weapon ? (swingCd > 0 ? '  ⚒…' : '  ⚒') : ''), 368, 40);
   // bars (compact rows so faith fits when you carry the cross)
   const hasFaith = !!player.inv.cross;
-  const rows = hasFaith ? [46, 82, 118, 154] : [52, 92, 132];
-  bar(c, 14, rows[0], 'FEAR', player.fear, '#e02a2a');
-  bar(c, 14, rows[1], 'LIGHT', player.battery, '#8aff9e');
-  bar(c, 14, rows[2], 'BODY', player.stamina, '#7ad0ff');
-  if (hasFaith) bar(c, 14, rows[3], 'FAITH', player.faith, '#e8cf7a');
-  c.fillStyle = '#c9a24a'; c.font = "18px 'Special Elite', monospace"; c.textAlign = 'left';
+  const rows = hasFaith ? [58, 96, 134, 172] : [62, 106, 150];
+  bar(c, 16, rows[0], 'FEAR', player.fear, '#e02a2a');
+  bar(c, 16, rows[1], 'LIGHT', player.battery, '#8aff9e');
+  bar(c, 16, rows[2], 'BODY', player.stamina, '#7ad0ff');
+  if (hasFaith) bar(c, 16, rows[3], 'FAITH', player.faith, '#e8cf7a');
+  c.fillStyle = '#c9a24a'; c.font = "17px 'Special Elite', monospace"; c.textAlign = 'left';
   const next = data.objectives.find((o) => !o.done);
-  c.fillText(next ? next.title.slice(0, 30) : 'Reach the front doors', 14, hasFaith ? 192 : 184);
+  c.fillText((next ? next.title : 'Reach the front doors').slice(0, 32), 16, 202);
+  // the icon row — poke these with your other hand
+  const fb = watchFaceButtons();
+  c.textAlign = 'center';
+  fb.forEach((b, i) => {
+    const hov = watchView === 'watch' && watchHover === i;
+    c.fillStyle = hov ? 'rgba(201,162,74,0.35)' : 'rgba(255,255,255,0.06)'; roundRectC(c, b.x, b.y, b.w, b.h, 9); c.fill();
+    c.strokeStyle = hov ? '#e8cf7a' : 'rgba(255,255,255,0.18)'; c.lineWidth = hov ? 3 : 1.5; roundRectC(c, b.x, b.y, b.w, b.h, 9); c.stroke();
+    c.fillStyle = (i === 2 && player.lightOn) ? '#8aff9e' : '#e7edf2'; c.font = "30px 'Special Elite', monospace";
+    c.fillText(WATCH_ICONS[i][0], b.x + b.w / 2, b.y + 30);
+    c.fillStyle = hov ? '#ffe9a8' : '#9aa7b0'; c.font = "15px 'Special Elite', monospace";
+    c.fillText(i === 2 ? (player.lightOn ? 'ON' : 'LIGHT') : WATCH_ICONS[i][1], b.x + b.w / 2, b.y + 48);
+  });
   wristTex.needsUpdate = true;
-  if (wristMenu && (wristMenuT = (wristMenuT + 1) % 24) === 0) drawWristMenu();   // keep the pack fresh while open
+  if (watchView !== 'watch' && (wristMenuT = (wristMenuT + 1) % 24) === 0) { if (watchView === 'pack') drawWristMenu(); else drawWatchSettings(); }
 }
 function bar(c, x, y, label, v, col) {
   c.fillStyle = '#8a95a0'; c.font = "16px 'Special Elite', monospace"; c.textAlign = 'left';
