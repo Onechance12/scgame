@@ -233,6 +233,10 @@ Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.
 
+    matches/             "Matches" by Costr (Viverna)
+                   https://sketchfab.com/3d-models/matches-40be5eca89314de08a37653a2d386e9a
+                   (CC-BY-4.0; the kitchen matchbox that lights the storm lantern)
+
 VENDORED LIBRARIES
 ------------------
   js/vendor/peerjs.min.js — PeerJS 1.5.4 (https://peerjs.com), MIT License.

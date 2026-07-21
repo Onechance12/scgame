@@ -137,8 +137,16 @@ const Survival = (() => {
         break;
       }
       case 'lantern':
-        S.lantern = true; S.lanternOn = true; A.pickup();
-        H.subtitle('An old hurricane lantern. Soft light all around you — toggle it with L (or click the left stick). It burns slow.', 5);
+        // the chapel lantern comes with a matchbook tucked under the bail — lights at once
+        S.lantern = true; S.lanternOn = true; S.matches = true; A.pickup();
+        H.subtitle('An old hurricane lantern, a matchbook under the bail. Soft light all around you — toggle it with L (or click the left stick). It burns slow.', 5);
+        break;
+      case 'matches':
+        S.matches = true; A.pickup();
+        if (S.lantern && !S.lanternOn && S.lanternFuel > 0) {
+          S.lanternOn = true;
+          H.subtitle('Kitchen matches. You strike one — the storm lantern takes the flame. Soft gold light all around you.', 4.5);
+        } else H.subtitle('A box of kitchen matches. Now — something worth lighting.', 3);
         break;
       case 'medkit':
         S.medkits++; A.pickup();
@@ -251,6 +259,7 @@ const Survival = (() => {
   function toggleLantern() {
     if (!S.lantern) { H.subtitle('You don’t have a lantern. One hangs somewhere in the chapel.', 2.5); return; }
     if (S.lanternFuel <= 0) { H.subtitle('The lantern is dry.', 2); return; }
+    if (!S.lanternOn && !S.matches) { H.subtitle('Nothing to light it with. There were matches in this place once — try the kitchen.', 3.5); return; }
     S.lanternOn = !S.lanternOn; H.audio.pickup();
   }
 
@@ -281,7 +290,7 @@ const Survival = (() => {
   // ---------- persistence ----------
   function serialize() {
     return { draughts: S.draughts, maxDraughts: S.maxDraughts, backpack: S.backpack, medkits: S.medkits,
-      batteries: S.batteries, maxBatteries: S.maxBatteries, lantern: S.lantern, lanternOn: S.lanternOn, lanternFuel: S.lanternFuel,
+      batteries: S.batteries, maxBatteries: S.maxBatteries, lantern: S.lantern, lanternOn: S.lanternOn, lanternFuel: S.lanternFuel, matches: S.matches,
       teddies: S.teddies, blessed: S.blessed, safeOpened: S.safeOpened,
       peaceUntil: S.peaceUntil, peaceKind: S.peaceKind, sanctumReadyAt: S.sanctumReadyAt,
       lastAlmanacHour: S.lastAlmanacHour };
@@ -295,7 +304,7 @@ const Survival = (() => {
   function init(hooks) { H = hooks; }
 
   function reset2() {
-    Object.assign(S, { batteries: 0, maxBatteries: 2, lantern: false, lanternOn: false, lanternFuel: 100 });
+    Object.assign(S, { batteries: 0, maxBatteries: 2, lantern: false, lanternOn: false, lanternFuel: 100, matches: false });
   }
   // grant an item outright (no pickup prompt) — used to hand over the kit a
   // returning player would otherwise collect on the tutorial walk-up

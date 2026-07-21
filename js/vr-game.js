@@ -1413,7 +1413,7 @@ function introInteract() {
     I.lanternTaken = true; Audio2.pickup(); Audio2.whisper(0.3);
     [c._lantern.mesh, c._lantern.light, c._lantern.halo].forEach((o) => { if (o && o.parent) o.parent.remove(o); });
     mountHeldLantern();
-    setPrompt('A dented storm lantern — bone dry, no matches. Find some inside', '');
+    setPrompt('A dented storm lantern, still full of oil — but not a match on you. The kitchen will have some', '');
     return;
   }
   if (I.noteReady && !I.noteRead && c._note && Math.hypot(px - c._note.wx, pz - c._note.wz) < 2.8) {
@@ -1497,6 +1497,9 @@ function endCinematic() {
     if (c.intro.banner && c.intro.banner.mesh.parent) c.intro.banner.mesh.parent.remove(c.intro.banner.mesh);
   }
   hideBigPanel();
+  // the lantern you took off the gatepost comes inside with you (unlit — the
+  // matches are in the kitchen, like the walk-up promised)
+  if (c.intro && c.intro.lanternTaken && window.Survival && Survival.give) Survival.give('lantern');
   fog.density = 0.055;   // the building's air closes back in
   Audio2.creak(); Audio2.slam();
   comfortBlink(1);
@@ -2078,7 +2081,9 @@ function loadHeroModels() {
     ventvalve: 'ventvalve',
     // 1928 interior dressing: the séance circle, era phones, heat, mirrors, the lounge
     ouija: 'ouija', wallphone: 'wallphone', radiator: 'radiator', mirrorh: 'mirrorh',
-    bathcounter: 'bathcounter', bloodysofa: 'bloodysofa', smartwatch: 'smartwatch' };
+    bathcounter: 'bathcounter', bloodysofa: 'bloodysofa', smartwatch: 'smartwatch',
+    // the kitchen matchbox — the flame the tutorial's dry lantern is waiting for
+    matches: 'matches' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -2463,7 +2468,7 @@ function addLocker(wx, wz) {
   floorGroup.add(m);
 }
 
-const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060, ward: 0xfff0c0, weapon: 0xb8c2cc };
+const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060, ward: 0xfff0c0, weapon: 0xb8c2cc, matches: 0xffa04a };
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
@@ -2484,6 +2489,25 @@ function addItemMesh(it) {
     const glowB = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,255,255,0.85)'), color: 0xd8a06a, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
     glowB.scale.set(0.55, 0.55, 1); glowB.position.y = 0.2; g.add(glowB);
     g.position.set((it.x + 0.5) * TILE_M, 0.02, (it.y + 0.5) * TILE_M);   // it sits on the floor, like it was left there
+    floorGroup.add(g);
+    itemMeshes.set(it.id, g);
+    return;
+  }
+  // the matchbox is a REAL box of matches spilled on the kitchen counter-height —
+  // small, warm-glowing, exactly where a cook would have left them
+  if (it.type === 'matches' && (window.HeroModels || {}).matches) {
+    const m = window.HeroModels.matches.clone();
+    let b = new THREE.Box3().setFromObject(m);
+    const w = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) || 1;
+    m.scale.setScalar(0.32 / w);
+    b = new THREE.Box3().setFromObject(m);
+    const ctr = b.getCenter(new THREE.Vector3());
+    m.position.set(-ctr.x, -b.min.y, -ctr.z);
+    m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.map) o.material.map.anisotropy = 4; o.frustumCulled = true; } });
+    g.add(m);
+    const glowM = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,255,255,0.85)'), color: 0xffa04a, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glowM.scale.set(0.5, 0.5, 1); glowM.position.y = 0.12; g.add(glowM);
+    g.position.set((it.x + 0.5) * TILE_M, 0.9, (it.y + 0.5) * TILE_M);   // counter height by the stove
     floorGroup.add(g);
     itemMeshes.set(it.id, g);
     return;
@@ -3783,7 +3807,7 @@ function pickupItem(it) {
     saveState();
     return;
   }
-  if (['draught', 'backpack', 'medkit', 'teddy', 'battery', 'lantern'].includes(it.type)) {
+  if (['draught', 'backpack', 'medkit', 'teddy', 'battery', 'lantern', 'matches'].includes(it.type)) {
     if (Survival.onPickup(it)) {
       it.taken = true;
       const m2 = itemMeshes.get(it.id);
@@ -4660,7 +4684,7 @@ function findInteract() {
   if (sp) return sp;
   return null;
 }
-function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer', ward: 'Warding Cross', weapon: 'rusted crowbar', lantern: 'storm lantern' })[t] || t; }
+function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer', ward: 'Warding Cross', weapon: 'weapon', lantern: 'storm lantern', matches: 'box of matches' })[t] || t; }
 function itemDisplay(it) { if (it.type === 'anchor') { const a = data.rite.anchors.find((x) => x.key === it.anchor); return a ? a.name : 'Spirit Anchor'; } return itemName(it.type); }
 
 // ============================================================ HUD
@@ -4786,7 +4810,7 @@ function drawWristMenu() {
   if (player.inv.spiritbox) lines.push(['📻', 'Spirit box (hold left grip)', '#c99cff']);
   lines.push(['🍶', 'Quiet Draughts: ' + sv.draughts + '/' + sv.maxDraughts, '#9ae0c8']);
   lines.push(['⚕', 'Medkits: ' + sv.medkits, '#ff8a8a']);
-  if (sv.lantern) lines.push(['🏮', 'Storm lantern', '#ffc04a']);
+  if (sv.lantern) lines.push(['🏮', 'Storm lantern — ' + (sv.lanternOn ? 'lit, ' + Math.round(sv.lanternFuel) + '%' : sv.matches ? 'unlit' : 'needs matches (kitchen)'), '#ffc04a']);
   lines.push(['🎒', sv.backpack ? 'Backpack (bigger pockets)' : 'No backpack yet — basement storage', '#b08a5a']);
   lines.push(['🧸', 'Teddies: ' + sv.teddies.length + '/7', '#d8a06a']);
   const heldKeys = Object.keys(player.keys);

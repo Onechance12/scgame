@@ -291,6 +291,7 @@ const World = (() => {
     // Stairwell keys — the hospital was locked down ward by ward when it closed.
     // Each floor's stairwell needs its key, found one floor below it (a chain).
     addItem(1, 'kitchen', 'key', 'key_stairs0', 0, 1);   // basement — the cook held it
+    addItem(1, 'kitchen', 'matches', 'matchbox', 1, 1);  // kitchen matches by the stove — they light the storm lantern
     addItem(1, 'kitchen', 'weapon', 'crowbar', -1, -1);  // a rusted crowbar behind the stove — iron for the dead
     // the rest of the arsenal, scattered where you'd expect to find each one
     addItem(2, 'ward', 'weapon', 'axe', 1, 0);        // a fire axe in the patient-ward case
