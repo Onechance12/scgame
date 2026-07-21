@@ -75,7 +75,7 @@ const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
 let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
-let heldWeapon = null, swingT = 0, swingCd = 0, weaponTaught = false;            // the crowbar
+let heldWeapon = null, swingT = 0, swingCd = 0, weaponTaught = false, swingQueued = false;  // the crowbar
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
@@ -520,7 +520,7 @@ function startDesktop(saved) {
   document.getElementById('vr-hud').classList.add('show');
   document.getElementById('vr-crosshair').style.display = 'block';
   document.getElementById('controls-hint').textContent =
-    'WASD move · mouse look · F flashlight · E interact · R hold up CROSS · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
+    'WASD move · mouse look · F flashlight · E interact · R hold up CROSS · G/click swing CROWBAR · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
   heroReady.then(() => newGame(saved));
@@ -2292,7 +2292,7 @@ function buildHeldWeapon() {
 }
 function wantsSwing() {
   if (!player || !player.inv || !player.inv.weapon) return false;
-  if (!isVR) return !!keys['f'];
+  if (!isVR) return !!keys['g'] || swingQueued;   // NOT 'f' — that's the flashlight
   // VR: squeeze the right-hand grip (button index 1)
   const rs = OPTS.swapHands ? sources.left : sources.right;
   const gp = rs && rs.userData.inputSource && rs.userData.inputSource.gamepad;
@@ -2302,7 +2302,8 @@ function updateWeapon(dt) {
   if (!heldWeapon) heldWeapon = buildHeldWeapon();
   if (swingCd > 0) swingCd -= dt;
   if (swingT > 0) swingT -= dt;
-  if (wantsSwing() && swingCd <= 0 && swingT <= 0 && !brandishing) {
+  const wanted = wantsSwing(); swingQueued = false;   // a click buys one swing attempt
+  if (wanted && swingCd <= 0 && swingT <= 0 && !brandishing) {
     swingT = 0.3; swingCd = 0.95;
     Audio2.swish(0.1);
     // catch anything close and roughly ahead of you
@@ -2551,6 +2552,7 @@ function bindDesktopInput() {
   cv.addEventListener('mousedown', (e) => {
     if (isVR) return;
     if (document.pointerLockElement !== cv) cv.requestPointerLock && cv.requestPointerLock();
+    else if (state === 'PLAY' && e.button === 0) swingQueued = true;   // left click swings the crowbar once locked in
     desk.dragging = true;
   });
   window.addEventListener('mouseup', () => desk.dragging = false);
@@ -2674,7 +2676,7 @@ function pickupItem(it) {
       break;
     case 'weapon':
       player.inv.weapon = true;
-      showSubtitle('A rusted crowbar. Swing it (F / right-hand grip) — iron knocks the dead back a step. It will not kill what is already dead.', 6);
+      showSubtitle('A rusted crowbar. Swing it (G or left-click / right-hand grip in VR) — iron knocks the dead back a step. It will not kill what is already dead.', 6);
       break;
   }
 }
