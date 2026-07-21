@@ -958,6 +958,9 @@ function buildFloor(fi) {
 
   // entities present on this floor get meshes
   ents.forEach((e) => { if (e.floor === fi) ensureEntityMesh(e); });
+
+  // prewarm every material/shader now, so the first jump-scare never hitches
+  try { renderer.compile(scene, camera); } catch (e) { /* headless GL quirks — safe to skip */ }
 }
 
 // ---- Case File / journal (desktop) ----
@@ -979,6 +982,8 @@ function toggleJournal() {
   html += '<li><b>The Ash</b> — what the incinerator kept, and what the Rite could set loose.</li>';
   html += '<li><b>The Ghoul</b> — it was never a patient. It came up through the basement drains for the unclaimed dead, and stayed.</li>';
   html += '<li><b>The Risen</b> — a patient who died on the top floor and would not stay dead. It walks the quarters and the chapel still, looking for the way out you found.</li>';
+  html += '<li><b>The Nightmare</b> — what the surgical wing dreamed up in sixty years of ether and screaming. It wakes in the deepest hours.</li>';
+  html += '<li><b>The Wraith</b> — the cold spot in the attic dark. It does not walk. It does not need to.</li>';
   html += '</ul><h3>The Unbinding Rite</h3>';
   if (ritual && data.rite) {
     const rc = player.rite || {};
@@ -1303,12 +1308,20 @@ function solidBlocked(xm, zm) {
 }
 
 function addDoor(x, y, wx, wz, locked) {
+  // a hinged leaf: locked doors hang shut; open doorways stand ajar so a
+  // passable door LOOKS passable (you never walk through closed wood)
   const mat = new THREE.MeshStandardMaterial({ map: TEX.doorD, color: locked ? 0x9a5050 : 0x9a8a76, roughness: .85, emissive: locked ? 0x300000 : 0x000000 });
-  const door = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.9, WALL_H * 0.92, 0.18), mat);
-  door.position.set(wx, WALL_H * 0.46, wz);
-  door.castShadow = true;
-  floorGroup.add(door);
-  if (locked) doorMeshes.set(x + ',' + y, door);
+  const hinge = new THREE.Group();
+  hinge.position.set(wx - TILE_M * 0.44, 0, wz);
+  const leaf = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.88, WALL_H * 0.92, 0.14), mat);
+  leaf.position.set(TILE_M * 0.44, WALL_H * 0.46, 0);
+  leaf.castShadow = true;
+  hinge.add(leaf);
+  // deterministic per-door swing so it doesn't change on revisit
+  const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+  hinge.rotation.y = locked ? 0 : (0.85 + (h % 100) / 100 * 0.5) * ((h >> 3) % 2 ? 1 : -1);
+  floorGroup.add(hinge);
+  if (locked) doorMeshes.set(x + ',' + y, { g: hinge, m: leaf, open: (0.9 + (h % 80) / 100) * ((h >> 3) % 2 ? 1 : -1) });
 }
 function addCandle(wx, wz) {
   const light = new THREE.PointLight(0xffb455, 1.4, 5.5, 2);
@@ -1663,6 +1676,7 @@ function makeHProp(key, wx, wz, yaw) {
       m = new THREE.MeshStandardMaterial({ map: m.map, color: (m.color ? m.color.clone() : new THREE.Color(0xffffff)), roughness: 0.7, metalness: 0.05 });
     }
     if (retexMap) { m.map = retexMap; if (m.metalness != null) m.metalness = 0.1; m.needsUpdate = true; }
+    if (m.map) m.map.anisotropy = 4;   // crisp at grazing angles, not smeared
     if (m.color) m.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt);
     if (m.roughness != null) m.roughness = Math.min(1, m.roughness + 0.2);
     if (cfg.web) { m.transparent = true; m.depthWrite = false; m.side = THREE.DoubleSide; if (!(m.opacity < 1)) m.opacity = 0.9; }
@@ -1732,6 +1746,19 @@ function placeHorrorProps(fi) {
         if (!isFloor(tx, ty)) return false;
     return true;
   };
+  // never let furniture intersect furniture that's already there (incl. props.js pieces)
+  const solidsOverlap = (b, mount) => {
+    if (mount === 'ceiling' || mount === 'wall') return false;
+    const pad = 0.06;   // allow a whisker of contact, never interpenetration
+    for (const s of propSolids)
+      if (b.min.x + pad < s.x1 && b.max.x - pad > s.x0 && b.min.z + pad < s.z1 && b.max.z - pad > s.z0) return true;
+    return false;
+  };
+  const claim = (b) => {   // mark every tile the footprint covers so nothing else lands there
+    for (let ty = Math.floor(b.min.z / TILE_M); ty <= Math.floor(b.max.z / TILE_M); ty++)
+      for (let tx = Math.floor(b.min.x / TILE_M); tx <= Math.floor(b.max.x / TILE_M); tx++)
+        used.add(tx + ',' + ty);
+  };
   const place = (key, tx, ty, yaw) => {
     const k = tx + ',' + ty;
     const cfg = HPROP_CFG[key]; const mount = (cfg && cfg.mount) || 'floor';
@@ -1741,8 +1768,9 @@ function placeHorrorProps(fi) {
     if (!p) return false;
     const b = new THREE.Box3().setFromObject(p.grp);
     if (!footprintClear(b, mount)) { return false; }   // would clip a wall — try elsewhere
+    if (solidsOverlap(b, mount)) return false;         // would sit inside other furniture
     grp.add(p.grp);
-    if (p.solid) { propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); used.add(k); }
+    if (p.solid) { propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); claim(b); }
     else if (mount === 'flat') used.add(k);
     return true;
   };
@@ -1764,21 +1792,34 @@ function placeHorrorProps(fi) {
     const p = makeHProp(key, wx, wz, yaw); if (!p) return false;
     const b = new THREE.Box3().setFromObject(p.grp);
     if (!footprintClear(b, mount)) return false;
+    if (solidsOverlap(b, mount)) return false;   // rows skip a slot rather than merge into other furniture
     grp.add(p.grp);
-    if (p.solid) propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z });
+    if (p.solid) { propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); claim(b); }
+    return b;   // truthy; callers can read the box (for stacking things on top)
+  };
+  // set something ON a surface (a table top, a mattress) — no collision, no wall test
+  const placeTop = (key, wx, wz, yaw, topY) => {
+    const p = makeHProp(key, wx, wz, yaw); if (!p) return false;
+    p.grp.position.y = topY - 0.015;   // settle a hair into the surface, never float
+    grp.add(p.grp);
     return true;
   };
   // mostly-tidy facing, but every so often something's been knocked out of place
   const askew = (base) => (base || 0) + (rnd() < 0.15 ? (rnd() - 0.5) * 0.85 : (rnd() - 0.5) * 0.13);
   // a neat row of `key` along a wall of room r. side N/S/E/W. inset = tiles off the wall.
-  const wallRow = (r, side, key, inset, yaw, step, limit) => {
+  const wallRow = (r, side, key, inset, yaw, step, limit, out) => {
     step = step || 2.0; let n = 0;
+    const tryAt = (wx, wz) => {
+      const yw = askew(yaw);
+      const b = placeW(key, wx, wz, yw);
+      if (b) { n++; if (out) out.push({ wx, wz, yaw: yw, top: b.max.y }); }
+    };
     if (side === 'N' || side === 'S') {
       const tz = side === 'N' ? r.y + inset : r.y + r.h - inset;
-      for (let tx = r.x + 1.2; tx <= r.x + r.w - 1.1; tx += step) { if (limit && n >= limit) break; if (placeW(key, tx * TILE_M, tz * TILE_M, askew(yaw))) n++; }
+      for (let tx = r.x + 1.2; tx <= r.x + r.w - 1.1; tx += step) { if (limit && n >= limit) break; tryAt(tx * TILE_M, tz * TILE_M); }
     } else {
       const tx = side === 'W' ? r.x + inset : r.x + r.w - inset;
-      for (let tz = r.y + 1.2; tz <= r.y + r.h - 1.1; tz += step) { if (limit && n >= limit) break; if (placeW(key, tx * TILE_M, tz * TILE_M, askew(yaw))) n++; }
+      for (let tz = r.y + 1.2; tz <= r.y + r.h - 1.1; tz += step) { if (limit && n >= limit) break; tryAt(tx * TILE_M, tz * TILE_M); }
     }
     return n;
   };
@@ -1817,13 +1858,18 @@ function placeHorrorProps(fi) {
   rooms.forEach((r) => {
     const cat = CAT[r.tag]; if (!cat) return;
     switch (cat) {
-      case 'ward':   // beds in tidy rows against the walls, lockers to one side
-        wallRow(r, 'N', bed(), 1.5, 0, 2.2);
-        if (r.h >= 5) wallRow(r, 'S', bed(), 1.5, Math.PI, 2.2);
+      case 'ward': {  // beds in tidy rows against the walls, lockers to one side
+        const beds = [];
+        wallRow(r, 'N', bed(), 1.5, 0, 2.2, 0, beds);
+        if (r.h >= 5) wallRow(r, 'S', bed(), 1.5, Math.PI, 2.2, 0, beds);
         wallRow(r, 'W', 'locker', 0.9, Math.PI / 2, 2.4, 2);
+        // one bed was never emptied — a sheeted body still lies in it
+        // (bbox top is the HEADBOARD — the mattress sits well below it)
+        if (beds.length && rnd() < 0.3) { const bd = beds[Math.floor(rnd() * beds.length)]; placeTop('deadcovered', bd.wx, bd.wz, bd.yaw, Math.min(bd.top * 0.55, 0.5)); }
         if (rnd() < 0.5) placeIn(r, 'wheelchair', yaw4());
         if (r.tag === 'maternity' && rnd() < 0.6) centerP(r, 'oldtv', 0);
         break;
+      }
       case 'clinic':  // an operating/exam table centred, cabinets banked on the wall
         centerP(r, 'examtable', r.w >= r.h ? 0 : Math.PI / 2);
         wallRow(r, 'N', 'metalcab', 1.0, 0, 2.1, 3);
@@ -1849,11 +1895,24 @@ function placeHorrorProps(fi) {
         if (r.tag === 'records') wallMount(r, 'evidenceboard');   // the investigation board
         if (r.tag === 'matron') { centerP(r, 'oldtv', 0, r.w * 0.18, 0); if (rnd() < 0.6) wallMount(r, 'brokenclock'); if (rnd() < 0.6) placeIn(r, 'candle', 0); }
         break;
-      case 'dining':  // tables in a tidy grid
-        for (let gx = r.x + 2; gx <= r.x + r.w - 1.5; gx += 2.6) for (let gz = r.y + 2; gz <= r.y + r.h - 1.5; gz += 2.4) placeW('caftable', gx * TILE_M, gz * TILE_M, askew(0));
-        if (r.tag === 'kitchen') { wallRow(r, 'N', 'gasstove', 1.0, 0, 2.0, 2); wallRow(r, 'S', 'metalcab', 1.0, Math.PI, 2.2, 3); centerP(r, 'kitchenware', yaw4(), 0, r.h * 0.16); if (rnd() < 0.6) placeIn(r, 'cannedgoods', yaw4()); }
-        else { wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 2.5, 1); if (rnd() < 0.7) placeIn(r, 'cannedgoods', yaw4()); }
+      case 'dining': { // tables in a tidy grid — abandoned meals still ON them
+        const tables = [];
+        for (let gx = r.x + 2; gx <= r.x + r.w - 1.5; gx += 2.6) for (let gz = r.y + 2; gz <= r.y + r.h - 1.5; gz += 2.4) {
+          const wx = gx * TILE_M, wz = gz * TILE_M, yw = askew(0);
+          const b = placeW('caftable', wx, wz, yw);
+          if (b) tables.push({ wx, wz, yaw: yw, top: b.max.y });
+        }
+        if (r.tag === 'kitchen') {
+          wallRow(r, 'N', 'gasstove', 1.0, 0, 2.0, 2); wallRow(r, 'S', 'metalcab', 1.0, Math.PI, 2.2, 3);
+          if (tables.length) placeTop('kitchenware', tables[0].wx, tables[0].wz, yaw4(), tables[0].top);   // pots & pans on the prep table
+          else centerP(r, 'kitchenware', yaw4(), 0, r.h * 0.16);
+        } else {
+          wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 2.5, 1);
+          // a meal someone never finished
+          if (tables.length && rnd() < 0.8) { const tb = tables[Math.floor(rnd() * tables.length)]; placeTop('cannedgoods', tb.wx, tb.wz, yaw4(), tb.top); }
+        }
         break;
+      }
       case 'waiting': // a couple of rows of waiting-room seats, machines against a wall
         wallRow(r, 'N', 'wheelchair', 1.6, 0, 1.7);
         if (r.h >= 5) wallRow(r, 'S', 'wheelchair', 1.6, Math.PI, 1.7);
@@ -2033,6 +2092,7 @@ function ensureEntityMesh(e) {
         if (!o.isMesh || !o.material) return;
         o.frustumCulled = false;
         o.material = o.material.clone();
+        if (o.material.map) o.material.map.anisotropy = 4;   // the dead deserve crisp skin too
         if (o.material.color) o.material.color.lerp(new THREE.Color(map.tint), map.tintAmt != null ? map.tintAmt : 0.55);
         if (o.material.emissive && map.emissive != null) o.material.emissive.setHex(map.emissive);
         if (map.translucent) { o.material.transparent = true; o.material.opacity = map.opacity; o.material.depthWrite = false; }
@@ -2806,7 +2866,7 @@ function tryUnlockAhead() {
       if (keyId && player.keys[keyId]) {
         g[yy][xx] = TILE.DOOR; Audio2.creak();
         const dm = doorMeshes.get(xx + ',' + yy);
-        if (dm) { dm.material.color.setHex(0x9a8a76); dm.material.emissive.setHex(0x000000); }
+        if (dm) { dm.m.material.color.setHex(0x9a8a76); dm.m.material.emissive.setHex(0x000000); dm.g.rotation.y = dm.open; }   // swing it open
         showSubtitle('The lock gives. ' + (room ? room.name : '') + ' opens.', 2.5);
       }
     }

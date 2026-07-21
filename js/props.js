@@ -523,11 +523,22 @@ const Props = (() => {
     const z0 = (room.y + inset) * TILE_M, z1 = (room.y + room.h - inset) * TILE_M;
     const cx = (room.x + room.w / 2) * TILE_M, cz = (room.y + room.h / 2) * TILE_M;
 
+    // never drop furniture inside furniture that's already standing there
+    const clashes = (x0, z0, x1, z1) => {
+      const pad = 0.06;
+      for (const s of solids)
+        if (x0 + pad < s.x1 && x1 - pad > s.x0 && z0 + pad < s.z1 && z1 - pad > s.z0) return true;
+      return false;
+    };
     const place = (name, xm, zm, rotY) => {
       // real glTF furniture when available (loaded by vr-game.js)
       const hm = (typeof window !== 'undefined') && window.HeroModels;
       const hkey = HERO_MAP[name];
       if (hm && hkey && hm[hkey]) {
+        const fp = HERO_FP[name] || { fw: 0.8, fd: 0.8 };
+        const rot = Math.abs((rotY || 0) % Math.PI) > 0.7;
+        const w = rot ? fp.fd : fp.fw, d = rot ? fp.fw : fp.fd;
+        if (clashes(xm - w / 2, zm - d / 2, xm + w / 2, zm + d / 2)) return;   // spot taken
         const g = hm[hkey].clone();
         g.position.set(xm, 0, zm);
         g.rotation.y = (rotY || 0) + (Math.random() - 0.5) * 0.25;   // nothing sits square
@@ -536,23 +547,21 @@ const Props = (() => {
           g.position.y = 0.25;
         }
         group.add(g);
-        const fp = HERO_FP[name] || { fw: 0.8, fd: 0.8 };
-        const rot = Math.abs((rotY || 0) % Math.PI) > 0.7;
-        const w = rot ? fp.fd : fp.fw, d = rot ? fp.fw : fp.fd;
         solids.push({ x0: xm - w / 2, z0: zm - d / 2, x1: xm + w / 2, z1: zm + d / 2 });
         return;
       }
       const b = BUILDERS[name]; if (!b) return;
       const g = b(name === 'bed' && Math.random() < bloodyChance);
-      g.position.set(xm, 0, zm); g.rotation.y = rotY || 0;
-      g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
-      group.add(g);
       if (g.userData.solid !== false) {
         const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
         const rot = Math.abs((rotY || 0) % Math.PI) > 0.7; // ~90deg -> swap footprint
         const w = rot ? fd : fw, d = rot ? fw : fd;
+        if (clashes(xm - w / 2, zm - d / 2, xm + w / 2, zm + d / 2)) return;   // spot taken
         solids.push({ x0: xm - w / 2, z0: zm - d / 2, x1: xm + w / 2, z1: zm + d / 2 });
       }
+      g.position.set(xm, 0, zm); g.rotation.y = rotY || 0;
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+      group.add(g);
       if (g.userData.ember) group.userData.ember = g;
       if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: Math.random() * 6 });
     };
