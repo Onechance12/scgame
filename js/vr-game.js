@@ -318,6 +318,47 @@ function makeHandMesh() {
   return g;
 }
 
+// A survivor's skin: mottled tone, grime worked into the pores, scuff streaks,
+// and dried blood — someone who has spent all night in this building. Shared by
+// both hands (the model ships untextured but carries clean UVs).
+let survivorSkin = null;
+function survivorSkinTex() {
+  if (survivorSkin) return survivorSkin;
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = '#c9a184'; x.fillRect(0, 0, 512, 512);          // base skin
+  let s = 1234567; const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  for (let i = 0; i < 900; i++) {                                // mottling — living skin is never one colour
+    const warm = rnd() < 0.5;
+    x.fillStyle = warm ? `rgba(${170 + (rnd() * 40) | 0},${110 + (rnd() * 30) | 0},${85 + (rnd() * 25) | 0},0.08)`
+                       : `rgba(${140 + (rnd() * 30) | 0},${95 + (rnd() * 25) | 0},${80 + (rnd() * 20) | 0},0.07)`;
+    x.beginPath(); x.arc(rnd() * 512, rnd() * 512, 3 + rnd() * 22, 0, 6.283); x.fill();
+  }
+  for (let i = 0; i < 260; i++) {                                // grime worked into the creases
+    x.fillStyle = `rgba(${40 + (rnd() * 30) | 0},${32 + (rnd() * 22) | 0},${26 + (rnd() * 16) | 0},${0.05 + rnd() * 0.09})`;
+    x.beginPath(); x.ellipse(rnd() * 512, rnd() * 512, 2 + rnd() * 14, 1 + rnd() * 4, rnd() * 3.14, 0, 6.283); x.fill();
+  }
+  for (let i = 0; i < 46; i++) {                                 // scuffs and scratches
+    const sx = rnd() * 512, sy = rnd() * 512, a = rnd() * 6.28, l = 8 + rnd() * 42;
+    x.strokeStyle = rnd() < 0.4 ? `rgba(120,45,40,${0.18 + rnd() * 0.2})` : `rgba(90,70,60,${0.14 + rnd() * 0.16})`;
+    x.lineWidth = 0.6 + rnd() * 1.6;
+    x.beginPath(); x.moveTo(sx, sy);
+    x.quadraticCurveTo(sx + Math.cos(a + 0.4) * l * 0.5, sy + Math.sin(a + 0.4) * l * 0.5, sx + Math.cos(a) * l, sy + Math.sin(a) * l); x.stroke();
+  }
+  for (let n = 0; n < 7; n++) {                                  // dried blood — a few spatters, clustered
+    const bx = rnd() * 512, by = rnd() * 512;
+    for (let i = 0; i < 14; i++) {
+      const r2 = rnd() * 26;
+      x.fillStyle = `rgba(${88 + (rnd() * 30) | 0},${14 + (rnd() * 12) | 0},${12 + (rnd() * 10) | 0},${0.22 + rnd() * 0.3})`;
+      x.beginPath(); x.arc(bx + (rnd() - 0.5) * 2 * r2, by + (rnd() - 0.5) * 2 * r2, 0.7 + rnd() * 3.4, 0, 6.283); x.fill();
+    }
+  }
+  survivorSkin = new THREE.CanvasTexture(c);
+  if ('colorSpace' in survivorSkin) survivorSkin.colorSpace = THREE.SRGBColorSpace;
+  survivorSkin.anisotropy = 4;
+  return survivorSkin;
+}
+
 // Real first-person hands on the grips. The source model is one rig holding BOTH
 // arms, so each grip gets a clone with the OTHER arm's bones collapsed to nothing
 // (cheap, no clipping planes, skinning still valid). The wrist bone is anchored
@@ -356,12 +397,59 @@ function dressGrip(grip, hand) {
     m.quaternion.premultiply(q);
     m.updateMatrixWorld(true);
     m.position.sub(handBone.getWorldPosition(new THREE.Vector3()));   // wrist sits at the grip
-    // grade the skin down to something that's been in this building all night
-    m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.lerp(new THREE.Color(0x8a7566), 0.4); if (o.material.roughness != null) o.material.roughness = 0.85; o.frustumCulled = false; } });
+    // the survivor's skin: mottled, grimy, scuffed, blood-flecked
+    const skin = survivorSkinTex();
+    m.traverse((o) => {
+      if (!(o.isMesh && o.material)) return;
+      o.material = o.material.clone();
+      o.material.map = skin;
+      o.material.bumpMap = skin; o.material.bumpScale = 0.6;   // scuffs & spatter get a hint of relief
+      if (o.material.color) o.material.color.set(0xb8a293);    // let the texture carry the tone, graded down
+      if (o.material.roughness != null) o.material.roughness = 0.82;
+      if (o.material.metalness != null) o.material.metalness = 0.02;
+      o.material.needsUpdate = true; o.frustumCulled = false;
+    });
+    // collect this hand's finger bones so the fingers can actually grip
+    const fingers = [];
+    m.traverse((o) => {
+      if (!o.isBone) return;
+      const n = o.name.toLowerCase();
+      const fm = n.match(/(?:f_(index|middle|ring|pinky)|(thumb))0([123])([rl])_/);
+      if (fm && fm[4] === suff && !n.includes('end')) {
+        fingers.push({ b: o, rest: o.quaternion.clone(), finger: fm[1] || 'thumb', thumb: !!fm[2], seg: +fm[3] });
+      }
+    });
     const holder = new THREE.Group(); holder.userData.handDress = true;
     holder.add(m); grip.add(holder);
     grip.userData.dressedHand = hand;
+    grip.userData.fingers = fingers;
+    grip.userData.curl = { t: 0, g: 0 };
   } catch (e) { console.warn('hand dress failed:', e); }
+}
+
+// Fingers follow the controller: index curls with the trigger, the other three
+// with the grip squeeze, the thumb tucks a little with either. Smoothed so the
+// hand closes like a hand, not a switch.
+const CURL_AXIS = new THREE.Vector3(1, 0, 0);
+let CURL_SIGN = 1;
+const _curlQ = new THREE.Quaternion();
+function updateHands(dt) {
+  [[sources.left, sources.leftGrip], [sources.right, sources.rightGrip]].forEach(([src, grip]) => {
+    if (!grip || !grip.userData.fingers || !grip.userData.fingers.length) return;
+    const gp = src && src.userData.inputSource && src.userData.inputSource.gamepad;
+    const bv = (i) => { const b = gp && gp.buttons && gp.buttons[i]; return b ? (b.value != null ? b.value : (b.pressed ? 1 : 0)) : 0; };
+    const cur = grip.userData.curl;
+    cur.t += (bv(0) - cur.t) * Math.min(1, dt * 14);
+    cur.g += (bv(1) - cur.g) * Math.min(1, dt * 14);
+    const rest = 0.14;   // a hand at rest is never flat
+    for (const f of grip.userData.fingers) {
+      const amt = f.thumb ? rest + Math.max(cur.t, cur.g) * 0.4
+        : f.finger === 'index' ? Math.max(rest, cur.t)
+        : Math.max(rest, cur.g);
+      const ang = amt * (f.thumb ? 0.5 : [0.6, 0.85, 0.7][f.seg - 1]) * CURL_SIGN;
+      f.b.quaternion.copy(f.rest).multiply(_curlQ.setFromAxisAngle(CURL_AXIS, ang));
+    }
+  });
 }
 
 function skipCine() {
@@ -2667,6 +2755,7 @@ function readAxes(controller) {
 }
 
 function vrLocomotion(dt) {
+  updateHands(dt);   // fingers track the triggers before anything else moves
   // heading = camera yaw in world
   camera.getWorldDirection(tmpV);
   const yaw = Math.atan2(tmpV.x, tmpV.z); // forward
