@@ -187,6 +187,15 @@ const Props = (() => {
     const g = new (T().Group)(), m = mats();
     g.add(box(1.8, 0.9, 0.65, m.metal, 0, 0.45, 0));
     g.add(box(1.85, 0.05, 0.7, m.steel, 0, 0.92, 0));
+    // abandoned mid-shift: mugs, bottles, a tray of somebody's last meal
+    for (let i = 0; i < 3 + (Math.random() * 3 | 0); i++) {
+      const r = Math.random();
+      const xo = (Math.random() - 0.5) * 1.5, zo = (Math.random() - 0.5) * 0.45;
+      if (r < 0.4) g.add(cyl(0.045, 0.045, 0.09, m.porcelain, xo, 0.99, zo, 8));
+      else if (r < 0.7) g.add(cyl(0.035, 0.045, 0.2, m.dark, xo, 1.05, zo, 8));
+      else { g.add(box(0.3, 0.02, 0.2, m.steel, xo, 0.96, zo)); g.add(cyl(0.05, 0.06, 0.03, m.rust, xo, 0.98, zo, 8)); }
+    }
+    if (Math.random() < 0.4) { const t = cyl(0.045, 0.045, 0.09, m.porcelain, (Math.random() - 0.5) * 1.4, 0.965, 0.1, 8); t.rotation.z = Math.PI / 2; g.add(t); } // tipped mug
     g.userData = { fw: 1.85, fd: 0.7 };
     return g;
   }
@@ -398,11 +407,60 @@ const Props = (() => {
     return g;
   }
 
+  // ---- shared decal textures (newsprint / blood / scorch), built once ----
+  let DECALS = null;
+  function decals() {
+    if (DECALS) return DECALS;
+    const THREE = T();
+    const make = (draw) => { const c = document.createElement('canvas'); c.width = c.height = 128; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); return t; };
+    DECALS = {
+      news: make((x) => { x.fillStyle = '#b6ae96'; x.fillRect(0, 0, 128, 128);
+        x.fillStyle = '#2a2620'; x.fillRect(8, 6, 112, 14);
+        for (let r = 28; r < 122; r += 6) { x.fillStyle = 'rgba(40,36,30,' + (0.5 + Math.random() * 0.3) + ')'; x.fillRect(8 + (r % 12 ? 0 : 66), r, r % 12 ? 52 : 54, 2); } }),
+      blood: make((x) => { x.clearRect(0, 0, 128, 128);
+        for (let i = 0; i < 9; i++) { const g = x.createRadialGradient(64, 64, 2, 64, 64, 20 + i * 6);
+          g.addColorStop(0, 'rgba(90,8,8,0.55)'); g.addColorStop(1, 'rgba(60,4,4,0)'); x.fillStyle = g;
+          x.beginPath(); x.arc(50 + Math.random() * 28, 50 + Math.random() * 28, 18 + Math.random() * 26, 0, 6.28); x.fill(); }
+        for (let i = 0; i < 12; i++) { x.fillStyle = 'rgba(80,6,6,0.5)'; x.fillRect(30 + Math.random() * 70, 60 + Math.random() * 40, 2, 8 + Math.random() * 26); } }),
+      scorch: make((x) => { x.clearRect(0, 0, 128, 128);
+        const g = x.createRadialGradient(64, 64, 6, 64, 64, 62);
+        g.addColorStop(0, 'rgba(8,6,4,0.9)'); g.addColorStop(0.6, 'rgba(16,12,8,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = g; x.beginPath(); x.arc(64, 64, 62, 0, 6.28); x.fill(); }),
+    };
+    return DECALS;
+  }
+  function decalPlane(kind, w, h) {
+    const THREE = T();
+    const m = new THREE.MeshBasicMaterial({ map: decals()[kind], transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
+    p.userData = { solid: false, fw: 0.1, fd: 0.1 };
+    return p;
+  }
+  function newspaper() { // scattered front pages
+    const g = new (T().Group)();
+    for (let i = 0; i < 3; i++) {
+      const p = decalPlane('news', 0.32, 0.45);
+      p.rotation.x = -Math.PI / 2; p.rotation.z = Math.random() * 6.28;
+      p.position.set((Math.random() - 0.5) * 1.1, 0.015 + i * 0.003, (Math.random() - 0.5) * 1.1);
+      g.add(p);
+    }
+    g.userData = { fw: 0.4, fd: 0.4, solid: false };
+    return g;
+  }
+  function bloodpool() {
+    const g = new (T().Group)();
+    const p = decalPlane('blood', 0.9 + Math.random() * 0.8, 0.9 + Math.random() * 0.8);
+    p.rotation.x = -Math.PI / 2; p.rotation.z = Math.random() * 6.28; p.position.y = 0.014;
+    g.add(p);
+    g.userData = { fw: 0.3, fd: 0.3, solid: false };
+    return g;
+  }
+
   const BUILDERS = {
     bed, crib, wheelchair, operating: operatingTable, examlight: examLight, drawers: morgueDrawers,
     slab, cabinet, shelf, crates, chair, table, desk, counter, stove, sink, bathtub, iv: ivStand,
     boiler, incinerator, washer, pew, cross, altar, bell, xraymachine: xrayMachine, window: windowProp,
-    preptable, tray, rocker, pipes, cart: crates, papers,
+    preptable, tray, rocker, pipes, cart: crates, papers, newspaper, bloodpool,
     bassinet, rockinghorse: rockingHorse, teddy, toyblocks: toyBlocks, ball, mobile, toybox, incubator,
     casket, shroud: shroudBody,
   };
@@ -499,8 +557,23 @@ const Props = (() => {
 
     // generic clutter pass — big rooms get scattered debris so nothing feels bare
     const areaT = (room.w - 2) * (room.h - 2);
-    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart', 'papers', 'papers', 'chair'];
-    const nClutter = Math.min(9, Math.floor(areaT / 11));
+    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart', 'papers', 'newspaper', 'newspaper', 'chair'];
+    const nClutter = Math.min(10, Math.floor(areaT / 10));
+    // wall details: blood smears + 1926 fire scorch marks climbing the walls
+    const wallDetail = (kind, count) => {
+      for (let i = 0; i < count; i++) {
+        const onX = Math.random() < 0.5;
+        const p = decalPlane(kind, 1.1 + Math.random(), 1.2 + Math.random());
+        if (onX) { p.position.set(Math.random() < 0.5 ? x0 + 0.06 : x1 - 0.06, 0.9 + Math.random() * 1.2, z0 + Math.random() * (z1 - z0)); p.rotation.y = p.position.x < (x0 + x1) / 2 ? Math.PI / 2 : -Math.PI / 2; }
+        else { p.position.set(x0 + Math.random() * (x1 - x0), 0.9 + Math.random() * 1.2, Math.random() < 0.5 ? z0 + 0.06 : z1 - 0.06); p.rotation.y = p.position.z < (z0 + z1) / 2 ? 0 : Math.PI; }
+        group.add(p);
+      }
+    };
+    const bloody = ['morgue', 'autopsy', 'er', 'surgery', 'iso', 'room207'].includes(room.tag);
+    const burnt = ['boiler', 'incinerator', 'ritual', 'storage', 'laundry', 'kitchen'].includes(room.tag);
+    if (bloody) { wallDetail('blood', 1 + (Math.random() * 2 | 0)); if (Math.random() < 0.7) place('bloodpool', cx + (Math.random() - 0.5) * 2, cz + (Math.random() - 0.5) * 2, 0); }
+    if (burnt) wallDetail('scorch', 2 + (Math.random() * 2 | 0));
+    if (!bloody && !burnt && Math.random() < 0.3) wallDetail(Math.random() < 0.5 ? 'blood' : 'scorch', 1);
     for (let i = 0; i < nClutter; i++) {
       const cxm = x0 + Math.random() * (x1 - x0);
       const czm = z0 + Math.random() * (z1 - z0);
@@ -588,8 +661,17 @@ const Props = (() => {
         light.position.set(tx * TILE_M, WALL_H - 0.4, tz * TILE_M);
         group.add(light);
       }
-      // start mostly-off; corridor lights flicker to life
+      // some dead tubes hang broken off the ceiling by one wire
       const dead = Math.random() < 0.28;
+      if (dead && Math.random() < 0.5) {
+        tube.rotation.z = 0.55 + Math.random() * 0.3;
+        tube.position.y -= 0.42;
+        tube.position.x += 0.5;
+        const wire = box(0.02, 0.5, 0.02, m.dark || mats().dark, tube.position.x - 0.75, WALL_H - 0.25, tube.position.z);
+        group.add(wire);
+        // glass shards on the floor beneath
+        for (let s = 0; s < 4; s++) group.add(box(0.05, 0.01, 0.08, mats().tube, tube.position.x + (Math.random() - 0.5), 0.012, tube.position.z + (Math.random() - 0.5)));
+      }
       fixtures.push({ tube, light, dead, on: !dead, base: withLight ? 1.1 : 0, phase: Math.random() * 6, nextFlick: Math.random() * 3 });
     };
     // corridor tubes every ~8 tiles; REAL lights only on every other one (Quest perf)
