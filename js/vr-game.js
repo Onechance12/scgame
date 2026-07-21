@@ -798,6 +798,8 @@ function newGame(saved) {
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false; phoneRang = false; matronGone = false;
   deathBy = ''; lastKiller = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
+  // clear set-piece state so a scare from a previous night can't bleed into this one
+  morgueScared = false; carter = null; carterTimer = 50; fallingDebris = []; debrisKept = []; sceneAnims = []; riteClimax = false;
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
   if (wristMenuPanel && wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
@@ -833,7 +835,7 @@ function restoreFrom(s) {
   setMode(realMode);
   startEpoch = s.startEpoch || Date.now();
   player.floor = s.floor; player.x = s.x; player.y = s.y;
-  player.fear = s.fear || 12; player.battery = s.battery == null ? 100 : s.battery;
+  player.fear = s.fear == null ? 12 : s.fear; player.battery = s.battery == null ? 100 : s.battery;
   player.faith = s.faith == null ? 100 : s.faith;
   player.hasLight = !!s.hasLight; player.lightOn = false;
   player.inv = s.inv || {}; player.keys = s.keys || {}; player.rite = s.rite || {};
@@ -1339,7 +1341,7 @@ function introLocomotion(dt) {
     if (bNow && !prevBBtn) toggleFlash();
     prevBBtn = bNow;
     const stNow = !!(gT && gT.buttons && gT.buttons[3] && gT.buttons[3].pressed);
-    if (stNow && !prevStickTurn && jumpY <= 0) { jumpVel = 2.4; jumpY = 0.001; }
+    if (stNow && !prevStickTurn && jumpY <= 0) { jumpVel = 2.7; jumpY = 0.001; }   // enough apex to clear the fallen oak
     prevStickTurn = stNow;
   }
   player.moving = moved;
@@ -1351,9 +1353,10 @@ function introWalk(dxW, dzW) {
   const px = tmpV.x, pz = tmpV.z;
   let nx = Math.max(doorX - 7, Math.min(doorX + 7, px + dxW));
   let nz = Math.max(-48, Math.min(1.15, pz + dzW));
-  // the fallen oak blocks the path unless you're airborne over it
+  // the fallen oak blocks the path unless you're airborne over it (both platforms
+  // clear it: desktop apex ≈0.38 m, VR ≈0.35 m, gate at 0.24)
   const L = c._log;
-  if (L && jumpY < 0.34) { const band = 0.55; if (pz <= L.z - band && nz > L.z - band) nz = L.z - band; }
+  if (L && jumpY < 0.24) { const band = 0.55; if (pz <= L.z - band && nz > L.z - band) nz = L.z - band; }
   dolly.position.x += (nx - px);
   dolly.position.z += (nz - pz);
 }
@@ -1403,7 +1406,8 @@ function introSteps(dt) {
 function introSetStep(n) { const I = cine.intro; I.step = n; I.stepT = 0; I.inst = null; I.action = ''; }
 
 function introInteract() {
-  const c = cine, I = c.intro; if (!c) return;
+  const c = cine; if (!c) return;
+  const I = c.intro;
   camera.getWorldPosition(tmpV); const px = tmpV.x, pz = tmpV.z;
   if (!I.lanternTaken && c._lantern && Math.hypot(px - c._lantern.wx, pz - c._lantern.wz) < 2.8) {
     I.lanternTaken = true; Audio2.pickup(); Audio2.whisper(0.3);
@@ -4328,7 +4332,8 @@ function update(dt) {
   // noise
   let noise = 0;
   if (player.moving) noise = player.sprinting ? 0.55 : 0.12;
-  if (isVR && (readAxes(sources.left)[0] || readAxes(sources.left)[1])) noise = Math.max(noise, 0.14);
+  const moveStick = OPTS.swapHands ? sources.right : sources.left;
+  if (isVR && (readAxes(moveStick)[0] || readAxes(moveStick)[1])) noise = Math.max(noise, 0.14);
   if (spiritActive) noise = Math.max(noise, 0.85);
   if (crouched) noise *= 0.45;   // low and slow — the dead hear less of you
   if (jumpY > 0.05) noise = Math.max(noise, 0.4);   // jumping is NOT quiet
@@ -4382,7 +4387,7 @@ function update(dt) {
   updateSpiritObjective(dt);
 
   // your own footsteps — quiet, cadenced with movement (sprint = faster, louder)
-  const isMoving = player.moving || (isVR && (readAxes(sources.left)[0] || readAxes(sources.left)[1]));
+  const isMoving = player.moving || (isVR && (readAxes(moveStick)[0] || readAxes(moveStick)[1]));
   if (isMoving && !player.hidden) {
     stepT -= dt;
     if (stepT <= 0) { stepT = player.sprinting ? 0.34 : 0.52; Audio2.footstep(player.sprinting ? 0.05 : 0.028); }
@@ -4741,7 +4746,10 @@ function updateWatch(dt) {
     for (let i = 0; i < btns.length; i++) { const b = btns[i]; if (u >= b.x && u <= b.x + b.w && v >= b.y && v <= b.y + b.h) { hov = i; break; } }
     if (hov >= 0 && Math.abs(lp.z) < 0.014 && watchArmed) { watchArmed = false; fireWatch(active.view, hov); }
   }
-  if (hov === -1 || Math.abs(lp.z) > 0.03) watchArmed = true;   // re-arm once the finger pulls back
+  // re-arm only when the finger leaves the button entirely (hov becomes -1 when it
+  // pulls back past 0.06 or slides off) — so a finger pushed THROUGH the thin panel
+  // can't fire a second time on the way back out
+  if (hov === -1) watchArmed = true;
   if (hov !== watchHover) {
     watchHover = hov;
     const done = data ? data.objectives.filter((o) => o.done).length : 0;
@@ -5059,9 +5067,11 @@ function bindMPUI() {
 }
 
 // ============================================================ state
+// free the mouse so the player can click menu buttons (desktop pointer-lock play)
+function freeCursor() { if (!isVR) { try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { } } }
 function pause() {
   if (state !== 'PLAY') return;
-  state = 'PAUSE'; stopSpirit(); Audio2.suspend();
+  state = 'PAUSE'; stopSpirit(); Audio2.suspend(); freeCursor();
   if (!isVR) document.getElementById('pausescreen').classList.add('show');
 }
 function resumeGame() {
@@ -5078,7 +5088,7 @@ function die() {
   if (state === 'DEAD') return;
   if (window.MP && MP.active()) MP.event({ kind: 'death', by: lastKiller || 'Fear itself' });
   if (window.Accounts) Accounts.recordDeath(elapsed, lastKiller || 'Fear itself', runMeta());
-  state = 'DEAD'; stopSpirit(); Audio2.stinger(true); clearSave();
+  state = 'DEAD'; stopSpirit(); Audio2.stinger(true); clearSave(); freeCursor();
   setTimeout(() => Audio2.suspend(), 1600);
   const filed = filedLine();
   if (isVR) showBigPanel('YOU DIED', [deathBy].concat(data.LORE.ending_bad, filed ? [filed] : []), '#e02a2a');
@@ -5094,7 +5104,7 @@ function win() {
   if (state === 'WIN') return;
   if (window.MP && MP.active()) MP.event({ kind: 'win' });
   if (window.Accounts) Accounts.recordWin(elapsed, false, runMeta());
-  state = 'WIN'; stopSpirit(); clearSave();
+  state = 'WIN'; stopSpirit(); clearSave(); freeCursor();
   const filedW = filedLine();
   if (isVR) showBigPanel('DAWN', data.LORE.ending_good.concat(filedW ? [filedW] : []), '#8affb0');
   else {
@@ -5110,7 +5120,7 @@ function trueEnding() {
   if (window.MP && MP.active()) MP.event({ kind: 'win' });
   if (window.Accounts) Accounts.recordWin(elapsed, true, runMeta());
   riteClimax = false;
-  state = 'WIN'; stopSpirit(); clearSave();
+  state = 'WIN'; stopSpirit(); clearSave(); freeCursor();
   const title = 'THE HOUSE IS EMPTY';
   if (isVR) showBigPanel(title, data.LORE.ending_true, '#bfeecf');
   else {
