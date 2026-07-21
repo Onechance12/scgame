@@ -76,6 +76,17 @@ license.txt from Sketchfab.
               https://sketchfab.com/3d-models/crawling-mutated-human-a87532a3e89947159cc1303008c06eaf
               (Elisey — https://sketchfab.com/dwelfster — CC-BY-4.0)
 
+  The Ghoul (basement corpse-eater):
+    horror/ghoul/   "Ghoul"  by DivyeSh PanchAl
+              https://sketchfab.com/3d-models/ghoul-c688fc7aaec74817a9851b799a140b5e
+              (DivyeSh PanchAl — CC-BY-4.0)
+
+  The Ash (its body is the Closer):
+    horror/closer/  "Closer - Silent Hill 3"  by ShaxerTakkuY
+              https://sketchfab.com/3d-models/closer-silent-hill-3-de9807d714b9486383a1b83fe438dfc4
+              (ShaxerTakkuY — CC-BY-4.0. NOTE: depicts a creature from Konami's
+              Silent Hill 3; used only in this non-commercial fan tribute.)
+
 HOSPITAL FURNITURE — assets/models/horror/ (CC-BY-4.0; attribution REQUIRED,
 given here). Textures downscaled to 512px and materials aged in-engine for
 web/headset weight; meshes and textures are the authors' work.

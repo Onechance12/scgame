@@ -826,6 +826,7 @@ function toggleJournal() {
   html += '<li><b>Mose Blackburn</b> — 1962; went out a third-floor window. Swears he did not jump.</li>';
   html += '<li><b>The Children</b> — the basement ward; bound here by the night staff so the beds stayed full.</li>';
   html += '<li><b>The Ash</b> — what the incinerator kept, and what the Rite could set loose.</li>';
+  html += '<li><b>The Ghoul</b> — it was never a patient. It came up through the basement drains for the unclaimed dead, and stayed.</li>';
   html += '</ul><h3>The Unbinding Rite</h3>';
   if (ritual && data.rite) {
     const rc = player.rite || {};
@@ -997,6 +998,8 @@ function loadHeroModels() {
     ['wolfram', 'sketchfab/wolfram/scene.gltf'],
     ['fantasma', 'sketchfab/fantasma/scene.gltf'],
     ['crawler2', 'horror/crawler2/scene.gltf'],   // the crawling mutated human
+    ['ghoul', 'horror/ghoul/scene.gltf'],         // the Ghoul — basement corpse-eater
+    ['closer', 'horror/closer/scene.gltf'],       // the Closer — the Ash's new body
     // legacy CC0 (set-pieces + fallback)
     ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
   ];
@@ -1444,8 +1447,10 @@ const MOBMAP = {
   mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
   // The Crawler — a mutated human dragging itself along the floor (prone, so targetH is its low height)
   crawler: { key: 'crawler2', targetH: 0.62, translucent: false, opacity: 1, tint: 0x6a5a52, tintAmt: 0.4, emissive: 0x120404, aura: 'rgba(80,10,20,0.5)', auraS: 2.0, yaw: 0 },
-  // The Ash — a charred human shape wreathed in living embers (the 1926 fire's dead)
-  ash: { key: 'wolfram', targetH: 1.95, translucent: false, opacity: 1, tint: 0x140b06, tintAmt: 0.78, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: Math.PI },
+  // The Ash — the Closer's straitjacketed body, charred and wreathed in living embers (the 1926 fire's dead)
+  ash: { key: 'closer', targetH: 1.92, translucent: false, opacity: 1, tint: 0x2a1810, tintAmt: 0.6, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: 0 },
+  // The Ghoul — a hunched, blood-clawed corpse-eater that haunts the basement
+  ghoul: { key: 'ghoul', targetH: 1.72, translucent: false, opacity: 1, tint: 0x5a5a4a, tintAmt: 0.35, emissive: 0x0a0402, aura: 'rgba(70,30,10,0.5)', auraS: 2.4, yaw: 0 },
 };
 function auraSprite(rec, grp, hex, size, y) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -2493,10 +2498,12 @@ function updateFear(dt) {
 function catchLine(e) {
   return ({
     nurse: 'The Grey Nurse reaches you. “You should have followed the rules.”',
+    nurse2: 'The Night Nurse catches your wrist with cold fingers. “Back to bed. You’re not discharged.”',
     mose: 'Mose Blackburn’s shadow closes over you. He was never going to let you leave unheard.',
     child: 'The small cold hand finds yours and does not let go.',
     ash: 'The Ash folds around you. The fire finally has a name for you.',
     crawler: 'The Crawler is on you before you can turn — it was always faster than it looked.',
+    ghoul: 'The Ghoul drags you down among the drawers. It has been so hungry, and so patient.',
   })[e.kind] || 'It takes you.';
 }
 function ambientEvent() {
