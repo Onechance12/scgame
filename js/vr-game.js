@@ -100,7 +100,7 @@ let bigPanel, bigCtx, bigTex;   // in-VR message/title panel
 // ---- controllers ----
 let controller1, controller2, grip1, grip2;
 let sources = { left: null, right: null };
-let snapCooldown = 0;
+let snapCooldown = 0, prevBBtn = false;
 
 // ---- game state (ported) ----
 let data, ents, player;
@@ -242,7 +242,7 @@ function checkXR() {
       xrSupported = ok;
       if (ok) {
         note.innerHTML = 'Headset detected. Press <b>ENTER IN VR</b> and put it on. ' +
-          'Left stick to walk, right stick to snap-turn, trigger to interact, grip to toggle the flashlight, hold left grip for the spirit box.';
+          'Left stick walk · right stick snap-turn · trigger interact · right grip = flashlight (or SWING the crowbar once you carry it — <b>B</b> becomes the light) · hold <b>A</b> to raise the cross · hold left grip for the spirit box.';
       } else {
         btnVR.disabled = true; btnVR.style.opacity = .5;
         note.innerHTML = 'No VR headset on this device. On a <b>Meta Quest</b>, open this page in the Quest browser (served over HTTPS) and the VR button lights up. Use <b>Play on Desktop</b> here.';
@@ -272,11 +272,15 @@ function setupControllers() {
       c.userData.inputSource = e.data;
       if (hand === 'left') {
         sources.left = c;
+        sources.leftGrip = (c === controller1) ? grip1 : grip2;
         // move the wrist HUD onto the actual left hand's grip
-        const lg = (c === controller1) ? grip1 : grip2;
         if (wristPanel.parent) wristPanel.parent.remove(wristPanel);
-        lg.add(wristPanel);
-      } else if (hand === 'right') { sources.right = c; attachFlashlightTo(c); }
+        sources.leftGrip.add(wristPanel);
+      } else if (hand === 'right') {
+        sources.right = c;
+        sources.rightGrip = (c === controller1) ? grip1 : grip2;
+        attachFlashlightTo(c);
+      }
     });
     c.addEventListener('disconnected', () => { c.userData.inputSource = null; });
     c.addEventListener('selectstart', () => onTrigger(c));       // interact
@@ -323,11 +327,16 @@ function onTrigger(c) {
 }
 function onSqueezeStart(c) {
   if (state !== 'PLAY') return;
-  if (c === sources.right) toggleFlash();
-  else if (c === sources.left) startSpirit();
+  const R = OPTS.swapHands ? sources.left : sources.right;
+  const L = OPTS.swapHands ? sources.right : sources.left;
+  // dominant grip: swing the crowbar once you carry it (B toggles the light then);
+  // before that, it's the flashlight switch
+  if (c === R) { if (player.inv.weapon) swingQueued = true; else toggleFlash(); }
+  else if (c === L) startSpirit();
 }
 function onSqueezeEnd(c) {
-  if (c === sources.left) stopSpirit();
+  const L = OPTS.swapHands ? sources.right : sources.left;
+  if (c === L) stopSpirit();
 }
 
 // ============================================================ vignette / panels
@@ -417,7 +426,7 @@ function bindUI() {
   }
   optBtn('opt-bright', 'bright', (o) => '💡 Lights: ' + (o.bright ? 'DIM' : 'PITCH-DARK'));
   optBtn('opt-swap', 'swapHands', (o) => '🕹 Move stick: ' + (o.swapHands ? 'RIGHT' : 'LEFT'));
-  optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold A/X to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
+  optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold X/Y (move hand) to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
   on('btn-resume-save', () => {
     const s = loadSave(); if (!s) return;
     if (xrSupported) enterVR(s); else startDesktop(s);
@@ -2256,8 +2265,27 @@ function buildHeldCross() {
   const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,240,190,0.85)'), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
   aura.scale.set(1.4, 1.4, 1); g.add(aura); g.userData.aura = aura;
   g.position.set(0.16, -0.16, -0.42);   // held in the lower-right of view
-  g.visible = false; camera.add(g);
+  g.visible = false; g.userData.gripMounted = false; camera.add(g);
   return g;
+}
+// In VR the cross/crowbar belong IN the dominant hand, not glued to your face.
+// Desktop keeps the classic lower-corner view-model. Re-mounts on hand connect.
+function mountHeld(g, kind) {
+  const grip = isVR ? (OPTS.swapHands ? sources.leftGrip : sources.rightGrip) : null;
+  const want = grip || camera;
+  if (g.parent !== want) {
+    if (g.parent) g.parent.remove(g);
+    want.add(g);
+    g.userData.gripMounted = !!grip;
+    if (grip) {
+      if (kind === 'cross') { g.position.set(0, 0.03, -0.05); g.rotation.set(-0.45, 0, 0); }
+      else { g.position.set(0, 0, -0.03); g.rotation.set(-0.7, 0, 0); }
+    } else {
+      if (kind === 'cross') { g.position.set(0.16, -0.16, -0.42); g.rotation.set(0, 0, 0); }
+      else { g.position.set(-0.2, -0.2, -0.44); g.rotation.set(0, 0, 0); }
+    }
+  }
+  return g.userData.gripMounted;
 }
 function wantsBrandish() {
   if (!player || !player.inv || !player.inv.cross) return false;
@@ -2269,6 +2297,7 @@ function wantsBrandish() {
 }
 function updateWard(dt) {
   if (!heldCross) heldCross = buildHeldCross();
+  mountHeld(heldCross, 'cross');
   const active = wantsBrandish() && player.faith > 2;
   brandishing = active;
   if (active) {
@@ -2293,8 +2322,10 @@ function updateWard(dt) {
   const targetGlow = brandishing ? 2.4 + Math.sin(performance.now() / 90) * 0.6 : 0;
   glow.intensity += (targetGlow - glow.intensity) * Math.min(1, dt * 10);
   aura.material.opacity += ((brandishing ? 0.85 : 0) - aura.material.opacity) * Math.min(1, dt * 8);
-  const targetY = brandishing ? -0.02 : -0.16;   // raise it up when brandished
-  heldCross.position.y += (targetY - heldCross.position.y) * Math.min(1, dt * 9);
+  if (!heldCross.userData.gripMounted) {   // desktop view-model: raise it when brandished
+    const targetY = brandishing ? -0.02 : -0.16;
+    heldCross.position.y += (targetY - heldCross.position.y) * Math.min(1, dt * 9);
+  }   // in-hand (VR): the player raises their own arm — the glow does the talking
 }
 
 // ---- the crowbar: a swing that knocks the dead back a step ----
@@ -2320,10 +2351,8 @@ function buildHeldWeapon() {
 function wantsSwing() {
   if (!player || !player.inv || !player.inv.weapon) return false;
   if (!isVR) return !!keys['g'] || swingQueued;   // NOT 'f' — that's the flashlight
-  // VR: squeeze the right-hand grip (button index 1)
-  const rs = OPTS.swapHands ? sources.left : sources.right;
-  const gp = rs && rs.userData.inputSource && rs.userData.inputSource.gamepad;
-  return !!(gp && gp.buttons && gp.buttons[1] && gp.buttons[1].pressed);
+  // VR: the dominant-grip squeezestart event queues exactly one swing (no held-repeat)
+  return swingQueued;
 }
 function updateWeapon(dt) {
   if (!heldWeapon) heldWeapon = buildHeldWeapon();
@@ -2354,14 +2383,22 @@ function updateWeapon(dt) {
       if (!weaponTaught) { weaponTaught = true; showSubtitle('The iron connects — it reels back. Iron stings the dead, but it won’t stop them.', 4.5); }
     }
   }
-  // visual: idle sway low, whip through an arc while swinging
+  // visual: idle sway low, whip through an arc while swinging (mount-aware)
+  const onGrip = mountHeld(heldWeapon, 'weapon');
   heldWeapon.visible = !!player.inv.weapon && !brandishing;
   const sw = swingT > 0 ? (0.3 - swingT) / 0.3 : 0;               // 0→1 over the swing
   const arc = sw > 0 ? Math.sin(sw * Math.PI) : 0;                // out and back
-  heldWeapon.rotation.x = -arc * 1.5;
-  heldWeapon.rotation.z = arc * 0.5;
-  heldWeapon.position.y = -0.2 + arc * 0.1;
-  heldWeapon.position.z = -0.44 - arc * 0.16;
+  if (onGrip) {   // in-hand: the player's arm is the swing — a short snap for feedback
+    heldWeapon.rotation.x = -0.7 - arc * 1.1;
+    heldWeapon.rotation.z = arc * 0.2;
+    heldWeapon.position.y = arc * 0.02;
+    heldWeapon.position.z = -0.03 - arc * 0.08;
+  } else {        // desktop view-model: the full whip
+    heldWeapon.rotation.x = -arc * 1.5;
+    heldWeapon.rotation.z = arc * 0.5;
+    heldWeapon.position.y = -0.2 + arc * 0.1;
+    heldWeapon.position.z = -0.44 - arc * 0.16;
+  }
 }
 
 // ============================================================ entity audio
@@ -2519,12 +2556,11 @@ function vrLocomotion(dt) {
     const step = speed * dt / TILE_M;
     moveDolly(dx * step, dz * step);
   }
-  // look-to-walk option: hold A/X (or either grip button 4/5) to glide where you look
+  // look-to-walk option: hold X/Y on the MOVE hand only — the other hand's A is
+  // the cross and its B is the flashlight, so they must never double as walking
   if (OPTS.walkLook) {
-    const pressed = [sources.left, sources.right].some((c) => {
-      const g = c && c.userData.inputSource && c.userData.inputSource.gamepad;
-      return g && g.buttons && ((g.buttons[4] && g.buttons[4].pressed) || (g.buttons[5] && g.buttons[5].pressed));
-    });
+    const g = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
+    const pressed = g && g.buttons && ((g.buttons[4] && g.buttons[4].pressed) || (g.buttons[5] && g.buttons[5].pressed));
     if (pressed) {
       camera.getWorldDirection(tmpV);
       const l = Math.hypot(tmpV.x, tmpV.z) || 1;
@@ -2539,6 +2575,11 @@ function vrLocomotion(dt) {
     snapTurn(rx > 0 ? -Math.PI / 6 : Math.PI / 6);
     snapCooldown = 0.3;
   }
+  // B on the turn hand = flashlight (edge-detected) — vital once the grip swings the crowbar
+  const gT = turnSrc && turnSrc.userData.inputSource && turnSrc.userData.inputSource.gamepad;
+  const bNow = !!(gT && gT.buttons && gT.buttons[5] && gT.buttons[5].pressed);
+  if (bNow && !prevBBtn && state === 'PLAY') toggleFlash();
+  prevBBtn = bNow;
 }
 function keysSprint() { return false; } // VR: no sprint stick button by default
 
@@ -2691,7 +2732,7 @@ function pickupItem(it) {
   switch (it.type) {
     case 'flashlight':
       player.hasLight = true; player.lightOn = true; flashlight.visible = true;
-      showSubtitle('Flashlight. Grip to toggle. The dead see its beam.', 4.5); break;
+      showSubtitle(isVR ? 'Flashlight. Right grip (or B) to toggle. The dead see its beam.' : 'Flashlight. F to toggle. The dead see its beam.', 4.5); break;
     case 'battery':
       player.battery = Math.min(100, player.battery + 45); showSubtitle('Batteries. +45% light.', 2); break;
     case 'emf': player.inv.emf = true; showSubtitle('EMF reader — it ticks when the dead are near.', 3); break;
@@ -2704,7 +2745,9 @@ function pickupItem(it) {
       break;
     case 'weapon':
       player.inv.weapon = true;
-      showSubtitle('A rusted crowbar. Swing it (G or left-click / right-hand grip in VR) — iron knocks the dead back a step. It will not kill what is already dead.', 6);
+      showSubtitle(isVR
+        ? 'A rusted crowbar. SQUEEZE the right grip to swing — iron knocks the dead back a step. Your light lives on B now.'
+        : 'A rusted crowbar. Swing it (G or left-click) — iron knocks the dead back a step. It will not kill what is already dead.', 6);
       break;
   }
 }
@@ -3573,15 +3616,19 @@ function drawWrist(done) {
   const c = wristCtx; c.clearRect(0, 0, 320, 200);
   c.fillStyle = 'rgba(6,6,10,0.85)'; c.fillRect(0, 0, 320, 200);
   c.fillStyle = '#cdd6de'; c.font = "26px 'Special Elite', monospace"; c.textAlign = 'left';
-  c.fillText(fmtClock(), 14, 34);
-  c.textAlign = 'right'; c.fillStyle = '#9aa7b0'; c.fillText(`Truths ${done}/4`, 306, 34);
-  // bars
-  bar(c, 14, 52, 'FEAR', player.fear, '#e02a2a');
-  bar(c, 14, 92, 'LIGHT', player.battery, '#8aff9e');
-  bar(c, 14, 132, 'BODY', player.stamina, '#7ad0ff');
+  c.fillText(fmtClock(), 14, 32);
+  c.textAlign = 'right'; c.fillStyle = '#9aa7b0';
+  c.fillText(`Truths ${done}/4` + (player.inv.weapon ? (swingCd > 0 ? '  ⚒…' : '  ⚒') : ''), 306, 32);
+  // bars (compact rows so faith fits when you carry the cross)
+  const hasFaith = !!player.inv.cross;
+  const rows = hasFaith ? [46, 82, 118, 154] : [52, 92, 132];
+  bar(c, 14, rows[0], 'FEAR', player.fear, '#e02a2a');
+  bar(c, 14, rows[1], 'LIGHT', player.battery, '#8aff9e');
+  bar(c, 14, rows[2], 'BODY', player.stamina, '#7ad0ff');
+  if (hasFaith) bar(c, 14, rows[3], 'FAITH', player.faith, '#e8cf7a');
   c.fillStyle = '#c9a24a'; c.font = "18px 'Special Elite', monospace"; c.textAlign = 'left';
   const next = data.objectives.find((o) => !o.done);
-  c.fillText(next ? next.title.slice(0, 30) : 'Reach the front doors', 14, 184);
+  c.fillText(next ? next.title.slice(0, 30) : 'Reach the front doors', 14, hasFaith ? 192 : 184);
   wristTex.needsUpdate = true;
 }
 function bar(c, x, y, label, v, col) {
