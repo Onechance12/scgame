@@ -85,6 +85,10 @@ let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
 let swingT = 0, swingCd = 0, weaponTaught = false, swingQueued = false;  // weapon swing state
 let deskUseDown = false;   // desktop: left-mouse held (brandish / use)
+// dropping things: tap = use/cycle, HOLD = let go. What you drop stays where it fell.
+let dropSeq = 0, droppedLight = null;         // droppedLight: the flashlight item lying somewhere, maybe still lit
+let aHoldT = 0, aDropped = false, bHoldT = 0, bDropped = false, xDownAt = 0, fDownAt = 0;
+let fxMixers = [];   // animated set-piece FX (ritual flames, the glyph arch)
 let phoneRang = false;   // the 3:33 AM payphone (once a night)
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
@@ -216,7 +220,8 @@ function saveState() {
     floor: player.floor, x: player.x, y: player.y,
     fear: player.fear, battery: player.battery, hasLight: player.hasLight, faith: player.faith,
     inv: player.inv, keys: player.keys, rite: player.rite, weapons: player.weapons, tool: player.tool,
-    itemsTaken: data.items.filter((i) => i.taken).map((i) => i.id),
+    itemsTaken: data.items.filter((i) => i.taken && !i.dropped).map((i) => i.id),
+    drops: data.items.filter((i) => i.dropped && !i.taken).map((i) => ({ floor: i.floor, x: i.x, y: i.y, type: i.type, id: i.id, kind: i.kind, lit: !!i.lit })),
     objectives: data.objectives.map((o) => o.done),
     docs: documents.filter((d) => d.found).map((d) => d.id),
     ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
@@ -800,6 +805,7 @@ function newGame(saved) {
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   // clear set-piece state so a scare from a previous night can't bleed into this one
   morgueScared = false; carter = null; carterTimer = 50; fallingDebris = []; debrisKept = []; sceneAnims = []; riteClimax = false;
+  dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = [];
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
   if (wristMenuPanel && wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
@@ -841,6 +847,12 @@ function restoreFrom(s) {
   player.inv = s.inv || {}; player.keys = s.keys || {}; player.rite = s.rite || {};
   player.weapons = s.weapons || {}; player.tool = s.tool || 'bare';
   (s.itemsTaken || []).forEach((id) => { const it = data.items.find((i) => i.id === id); if (it) it.taken = true; });
+  (s.drops || []).forEach((d) => {
+    const it = Object.assign({ taken: false, dropped: true }, d);
+    data.items.push(it);
+    if (it.type === 'flashlight') droppedLight = it;
+    dropSeq++;   // keep new drop ids unique past the restored ones
+  });
   (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
@@ -1697,7 +1709,7 @@ function buildFloor(fi) {
   walls.castShadow = true; walls.receiveShadow = true;
   floorGroup.add(walls);
   // collision & fixture state resets FIRST — addStairs pushes stair colliders
-  propSolids = []; flickers = []; emberProp = null;
+  propSolids = []; flickers = []; emberProp = null; fxMixers = [];
   // fixtures the grid still drives: doors, candles, stairs, exits, hide-lockers
   for (let y = 0; y < World.H; y++) {
     for (let x = 0; x < World.W; x++) {
@@ -2053,6 +2065,9 @@ function loadHeroModels() {
     ['matronW', 'horror/matron/scene.gltf'],
     // the thing that lives on the grounds — the walk-up runner (cinematic scare)
     ['runner096', 'horror/scp096/scene.gltf'],
+    // ritual FX (animated): pedestal flames + the chaos glyph arch over the circle
+    ['flamefx', 'horror/flametest/scene.gltf'],
+    ['glyphfx', 'horror/glypharch/scene.gltf'],
   ];
   monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
   // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms
@@ -2083,7 +2098,9 @@ function loadHeroModels() {
     ouija: 'ouija', wallphone: 'wallphone', radiator: 'radiator', mirrorh: 'mirrorh',
     bathcounter: 'bathcounter', bloodysofa: 'bloodysofa', smartwatch: 'smartwatch',
     // the kitchen matchbox — the flame the tutorial's dry lantern is waiting for
-    matches: 'matches' };
+    matches: 'matches',
+    // flammable barrels for the basement rooms, real candles, the altar fire sheet
+    barrel: 'barrel', candlemodel: 'candle', firesheet: 'flames' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -2244,15 +2261,31 @@ function addDoor(x, y, wx, wz, locked) {
   if (locked) doorMeshes.set(x + ',' + y, { g: hinge, m: leaf, open: (0.9 + (h % 80) / 100) * ((h >> 3) % 2 ? 1 : -1) });
 }
 function addCandle(wx, wz) {
+  // a real cluster of melted candles when the model is in; procedural fallback otherwise
+  const HM = window.HeroModels || {};
+  let flameY = 1.1;
+  if (HM.candlemodel) {
+    const cm = HM.candlemodel.clone();
+    let b = new THREE.Box3().setFromObject(cm);
+    const h = (b.max.y - b.min.y) || 1;
+    cm.scale.setScalar(0.5 / h);
+    b = new THREE.Box3().setFromObject(cm);
+    const ctr = b.getCenter(new THREE.Vector3());
+    cm.position.set(wx - ctr.x, -b.min.y, wz - ctr.z);
+    cm.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.frustumCulled = true; } });
+    floorGroup.add(cm);
+    flameY = 0.52;
+  } else {
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffd07a }));
+    flame.position.set(wx, flameY, wz);
+    floorGroup.add(flame);
+  }
   const light = new THREE.PointLight(0xffb455, 1.4, 5.5, 2);
-  light.position.set(wx, 1.1, wz);
+  light.position.set(wx, flameY, wz);
   floorGroup.add(light);
-  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffd07a }));
-  flame.position.copy(light.position);
-  floorGroup.add(flame);
   // a soft warm glow halo so the flame reads as a bright bloom in the dark
-  const halo = glowSprite('rgba(255,190,110,0.9)', 0.9, wx, 1.12, wz, 0.7);
+  const halo = glowSprite('rgba(255,190,110,0.9)', 0.9, wx, flameY + 0.02, wz, 0.7);
   candleLights.push({ light, base: 1.4, halo });
 }
 // ============================================================ atmosphere pass
@@ -2512,6 +2545,52 @@ function addItemMesh(it) {
     itemMeshes.set(it.id, g);
     return;
   }
+  // weapons lie on the floor as their REAL models — dropped or placed
+  const wKind = it.type === 'weapon' ? ((it.kind && WEAPONS[it.kind]) ? it.kind : (WEAPONS[it.id] ? it.id : 'crowbar')) : null;
+  if (wKind && (window.HeroModels || {})[WEAPONS[wKind].model]) {
+    const cfg = WEAPONS[wKind];
+    const m = window.HeroModels[cfg.model].clone();
+    let b = new THREE.Box3().setFromObject(m);
+    const ref = Math.max(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z) || 1;
+    m.scale.setScalar(cfg.scale / ref);
+    m.rotation.set(Math.PI / 2, 0, 0);   // lying flat
+    let hsh = 0; for (const ch of String(it.id)) hsh = (hsh * 31 + ch.charCodeAt(0)) | 0;
+    const hold = new THREE.Group(); hold.add(m); hold.rotation.y = (hsh % 628) / 100;
+    const b2 = new THREE.Box3().setFromObject(hold);
+    hold.position.y = -b2.min.y + 0.015;
+    m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.frustumCulled = true; } });
+    g.add(hold);
+    const glowW = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,255,255,0.8)'), color: 0xb8c2cc, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glowW.scale.set(0.55, 0.55, 1); glowW.position.y = 0.12; g.add(glowW);
+    g.position.set((it.x + 0.5) * TILE_M, 0.02, (it.y + 0.5) * TILE_M);
+    floorGroup.add(g);
+    itemMeshes.set(it.id, g);
+    return;
+  }
+  // the dropped flashlight — a real light source lying where you left it,
+  // beam raking the floor, waiting for you to come back for it
+  if (it.type === 'flashlight' && it.dropped) {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.032, 0.19, 10),
+      new THREE.MeshStandardMaterial({ color: 0x22262c, metalness: 0.5, roughness: 0.5 }));
+    body.rotation.z = Math.PI / 2; body.position.y = 0.035; g.add(body);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.028, 10),
+      new THREE.MeshBasicMaterial({ color: it.lit ? 0xfff2d6 : 0x2a2a2a }));
+    lens.rotation.y = -Math.PI / 2; lens.position.set(0.098, 0.035, 0); g.add(lens);
+    const spot = new THREE.SpotLight(0xfff2d6, 20, LIGHT_RANGE * TILE_M * 0.7, CONE, 0.5, 1.3);
+    spot.position.set(0.1, 0.05, 0);
+    const tgt = new THREE.Object3D(); tgt.position.set(6, 0.05, 0);
+    g.add(tgt); spot.target = tgt; g.add(spot);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,240,210,0.9)'), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.set(0.5, 0.5, 1); halo.position.set(0.1, 0.05, 0); g.add(halo);
+    spot.visible = halo.visible = !!it.lit;
+    g.userData.dropLight = { spot, halo, lens };
+    let hsh2 = 0; for (const ch of String(it.id)) hsh2 = (hsh2 * 31 + ch.charCodeAt(0)) | 0;
+    g.rotation.y = (hsh2 % 628) / 100;
+    g.position.set((it.x + 0.5) * TILE_M, 0.02, (it.y + 0.5) * TILE_M);
+    floorGroup.add(g);
+    itemMeshes.set(it.id, g);
+    return;
+  }
   const isRite = it.type === 'anchor' || it.type === 'censer';
   // Rite relics read as a larger, slowly-turning octahedron in a cold gold — set apart from loot.
   const mesh = new THREE.Mesh(
@@ -2593,6 +2672,7 @@ function placeDecals(fi) {
 // Each model ships at a different authored scale, so normalize by bounding box to
 // a real-world size, ground it, age the material, then register a collision box.
 const HPROP_CFG = {
+  barrel:      { by: 'h',    size: 0.95, tint: 0x6a4a2a, tintAmt: 0.30 },
   hospbed:     { by: 'long', size: 2.05, tint: 0x8a8f86, tintAmt: 0.25 },
   horrorbed:   { by: 'long', size: 2.00, tint: 0x7a6a5a, tintAmt: 0.25 },
   gurney:      { by: 'long', size: 2.05, tint: 0x9098a0, tintAmt: 0.20 },
@@ -2702,7 +2782,7 @@ const ROOM_PROPS = {
   bath:       [['bloodybath', 0.9], ['bathcab', 0.7]],
   pharmacy:   [['metalcab', 0.9], ['locker', 0.5]],
   supply:     [['metalcab', 0.8], ['shovel', 0.4]],
-  storage:    [['metalcab', 0.7], ['shovel', 0.6], ['locker', 0.5]],
+  storage:    [['metalcab', 0.7], ['barrel', 0.6], ['shovel', 0.6], ['locker', 0.5]],
   station:    [['metalcab', 0.7], ['bookshelf', 0.5], ['wheelchair', 0.5]],
   records:    [['bookshelf', 1], ['metalcab', 0.5]],
   linen:      [['metalcab', 0.6], ['locker', 0.6]],
@@ -2714,9 +2794,9 @@ const ROOM_PROPS = {
   sanctum:    [['cross', 0.8], ['candle', 0.9]],
   matron:     [['bookshelf', 0.7], ['clock', 0.6], ['candle', 0.6], ['oldtv', 0.4]],
   ritual:     [['bloodytarp', 0.9], ['candle', 1], ['cross', 0.5]],
-  incinerator:[['shovel', 0.7], ['metalcab', 0.5], ['wallblood', 0.5]],
-  boiler:     [['shovel', 0.6], ['metalcab', 0.5]],
-  laundry:    [['metalcab', 0.6], ['shovel', 0.4]],
+  incinerator:[['shovel', 0.7], ['barrel', 0.7], ['metalcab', 0.5], ['wallblood', 0.5]],
+  boiler:     [['barrel', 0.9], ['shovel', 0.6], ['barrel', 0.6], ['metalcab', 0.5]],
+  laundry:    [['metalcab', 0.6], ['barrel', 0.5], ['shovel', 0.4]],
   nursery:    [['voodoohang', 0.6], ['oldtv', 0.4], ['candle', 0.5]],
   attic:      [['bookshelf', 0.5], ['candle', 0.5], ['voodoohang', 0.4]],
 };
@@ -3017,10 +3097,77 @@ function buildRitual() {
       new THREE.MeshBasicMaterial({ color: tint, fog: false }));
     flame.position.y = 0.6; flame.visible = n.filled; g.add(flame);
     const light = new THREE.PointLight(tint, n.filled ? 0.9 : 0, 3.2, 2); light.position.y = 0.6; g.add(light);
+    // a REAL animated flame licks up from a seated anchor's bowl
+    const MOB2 = window.MobModels || {};
+    if (MOB2.flamefx && MOB2.flamefx.scene) {
+      const fm = MOB2.flamefx.scene.clone(true);
+      let fb = new THREE.Box3().setFromObject(fm);
+      const fh = (fb.max.y - fb.min.y) || 1;
+      fm.scale.setScalar(0.42 / fh);
+      fb = new THREE.Box3().setFromObject(fm);
+      const fc = fb.getCenter(new THREE.Vector3());
+      fm.position.set(-fc.x, 0.4 - fb.min.y, -fc.z);
+      fm.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.depthWrite = false; o.frustumCulled = false; } });
+      fm.visible = n.filled;
+      g.add(fm);
+      n.flameModel = fm;
+      if (MOB2.flamefx.animations && MOB2.flamefx.animations.length) {
+        const fmx = new THREE.AnimationMixer(fm);
+        fmx.clipAction(MOB2.flamefx.animations[0]).play();
+        fxMixers.push(fmx);
+      }
+    }
     g.position.set(n.tileX * TILE_M, 0.31, n.tileY * TILE_M);
     n.mesh = g; n.token = token; n.flame = flame; n.light = light;
     floorGroup.add(g);
   });
+  // the Chaos Glyph — a slowly-turning arcane arch hanging over the altar,
+  // burned into the air by whoever bound the children here
+  const MOB3 = window.MobModels || {};
+  if (MOB3.glyphfx && MOB3.glyphfx.scene) {
+    const gl = MOB3.glyphfx.scene.clone(true);
+    let gb = new THREE.Box3().setFromObject(gl);
+    const gw = Math.max(gb.max.x - gb.min.x, gb.max.z - gb.min.z) || 1;
+    gl.scale.setScalar(2.4 / gw);
+    gb = new THREE.Box3().setFromObject(gl);
+    const gc = gb.getCenter(new THREE.Vector3());
+    gl.position.set(ritual.altarTileX * TILE_M - gc.x, 1.7 - gc.y, ritual.altarTileY * TILE_M - gc.z);
+    gl.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.depthWrite = false; if (o.material.emissive) o.material.emissiveIntensity = Math.max(0.6, o.material.emissiveIntensity || 0); o.frustumCulled = false; } });
+    floorGroup.add(gl);
+    if (MOB3.glyphfx.animations && MOB3.glyphfx.animations.length) {
+      const gmx = new THREE.AnimationMixer(gl);
+      gmx.clipAction(MOB3.glyphfx.animations[0]).play();
+      fxMixers.push(gmx);
+    } else { ritual.glyphSpin = gl; }
+  }
+  // the altar fire — two crossed sprite-sheet flame planes that ignite once all
+  // four anchors are seated (flipbook animated in spinItems)
+  if ((window.HeroModels || {}).firesheet) {
+    const src = window.HeroModels.firesheet;
+    let ftex = null;
+    src.traverse((o) => { if (!ftex && o.isMesh && o.material && o.material.map) ftex = o.material.map; });
+    if (ftex) {
+      // the sheet is an atlas of horizontal flame strips — ride one tall-flame
+      // strip (2nd row band) as a 16-frame flipbook
+      const t1 = ftex.clone(); t1.needsUpdate = true;
+      t1.wrapS = t1.wrapT = THREE.RepeatWrapping;
+      const COLS = 16, BAND_V = 0.751, BAND_H = 0.117;
+      t1.repeat.set(1 / COLS, BAND_H);
+      t1.offset.set(0, BAND_V);
+      const fmat = new THREE.MeshBasicMaterial({ map: t1, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+      const fireG = new THREE.Group();
+      for (let i = 0; i < 2; i++) {
+        const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.3), fmat);
+        pl.rotation.y = i * Math.PI / 2;
+        pl.position.y = 0.65; fireG.add(pl);
+      }
+      const fl = new THREE.PointLight(0xff7a2a, 0, 6, 2); fl.position.y = 0.9; fireG.add(fl);
+      fireG.position.set(ritual.altarTileX * TILE_M, 0.8, ritual.altarTileY * TILE_M);
+      fireG.visible = false;
+      floorGroup.add(fireG);
+      ritual.altarFire = { g: fireG, tex: t1, light: fl, t: 0, cols: COLS, bandV: BAND_V, frame: 0 };
+    }
+  }
 }
 
 // ---- entity meshes ----
@@ -3303,6 +3450,38 @@ function cycleTool(dir) {
   player.tool = list[(i + (dir || 1) + list.length) % list.length];
   showSubtitle('In hand: ' + toolLabel(player.tool), 1.8);
   Audio2.pickup(); haptic(0.3, 40, OPTS.swapHands ? 'left' : 'right');
+}
+// ---- dropping: whatever leaves your hand becomes a real item on the floor ----
+function spawnDrop(fields) {
+  const it = Object.assign({ floor: player.floor, x: player.x - 0.5, y: player.y - 0.5, taken: false, dropped: true }, fields);
+  data.items.push(it);
+  addItemMesh(it);
+  Audio2.thud(0.18);
+  saveState();
+  return it;
+}
+function dropCurrentTool() {
+  if (!player || state !== 'PLAY') return;
+  if (player.tool === 'cross' && player.inv.cross) {
+    player.inv.cross = false; player.tool = 'bare';
+    spawnDrop({ type: 'ward', id: 'drop_cross_' + (dropSeq++) });
+    showSubtitle('You set the iron cross down at your feet.', 2.5);
+  } else if (WEAPONS[player.tool] && player.weapons && player.weapons[player.tool]) {
+    const kind = player.tool;
+    player.weapons[kind] = false; player.tool = 'bare';
+    player.inv.weapon = WEAPON_ORDER.some((k) => player.weapons[k]);
+    spawnDrop({ type: 'weapon', kind, id: 'drop_w_' + kind + '_' + (dropSeq++) });
+    showSubtitle('You drop the ' + WEAPONS[kind].name.toLowerCase() + '. It’ll still be here. Probably.', 2.5);
+  } else { showSubtitle('Empty hands — nothing to drop.', 1.6); return; }
+  haptic(0.4, 60, OPTS.swapHands ? 'left' : 'right');
+}
+function dropFlashlight() {
+  if (!player || state !== 'PLAY' || !player.hasLight) return;
+  const lit = !!(player.lightOn && player.battery > 0);
+  player.hasLight = false; player.lightOn = false; flashlight.visible = false;
+  droppedLight = spawnDrop({ type: 'flashlight', id: 'drop_light_' + (dropSeq++), lit });
+  showSubtitle(lit ? 'The flashlight hits the floor — still burning where it fell.' : 'You drop the dead flashlight.', 3);
+  haptic(0.4, 60, OPTS.swapHands ? 'right' : 'left');
 }
 function wantsBrandish() {
   if (!player || !player.inv || !player.inv.cross || player.tool !== 'cross') return false;
@@ -3614,14 +3793,20 @@ function vrLocomotion(dt) {
     snapTurn(rx > 0 ? -Math.PI / 6 : Math.PI / 6);
     snapCooldown = 0.3;
   }
-  // B on the turn hand = flashlight (edge-detected) — the light lives on your OTHER hand now
+  // B on the tool hand: TAP toggles the flashlight, HOLD (~0.7s) drops it where you stand
   const gT = turnSrc && turnSrc.userData.inputSource && turnSrc.userData.inputSource.gamepad;
   const bNow = !!(gT && gT.buttons && gT.buttons[5] && gT.buttons[5].pressed);
-  if (bNow && !prevBBtn && state === 'PLAY') toggleFlash();
+  if (state === 'PLAY') {
+    if (bNow) { bHoldT += dt; if (!bDropped && bHoldT > 0.7) { bDropped = true; dropFlashlight(); } }
+    else { if (prevBBtn && !bDropped && bHoldT < 0.45) toggleFlash(); bHoldT = 0; bDropped = false; }
+  }
   prevBBtn = bNow;
-  // A on the tool hand = cycle what you're holding (bare → cross → weapons)
+  // A on the tool hand: TAP cycles what you hold (bare → cross → weapons), HOLD drops it
   const aNow = !!(gT && gT.buttons && gT.buttons[4] && gT.buttons[4].pressed);
-  if (aNow && !prevABtn && state === 'PLAY') cycleTool(1);
+  if (state === 'PLAY') {
+    if (aNow) { aHoldT += dt; if (!aDropped && aHoldT > 0.7) { aDropped = true; dropCurrentTool(); } }
+    else { if (prevABtn && !aDropped && aHoldT < 0.45) cycleTool(1); aHoldT = 0; aDropped = false; }
+  }
   prevABtn = aNow;
   // stick clicks: move-hand = crouch toggle, turn-hand = jump
   const gM = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
@@ -3656,7 +3841,7 @@ function bindDesktopInput() {
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase(); keys[k] = true;
     if (state === 'MENU') return;
-    if (k === 'f') toggleFlash();
+    if (k === 'f' && !e.repeat) { if (state === 'PLAY') fDownAt = performance.now(); else toggleFlash(); }
     if (k === 'e') { if (state === 'PLAY') interact(); else if (state === 'INTRO') introInteract(); }
     if (k === 'q' && state === 'PLAY') startSpirit();
     if (k === 'p' || k === 'escape') { if (state === 'PLAY') pause(); else if (state === 'PAUSE') resumeGame(); }
@@ -3666,13 +3851,16 @@ function bindDesktopInput() {
     if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
     if (k === ' ' && (state === 'PLAY' || state === 'INTRO') && jumpY <= 0 && !crouched) { jumpVel = 2.7; jumpY = 0.001; }
     if (k === 'z' && state === 'PLAY') crouched = !crouched;
-    if (k === 'x' && state === 'PLAY') cycleTool(1);
+    if (k === 'x' && !e.repeat && state === 'PLAY') xDownAt = performance.now();
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
     if ((k === 'enter' || k === 'escape') && state === 'INTRO') skipCine();
   });
   window.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase(); keys[k] = false;
     if (k === 'q') stopSpirit();
+    // tap = use, hold ≥0.6s = drop (flashlight on F, held tool on X)
+    if (k === 'f' && state === 'PLAY') { (performance.now() - fDownAt > 600) ? dropFlashlight() : toggleFlash(); }
+    if (k === 'x' && state === 'PLAY') { (performance.now() - xDownAt > 600) ? dropCurrentTool() : cycleTool(1); }
   });
   const cv = renderer.domElement;
   cv.addEventListener('mousedown', (e) => {
@@ -3820,8 +4008,10 @@ function pickupItem(it) {
   if (mesh) { floorGroup.remove(mesh); itemMeshes.delete(it.id); }
   switch (it.type) {
     case 'flashlight':
-      player.hasLight = true; player.lightOn = true; flashlight.visible = true;
-      showSubtitle(isVR ? 'Flashlight. Right grip (or B) to toggle. The dead see its beam.' : 'Flashlight. F to toggle. The dead see its beam.', 4.5); break;
+      player.hasLight = true; player.lightOn = player.battery > 0; flashlight.visible = player.lightOn;
+      if (droppedLight && it.id === droppedLight.id) { droppedLight = null; showSubtitle('The flashlight is back in your hand. Don’t drop it again.', 3); }
+      else showSubtitle(isVR ? 'Flashlight. B toggles it. The dead see its beam.' : 'Flashlight. F to toggle. The dead see its beam.', 4.5);
+      break;
     case 'battery':
       player.battery = Math.min(100, player.battery + 45); showSubtitle('Batteries. +45% light.', 2); break;
     case 'emf': player.inv.emf = true; showSubtitle('EMF reader — it ticks when the dead are near.', 3); break;
@@ -3835,7 +4025,7 @@ function pickupItem(it) {
         : 'A heavy iron cross. Hold R (or left-click) to raise it and drive the dead back while your faith holds. Press X to switch what you hold.', 6);
       break;
     case 'weapon': {
-      const kind = WEAPONS[it.id] ? it.id : 'crowbar';
+      const kind = (it.kind && WEAPONS[it.kind]) ? it.kind : (WEAPONS[it.id] ? it.id : 'crowbar');
       player.weapons = player.weapons || {}; player.weapons[kind] = true; player.inv.weapon = true; player.tool = kind;
       const cfg = WEAPONS[kind];
       showSubtitle(isVR
@@ -4058,13 +4248,30 @@ function spinItems(dt) {
   itemMeshes.forEach((g) => { if (g.userData.spin) { g.userData.spin.rotation.y += dt * 1.5; g.position.y = 1.1 + Math.sin(performance.now() / 400) * 0.08; } });
   candleLights.forEach((c) => { const f = 0.75 + Math.random() * 0.35; c.light.intensity = c.base * f; if (c.halo) c.halo.material.opacity = 0.55 * f + 0.15; });
   docMeshes.forEach((g) => { g.rotation.y += dt * 0.6; g.position.y = 1.0 + Math.sin(performance.now() / 500) * 0.06; });
+  fxMixers.forEach((m) => m.update(dt));   // ritual flames + the glyph arch breathe
   if (ritual && player && player.floor === ritual.floor) {
     ritual.nodes.forEach((n) => {
+      if (n.flameModel) n.flameModel.visible = n.filled;
       if (n.filled) {
         if (n.light) n.light.intensity = 0.9 * (0.7 + Math.random() * 0.4);
         if (n.token) { n.token.rotation.y += dt * 1.2; n.token.position.y = 0.5 + Math.sin(performance.now() / 500) * 0.04; }
       }
     });
+    // all four anchors seated -> the altar itself catches fire (sprite-sheet flipbook)
+    const AF = ritual.altarFire;
+    if (AF) {
+      const burning = ritual.nodes.every((n) => n.filled);
+      AF.g.visible = burning;
+      if (burning) {
+        AF.t += dt;
+        if (AF.t > 0.055) {
+          AF.t = 0; AF.frame = (AF.frame + 1) % AF.cols;
+          AF.tex.offset.set(AF.frame / AF.cols, AF.bandV);
+        }
+        AF.light.intensity = 1.6 + Math.random() * 0.9;
+      }
+    }
+    if (ritual.glyphSpin) ritual.glyphSpin.rotation.y += dt * 0.25;
   }
 }
 
@@ -4345,6 +4552,16 @@ function update(dt) {
     flashFlicker = player.battery < 20 ? (0.55 + Math.random() * 0.45) : 1;
     flashlight.intensity = 30 * flashFlicker;
   }
+  // a dropped, still-lit flashlight keeps eating the battery from across the dark
+  if (droppedLight && !droppedLight.taken && droppedLight.lit) {
+    player.battery = Math.max(0, player.battery - dt * (realMode ? 0.05 : 0.35));
+    if (player.battery <= 0) {
+      droppedLight.lit = false;
+      const rec = itemMeshes.get(droppedLight.id);
+      if (rec && rec.userData.dropLight) { rec.userData.dropLight.spot.visible = false; rec.userData.dropLight.halo.visible = false; rec.userData.dropLight.lens.material.color.setHex(0x2a2a2a); }
+      showSubtitle('Somewhere in the dark, your flashlight gutters out.', 3.5);
+    }
+  }
   // aim yaw (of the flashlight) in tile space for AI
   const beamObj = flashlight.parent || camera;
   beamObj.getWorldDirection(tmpV); // -Z of the object
@@ -4522,6 +4739,9 @@ function beamHits(ex, ey) {
 function isPlayerLit() {
   if (player.lightOn && player.battery > 0) return true;
   if (Survival.lanternActive()) return true;
+  // standing in the pool of your own dropped, still-burning flashlight counts
+  if (droppedLight && droppedLight.lit && !droppedLight.taken && droppedLight.floor === player.floor &&
+    Math.hypot(droppedLight.x + 0.5 - player.x, droppedLight.y + 0.5 - player.y) < 2.5) return true;
   const g = data.floors[player.floor].grid;
   for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
     const yy = Math.floor(player.y) + j, xx = Math.floor(player.x) + i;
@@ -4550,6 +4770,7 @@ function updateFear(dt, grace) {
 // ---- the opening tutorial: a few clear lines while the night holds its breath ----
 const ONBOARD = [
   'Follow the pale wisp — it drifts toward whatever the house wants you to find next.',
+  'Your free hand is your TOOL hand. Tap A (X on desktop) to cycle the cross or a weapon into it — HOLD to drop it. Hold B (F) to drop the flashlight; it burns on where it falls.',
   'Keep your light on. The dead can see its beam — but the dark feeds fear and hides what’s coming.',
   'Four truths are buried in these walls. Uncover them and survive till dawn, and the doors open. Fail, and you stay.',
 ];
@@ -4685,7 +4906,11 @@ function findInteract() {
   return null;
 }
 function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer', ward: 'Warding Cross', weapon: 'weapon', lantern: 'storm lantern', matches: 'box of matches' })[t] || t; }
-function itemDisplay(it) { if (it.type === 'anchor') { const a = data.rite.anchors.find((x) => x.key === it.anchor); return a ? a.name : 'Spirit Anchor'; } return itemName(it.type); }
+function itemDisplay(it) {
+  if (it.type === 'anchor') { const a = data.rite.anchors.find((x) => x.key === it.anchor); return a ? a.name : 'Spirit Anchor'; }
+  if (it.type === 'weapon') { const k = (it.kind && WEAPONS[it.kind]) ? it.kind : (WEAPONS[it.id] ? it.id : 'crowbar'); return WEAPONS[k].name; }
+  return itemName(it.type);
+}
 
 // ============================================================ HUD
 function updateHUD() {
@@ -4964,8 +5189,10 @@ function netMyState() {
     ry: +Math.atan2(-_netV.x, -_netV.z).toFixed(2),
     l: (player.hasLight && player.lightOn && player.battery > 0) ? 1 : 0,
     hid: player.hidden ? 1 : 0,
+    t: player.tool || 'bare',   // what the tool hand holds — friends see your cross or iron
   };
 }
+function netJacketIdx(id) { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h) % NET_JACKETS.length; }
 
 function netNameTag(name) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
@@ -5005,11 +5232,22 @@ function buildNetAvatar(name, idx) {
   beam.rotation.x = -Math.PI / 2; beam.position.z = -1.78;
   glow.add(beam);
   torch.add(barrel, glow);
-  torch.position.set(0.24, 1.18, -0.12);
+  torch.position.set(-0.24, 1.18, -0.12);   // the flashlight rides the OFF hand, same as yours
   torch.rotation.x = -0.06;
+  // the tool hand shows what they're carrying: a pale iron cross, or a dark length of steel
+  const toolG = new THREE.Group(); toolG.position.set(0.24, 1.12, -0.1);
+  const ironM = new THREE.MeshStandardMaterial({ color: 0xd8ccc0, emissive: 0x776644, emissiveIntensity: 0.45, metalness: 0.6, roughness: 0.4 });
+  const crossG = new THREE.Group();
+  const cb1 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.17, 0.022), ironM);
+  const cb2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.022), ironM); cb2.position.y = 0.035;
+  crossG.add(cb1, cb2); crossG.rotation.x = -0.3;
+  const wbar = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.44, 0.035), dark.clone());
+  wbar.rotation.z = 0.55; wbar.position.y = 0.06;
+  crossG.visible = wbar.visible = false;
+  toolG.add(crossG, wbar);
   const tag = netNameTag(name); tag.position.y = 1.86;
-  grp.add(l1, l2, torso, hood, face, torch, tag);
-  return { grp, torso, glow, tag, yaw: 0, bobT: 0, torsoY: 1.05 };
+  grp.add(l1, l2, torso, hood, face, torch, toolG, tag);
+  return { grp, torso, glow, tag, yaw: 0, bobT: 0, torsoY: 1.05, toolCross: crossG, toolBar: wbar };
 }
 
 function netTick(dt) {
@@ -5024,12 +5262,13 @@ function netTick(dt) {
   M.peers().forEach((p, id) => {
     if (!p.st) return;
     let av = netAvatars.get(id);
-    if (!av) { av = buildNetAvatar(p.name, netAvatars.size); netAvatars.set(id, av); scene.add(av.grp); av.grp.position.set(p.st.x * TILE_M, 0, p.st.y * TILE_M); }
+    if (!av) { av = buildNetAvatar(p.name, netJacketIdx(id)); netAvatars.set(id, av); scene.add(av.grp); av.grp.position.set(p.st.x * TILE_M, 0, p.st.y * TILE_M); }
     const st = p.st;
     const show = inPlay && st.f === player.floor && !st.hid && (tNow - p.at) < 6000;
     av.grp.visible = show;
     if (!show) return;
     av.glow.visible = !!st.l;
+    if (av.toolCross) { av.toolCross.visible = st.t === 'cross'; av.toolBar.visible = !!st.t && st.t !== 'bare' && st.t !== 'cross'; }
     const wx = st.x * TILE_M, wz = st.y * TILE_M;
     const dx = wx - av.grp.position.x, dz = wz - av.grp.position.z;
     const far = Math.hypot(dx, dz);

@@ -237,6 +237,22 @@ work, used under CC-BY-4.0. This project is a non-commercial fan tribute.
                    https://sketchfab.com/3d-models/matches-40be5eca89314de08a37653a2d386e9a
                    (CC-BY-4.0; the kitchen matchbox that lights the storm lantern)
 
+    flames/              "flames" by photon (that one larry)
+                   https://sketchfab.com/3d-models/flames-24815b01d0a944b9923d3e023fb0aec8
+                   (CC-BY-4.0; the altar fire, sprite-sheet flipbook — sheets downscaled to 1K)
+    flametest/           "Flame Test 2" by Chaitanya Krishnan
+                   https://sketchfab.com/3d-models/flame-test-2-26b275b13d1d4f09b2e7eac5cf4ec618
+                   (CC-BY-4.0; the animated flames on seated ritual pedestals)
+    glypharch/           "Chaos Flame Time Arch Glyph" by amdragg
+                   https://sketchfab.com/3d-models/chaos-flame-time-arch-glyph-267964f285514ec0a1117c8ef928a535
+                   (CC-BY-4.0; the arcane glyph turning over the ritual altar)
+    barrel/              "Flamable Barrel" by Spacii
+                   https://sketchfab.com/3d-models/flamable-barrel-e762c2f6d6e046e7b818db35cb73fc54
+                   (CC-BY-4.0; basement barrels — textures downscaled to 512)
+    candle/              "Candle light" by al0sral0
+                   https://sketchfab.com/3d-models/candle-light-d9d5ed5de83b4d899ab93f55bdc3d0bc
+                   (CC-BY-4.0; the melted candle clusters at candle tiles)
+
 VENDORED LIBRARIES
 ------------------
   js/vendor/peerjs.min.js — PeerJS 1.5.4 (https://peerjs.com), MIT License.

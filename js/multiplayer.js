@@ -23,13 +23,19 @@ const MP = (() => {
   let code = '', myName = 'INVESTIGATOR';
   let statusCb = null, eventCb = null;
   let peers = new Map();                  // peer id -> { name, st, at }
+  let knownNames = [];                    // (joiner) full roster names from the host's welcome + join/leave events
   let lastSend = 0;
 
   function setName(n) { myName = String(n || 'INVESTIGATOR').slice(0, 14); }
   function status(msg, kind) { if (statusCb) statusCb(msg, kind || 'info'); }
   function emit(ev) { if (eventCb) eventCb(ev); }
   function makeCode() { let c = ''; for (let i = 0; i < 4; i++) c += ALPHA[(Math.random() * ALPHA.length) | 0]; return c; }
-  function roster() { const r = [{ name: myName, me: true }]; peers.forEach((p) => r.push({ name: p.name })); return r; }
+  function roster() {
+    // joiners know the full room from the host's welcome list, even before
+    // everyone has moved (peers only fills in as state packets arrive)
+    if (role === 'join' && knownNames.length) return knownNames.map((n) => ({ name: n, me: n === myName }));
+    const r = [{ name: myName, me: true }]; peers.forEach((p) => r.push({ name: p.name })); return r;
+  }
 
   // ---- host: claim a room code on the broker and wait at the door ----
   function host() {
@@ -57,7 +63,7 @@ const MP = (() => {
   function dropConn(c) {
     const i = conns.indexOf(c); if (i >= 0) conns.splice(i, 1);
     const p = peers.get(c.peer);
-    if (p) { peers.delete(c.peer); broadcast({ t: 'bye', id: c.peer }, null); emit({ kind: 'leave', name: p.name }); emit({ kind: 'roster' }); }
+    if (p) { peers.delete(c.peer); broadcast({ t: 'bye', id: c.peer, name: p.name }, null); emit({ kind: 'leave', name: p.name }); emit({ kind: 'roster' }); }
   }
 
   // ---- join: dial the host by room code ----
@@ -97,7 +103,8 @@ const MP = (() => {
           emit({ kind: 'join', name: nm }); emit({ kind: 'roster' });
           break;
         }
-        case 'welcome':  // (joiner) the host let us in
+        case 'welcome':  // (joiner) the host let us in — keep its full name list
+          knownNames = (m.names || []).slice();
           status("You're in. The night is shared now.", 'ok'); emit({ kind: 'roster' });
           break;
         case 'full':
@@ -117,11 +124,15 @@ const MP = (() => {
         }
         case 'bye': {  // (joiner) the host says someone left
           const p = peers.get(m.id);
-          if (p) { peers.delete(m.id); emit({ kind: 'leave', name: p.name }); emit({ kind: 'roster' }); }
+          const nm = (p && p.name) || m.name;
+          if (p) peers.delete(m.id);
+          if (nm) { const i = knownNames.indexOf(nm); if (i >= 0) knownNames.splice(i, 1); }
+          if (nm) { emit({ kind: 'leave', name: nm }); emit({ kind: 'roster' }); }
           break;
         }
         case 'ev':  // deaths, dawns, joins — host relays, everyone hears
           if (role === 'host') broadcast(m, c);
+          if (m.kind === 'join' && m.name && role === 'join' && knownNames.length && !knownNames.includes(m.name)) knownNames.push(m.name);
           emit(m);
           break;
       }
@@ -150,7 +161,7 @@ const MP = (() => {
 
   function leave() {
     if (peer) { try { peer.destroy(); } catch (e) { } }
-    peer = null; conns = []; hostConn = null; peers.clear();
+    peer = null; conns = []; hostConn = null; peers.clear(); knownNames = [];
     role = 'off'; code = '';
   }
 
@@ -158,7 +169,7 @@ const MP = (() => {
     host, join, leave, send, event, setName,
     active: () => role !== 'off', isHost: () => role === 'host',
     code: () => code, peers: () => peers, roster,
-    count: () => 1 + peers.size,
+    count: () => (role === 'join' && knownNames.length) ? knownNames.length : 1 + peers.size,
     onStatus: (cb) => (statusCb = cb), onEvent: (cb) => (eventCb = cb),
   };
 })();

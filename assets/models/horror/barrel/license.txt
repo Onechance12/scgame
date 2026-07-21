@@ -1,0 +1,11 @@
+Model Information:
+* title:	Flamable Barrel
+* source:	https://sketchfab.com/3d-models/flamable-barrel-e762c2f6d6e046e7b818db35cb73fc54
+* author:	Spacii (https://sketchfab.com/Spacii)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Flamable Barrel" (https://sketchfab.com/3d-models/flamable-barrel-e762c2f6d6e046e7b818db35cb73fc54) by Spacii (https://sketchfab.com/Spacii) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

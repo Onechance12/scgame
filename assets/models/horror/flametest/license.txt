@@ -1,0 +1,11 @@
+Model Information:
+* title:	Flame Test 2
+* source:	https://sketchfab.com/3d-models/flame-test-2-26b275b13d1d4f09b2e7eac5cf4ec618
+* author:	Chaitanya Krishnan (https://sketchfab.com/chaitanyak)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Flame Test 2" (https://sketchfab.com/3d-models/flame-test-2-26b275b13d1d4f09b2e7eac5cf4ec618) by Chaitanya Krishnan (https://sketchfab.com/chaitanyak) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
