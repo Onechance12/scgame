@@ -400,12 +400,12 @@ const Props = (() => {
   const FILL = {
     nursery: { items: [], style: 'nursery', mood: 0x9a6a2a },
     maternity: { items: ['incubator', 'incubator', 'bassinet', 'bassinet', 'rocker'], style: 'walls', mood: 0x8a5a3a },
-    er: { items: ['bed', 'bed', 'bed', 'iv', 'examlight'], style: 'walls', mood: 0x6a8a9a },
-    ward: { items: ['bed', 'bed', 'bed', 'bed'], style: 'walls' },
-    recovery: { items: ['bed', 'bed', 'bed', 'iv'], style: 'walls' },
+    er: { items: ['bed', 'bed', 'bed', 'bed', 'iv', 'iv', 'examlight', 'cabinet', 'tray'], style: 'walls', mood: 0x6a8a9a },
+    ward: { items: ['bed', 'bed', 'bed', 'bed', 'bed', 'bed', 'cabinet', 'iv', 'wheelchair'], style: 'walls' },
+    recovery: { items: ['bed', 'bed', 'bed', 'bed', 'iv', 'tray', 'cabinet'], style: 'walls' },
     room207: { items: ['bed', 'wheelchair', 'cabinet'], style: 'walls' },
     iso: { items: ['bed'], style: 'center' },
-    quarters: { items: ['bed', 'bed', 'cabinet', 'chair'], style: 'walls' },
+    quarters: { items: ['bed', 'bed', 'bed', 'bed', 'cabinet', 'cabinet', 'chair', 'chair'], style: 'walls' },
     morgue: { items: ['drawers', 'drawers', 'slab'], style: 'morgue', mood: 0x3a6a58 },
     autopsy: { items: ['shroud', 'shroud', 'cabinet'], style: 'center', mood: 0x4a7a66 },
     incinerator: { items: ['incinerator'], style: 'center', mood: 0x8a2a10 },
@@ -416,11 +416,11 @@ const Props = (() => {
     records: { items: ['shelf', 'shelf', 'cabinet', 'cabinet'], style: 'walls' },
     attic: { items: ['crates', 'crates', 'shelf'], style: 'walls' },
     pharmacy: { items: ['shelf', 'counter'], style: 'walls' },
-    lobby: { items: ['counter', 'chair', 'chair', 'wheelchair'], style: 'walls' },
-    admitting: { items: ['desk', 'chair', 'cabinet'], style: 'walls' },
-    waiting: { items: ['chair', 'chair', 'chair', 'chair', 'chair', 'chair'], style: 'rows' },
+    lobby: { items: ['counter', 'counter', 'chair', 'chair', 'chair', 'wheelchair', 'wheelchair', 'crates'], style: 'walls' },
+    admitting: { items: ['desk', 'desk', 'chair', 'chair', 'cabinet', 'cabinet'], style: 'walls' },
+    waiting: { items: ['chair', 'chair', 'chair', 'chair', 'chair', 'chair', 'chair', 'chair', 'table'], style: 'rows' },
     kitchen: { items: ['counter', 'counter', 'stove', 'shelf', 'preptable'], style: 'kitchen' },
-    cafeteria: { items: ['table', 'table', 'table', 'chair', 'chair', 'chair'], style: 'rows' },
+    cafeteria: { items: ['table', 'chair', 'table', 'chair', 'table', 'chair', 'table', 'chair', 'table'], style: 'rows' },
     station: { items: ['desk', 'cabinet', 'cabinet'], style: 'walls' },
     surgery: { items: ['operating', 'examlight', 'tray', 'cabinet'], style: 'center', mood: 0x8a9aa8 },
     prep: { items: ['sink', 'counter', 'shelf'], style: 'walls' },
@@ -441,8 +441,8 @@ const Props = (() => {
     const spec = FILL[room.tag] || DEFAULT_FILL;
     const items = spec.items;
     // room interior in metres, inset from walls
-    const x0 = (room.x + 1.2) * TILE_M, x1 = (room.x + room.w - 1.2) * TILE_M;
-    const z0 = (room.y + 1.2) * TILE_M, z1 = (room.y + room.h - 1.2) * TILE_M;
+    const x0 = (room.x + 0.9) * TILE_M, x1 = (room.x + room.w - 0.9) * TILE_M;
+    const z0 = (room.y + 0.9) * TILE_M, z1 = (room.y + room.h - 0.9) * TILE_M;
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
 
     const place = (name, xm, zm, rotY) => {
@@ -460,6 +460,18 @@ const Props = (() => {
       if (g.userData.ember) group.userData.ember = g;
       if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: Math.random() * 6 });
     };
+
+    // generic clutter pass — big rooms get scattered debris so nothing feels bare
+    const areaT = (room.w - 2) * (room.h - 2);
+    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart'];
+    const nClutter = Math.min(6, Math.floor(areaT / 16));
+    for (let i = 0; i < nClutter; i++) {
+      const cxm = x0 + Math.random() * (x1 - x0);
+      const czm = z0 + Math.random() * (z1 - z0);
+      // keep the door column walkable
+      if (Math.abs(cxm / TILE_M - (room.doorX + 0.5)) < 1.6) continue;
+      place(CLUTTER[Math.floor(Math.random() * CLUTTER.length)], cxm, czm, Math.random() * 6.28);
+    }
 
     const style = spec.style;
     if (style === 'rows') {
@@ -544,12 +556,13 @@ const Props = (() => {
       const dead = Math.random() < 0.28;
       fixtures.push({ tube, light, dead, on: !dead, base: withLight ? 1.1 : 0, phase: Math.random() * 6, nextFlick: Math.random() * 3 });
     };
-    // corridor line (with real lights) every ~8 tiles
+    // corridor tubes every ~8 tiles; REAL lights only on every other one (Quest perf)
     const ct = (_data && _data.CORR_TOP) || 14, cb = (_data && _data.CORR_BOT) || 17;
     const midY = Math.floor((ct + cb) / 2);
-    for (let x = 6; x < World.W - 4; x += 8) addTube(x + 0.5, midY + 0.5, true);
-    // a few room tubes (emissive only)
-    (data_rooms(fi) || []).forEach((r, i) => { if (i % 2 === 0) addTube(r.cx + 0.5, r.cy + 0.5, false); });
+    let li = 0;
+    for (let x = 6; x < World.W - 4; x += 8) addTube(x + 0.5, midY + 0.5, (li++ % 2) === 0);
+    // a tube in every room (emissive only — no light cost)
+    (data_rooms(fi) || []).forEach((r) => addTube(r.cx + 0.5, r.cy + 0.5, false));
     return fixtures;
   }
   let _data = null;
@@ -567,6 +580,31 @@ const Props = (() => {
       try { fillRoom(group, solids, animated, room, TILE_M, fi === 1 || fi === 0 ? 0.25 : 0.12); }
       catch (e) { /* never let one room break the floor */ }
     });
+    // corridor clutter — abandoned gurneys, wheelchairs, crates along the walls
+    (() => {
+      const ct = data.CORR_TOP || 14, cb = data.CORR_BOT || 17;
+      const doorCols = [];
+      data.floors[fi].rooms.forEach((r) => doorCols.push(r.doorX));
+      const CORR = ['wheelchair', 'cart', 'bed', 'crates', 'iv', 'shelf'];
+      for (let x = 6; x < (data.W || 64) - 6; x += 7) {
+        const xx = x + (Math.random() - 0.5) * 2;
+        if (doorCols.some((d) => Math.abs(d - xx) < 2)) continue;
+        const top = (x / 7) % 2 === 0;
+        const zt = top ? (ct + 0.55) : (cb + 0.45);
+        const name = CORR[Math.floor(Math.random() * CORR.length)];
+        const b = BUILDERS[name]; if (!b) continue;
+        const g = b();
+        const xm = (xx + 0.5) * TILE_M, zm = zt * TILE_M;
+        g.position.set(xm, 0, zm);
+        g.rotation.y = (top ? 0 : Math.PI) + (Math.random() - 0.5) * 0.9;
+        group.add(g);
+        if (g.userData.solid !== false) {
+          const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
+          solids.push({ x0: xm - fw / 2, z0: zm - fd / 2, x1: xm + fw / 2, z1: zm + fd / 2 });
+        }
+      }
+    })();
+
     const fixtures = makeFixtures(group, fi, TILE_M, WALL_H);
     // per-room coloured mood lights (dim, flickered by the game)
     const moods = [];

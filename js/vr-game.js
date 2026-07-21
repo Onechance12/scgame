@@ -97,9 +97,12 @@ function init() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Quest: no shadow maps (mobile GPU killer); filmic tone for the horror look
+  renderer.shadowMap.enabled = false;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
   renderer.xr.enabled = true;
+  if (renderer.xr.setFoveation) renderer.xr.setFoveation(1);  // aggressive foveated rendering
   app.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
@@ -109,7 +112,9 @@ function init() {
 
   ambient = new THREE.AmbientLight(0x3a4652, 0.14);
   scene.add(ambient);
-  const moon = new THREE.DirectionalLight(0x25406a, 0.10);
+  // hemisphere gives cheap depth (cool from above, rot from below)
+  scene.add(new THREE.HemisphereLight(0x2c3a4c, 0x0c0906, 0.22));
+  const moon = new THREE.DirectionalLight(0x25406a, 0.08);
   moon.position.set(6, 20, 4);
   scene.add(moon);
 
@@ -121,10 +126,7 @@ function init() {
 
   // Flashlight — parented to the right hand in VR, to the camera on desktop.
   flashlight = new THREE.SpotLight(0xfff2d6, 30, LIGHT_RANGE * TILE_M, CONE, 0.5, 1.2);
-  flashlight.castShadow = true;
-  flashlight.shadow.mapSize.set(1024, 1024);
-  flashlight.shadow.camera.near = 0.1;
-  flashlight.shadow.camera.far = LIGHT_RANGE * TILE_M;
+  flashlight.castShadow = false;   // no shadow maps on Quest
   flashlight.target.position.set(0, 0, -1);
   camera.add(flashlight);
   camera.add(flashlight.target);
@@ -484,17 +486,22 @@ function loadTextures() {
   TEX.floorN = load('floor_nor.jpg', World.W, World.H, false);
   TEX.ceilD = load('ceiling_diff.jpg', World.W / 2, World.H / 2);
   TEX.doorD = load('door_diff.jpg', 1, 1);
-  // per-room floor skins (repeat set per-room via clone)
+  // per-room floor skins — ONE shared GPU texture per skin (fixed repeat)
   TEX.rooms = {
-    tile: load('floor_tiles_06_diff.jpg', 1, 1),
-    bigtile: load('large_floor_tiles_02_diff.jpg', 1, 1),
-    lino: load('old_linoleum_flooring_01_diff.jpg', 1, 1),
-    wood: load('wood_floor_worn_diff.jpg', 1, 1),
-    conc: load('worn_concrete_floor_diff.jpg', 1, 1),
-    carpet: load('dirty_carpet_diff.jpg', 1, 1),
-    mosaic: load('old_mosaic_floor_diff.jpg', 1, 1),
-    metal: load('rusty_metal_04_diff.jpg', 1, 1),
+    tile: load('floor_tiles_06_diff.jpg', 5, 4),
+    bigtile: load('large_floor_tiles_02_diff.jpg', 4, 3),
+    lino: load('old_linoleum_flooring_01_diff.jpg', 5, 4),
+    wood: load('wood_floor_worn_diff.jpg', 4, 3),
+    conc: load('worn_concrete_floor_diff.jpg', 5, 4),
+    carpet: load('dirty_carpet_diff.jpg', 4, 3),
+    mosaic: load('old_mosaic_floor_diff.jpg', 4, 3),
+    metal: load('rusty_metal_04_diff.jpg', 3, 3),
   };
+  // one material per skin, shared by every room using it
+  TEX.roomMats = {};
+  Object.keys(TEX.rooms).forEach((k) => {
+    TEX.roomMats[k] = new THREE.MeshStandardMaterial({ map: TEX.rooms[k], color: 0x93969c, roughness: .95 });
+  });
 }
 
 // which floor skin each room type wears
@@ -548,15 +555,11 @@ function buildFloor(fi) {
   // per-room floor skins — every room type wears its own floor
   data.floors[fi].rooms.forEach((r) => {
     const key = ROOM_FLOOR[r.tag];
-    const tex = key && TEX.rooms && TEX.rooms[key];
-    if (!tex) return;
-    const t2 = tex.clone(); t2.needsUpdate = true;
-    t2.repeat.set(Math.max(1, (r.w - 2) / 2.2), Math.max(1, (r.h - 2) / 2.2));
-    const mat = new THREE.MeshStandardMaterial({ map: t2, color: 0x93969c, roughness: .95 });
+    const mat = key && TEX.roomMats && TEX.roomMats[key];
+    if (!mat) return;
     const pl = new THREE.Mesh(new THREE.PlaneGeometry((r.w - 2) * TILE_M, (r.h - 2) * TILE_M), mat);
     pl.rotation.x = -Math.PI / 2;
     pl.position.set((r.x + r.w / 2) * TILE_M, 0.02, (r.y + r.h / 2) * TILE_M);
-    pl.receiveShadow = true;
     floorGroup.add(pl);
   });
 
@@ -601,6 +604,7 @@ function buildFloor(fi) {
   if (window.Props) {
     try {
       const p = Props.populate(fi, data, { TILE_M, WALL_H });
+      mergeStaticProps(p.group);   // collapse static furniture into few draw calls
       floorGroup.add(p.group);
       propSolids = p.solids || [];
       flickers = p.fixtures || [];
@@ -680,16 +684,20 @@ function makePeeker(m) {
   const eyeR = new THREE.Mesh(eyeGeo, peekMats.eye.clone());
   eyeL.position.set(-0.09, 0.05, 0.05); eyeR.position.set(0.09, 0.05, 0.05);
   eyeL.visible = eyeR.visible = false;
+  eyeL.userData.anim = true; eyeR.userData.anim = true;   // exclude from merging
   grp.add(eyeL); grp.add(eyeR);
-  floorGroup.add(grp);
+  (peekerParent || floorGroup).add(grp);
   return { grp, eyeL, eyeR, wx: px, wz: pz, tileX: m.x + nx + 0.5, tileY: m.y + nz + 0.5,
     state: 'hidden', t: 0, stepT: 0, laughed: false, cool: 2 + Math.random() * 4,
     fleeV: 0, fleePan: 0, fleeDir: 1 };
 }
 
+let peekerParent = null;
 function buildPeekers(fi) {
   peekers = []; peekSpawnTimer = 5;
   if (!peekMats) makePeekMats();
+  peekerParent = new THREE.Group();
+  floorGroup.add(peekerParent);
   const g = data.floors[fi].grid;
   const cand = [];
   for (let y = 1; y < World.H - 1; y++) for (let x = 1; x < World.W - 1; x++) {
@@ -703,6 +711,7 @@ function buildPeekers(fi) {
   const want = Math.min(12, cand.length);
   const step = Math.max(1, Math.floor(cand.length / Math.max(1, want)));
   for (let i = 0; i < cand.length && peekers.length < want; i += step) peekers.push(makePeeker(cand[i]));
+  mergeStaticProps(peekerParent);   // portraits collapse to ~2 draw calls; eyes stay live
 }
 
 function startFlee(p, pan, vol, wasLit) {
@@ -766,6 +775,46 @@ function updatePeekers(dt) {
   }
 }
 
+// ---- static-prop merger: hundreds of furniture meshes -> ~1 draw call per material
+function mergeStaticProps(group) {
+  group.updateMatrixWorld(true);
+  const skip = new Set();
+  group.traverse((o) => {
+    if (o.userData && (o.userData.anim || o.userData.ember)) o.traverse((c) => skip.add(c));
+  });
+  const buckets = new Map();
+  const originals = [];
+  group.traverse((o) => {
+    if (!o.isMesh || skip.has(o)) return;
+    if (o.material && o.material.emissiveIntensity !== undefined && o.userData.flicker) return;
+    const key = o.material.uuid;
+    if (!buckets.has(key)) buckets.set(key, { mat: o.material, geos: [] });
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    g.applyMatrix4(o.matrixWorld);
+    buckets.get(key).geos.push(g);
+    originals.push(o);
+  });
+  originals.forEach((o) => { if (o.parent) o.parent.remove(o); o.geometry.dispose(); });
+  buckets.forEach(({ mat, geos }) => {
+    let count = 0; geos.forEach((g) => count += g.attributes.position.count);
+    const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2);
+    let o3 = 0, o2 = 0;
+    geos.forEach((g) => {
+      pos.set(g.attributes.position.array, o3);
+      if (g.attributes.normal) nor.set(g.attributes.normal.array, o3);
+      if (g.attributes.uv) uv.set(g.attributes.uv.array, o2);
+      o3 += g.attributes.position.count * 3;
+      o2 += g.attributes.position.count * 2;
+      g.dispose();
+    });
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    bg.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    bg.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    group.add(new THREE.Mesh(bg, mat));
+  });
+}
+
 // true if a world-space point (metres) lies inside any solid prop (+radius)
 function solidBlocked(xm, zm) {
   const R = 0.32;
@@ -821,9 +870,8 @@ function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
   const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0),
-    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: .7, roughness: .3 }));
-  g.add(mesh);
-  const pl = new THREE.PointLight(col, 0.6, 3, 2); g.add(pl);
+    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.1, roughness: .3 }));
+  g.add(mesh);   // emissive glow only — no per-item PointLight (Quest perf)
   g.position.set((it.x + 0.5) * TILE_M, 1.1, (it.y + 0.5) * TILE_M);
   g.userData.spin = mesh;
   floorGroup.add(g);
@@ -836,8 +884,7 @@ function addDocMesh(d) {
   const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.4),
     new THREE.MeshStandardMaterial({ color: 0xd8d2b0, emissive: 0x4a3f18, emissiveIntensity: 0.6, side: THREE.DoubleSide, roughness: 1 }));
   paper.rotation.x = -Math.PI / 2.2;
-  g.add(paper);
-  const pl = new THREE.PointLight(0xffe4a0, 0.35, 2.5, 2); pl.position.y = 0.3; g.add(pl);
+  g.add(paper);   // emissive paper only — no light
   g.position.set((d.x + 0.5) * TILE_M, 1.0, (d.y + 0.5) * TILE_M);
   g.userData.doc = true;
   floorGroup.add(g);
@@ -965,7 +1012,7 @@ function readAxes(controller) {
   // Quest thumbstick is axes[2],axes[3]
   const x = a.length >= 4 ? a[2] : a[0];
   const y = a.length >= 4 ? a[3] : a[1];
-  return [Math.abs(x) > 0.15 ? x : 0, Math.abs(y) > 0.15 ? y : 0];
+  return [Math.abs(x) > 0.12 ? x : 0, Math.abs(y) > 0.12 ? y : 0];
 }
 
 function vrLocomotion(dt) {
@@ -974,7 +1021,7 @@ function vrLocomotion(dt) {
   const yaw = Math.atan2(tmpV.x, tmpV.z); // forward
   const [lx, ly] = readAxes(sources.left);
   if (lx || ly) {
-    const speed = (keysSprint() ? 6 : 3.4);
+    const speed = 4.2;   // m/s — VR walking wants to feel a touch brisk
     // forward is -y stick; strafe is x
     const fwd = -ly, str = lx;
     const dz = (Math.cos(yaw) * fwd + Math.cos(yaw + Math.PI / 2) * str);
@@ -1289,11 +1336,12 @@ function tryUnlockAhead() {
 
 // ============================================================ main loop
 function render() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(), 0.1);   // tolerate frame dips without eating movement
   if (state === 'PLAY') update(dt);
   else if (state === 'MENU') { camera.position.set(0, EYE, 0); }
   spinItems(dt);
   renderer.render(scene, camera);
+  window.__ri = renderer.info.render.calls;  // perf probe (draw calls)
 }
 
 function spinItems(dt) {
