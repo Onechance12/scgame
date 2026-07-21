@@ -296,8 +296,14 @@ function makeHandMesh() {
   return g;
 }
 
+function skipCine() {
+  // don't let an accidental early trigger (finger on the button as the session
+  // starts) nuke the whole walk-up — only allow a skip after a couple of seconds
+  if (cine && cine.t < 3) { cine.skipHinted = true; return; }
+  endCinematic();
+}
 function onTrigger(c) {
-  if (state === 'CINE') { endCinematic(); return; }   // skip the approach
+  if (state === 'CINE') { skipCine(); return; }   // skip the approach (after it's begun)
   if (state === 'DEAD' || state === 'WIN' || state === 'MENU') { restartFromPanel(); return; }
   if (state !== 'PLAY') return;
   if (c === sources.left && !interactTarget) { Survival.drink(); return; }  // left trigger: drink
@@ -584,6 +590,8 @@ function cineUpdate(dt) {
   const card = CINE_CARDS[c.cardI];
   if (card && c.t >= card[0]) { showBigPanel(card[1], card[2], '#cfd6de'); c.cardI++; }
   if (c.t > 6 && c.cardI === 1 && Math.random() < dt * 0.2) Audio2.whisper(0.4);
+  // let the player know this is the approach, and that it can be skipped
+  if (!c.skipShown && (c.t > 3 || c.skipHinted)) { c.skipShown = true; showSubtitle(isVR ? 'Walking up College Hill…  (trigger to skip)' : 'Walking up College Hill…  (Enter to skip)', 4); }
   // arrive at the steps
   const camZ = dolly.position.z + camera.position.z;
   if (camZ >= -3.2) endCinematic();
@@ -1884,7 +1892,7 @@ function bindDesktopInput() {
     if (k === 'v' && state === 'PLAY') Survival.useMedkit();
     if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
-    if ((k === 'enter' || k === ' ' || k === 'e') && state === 'CINE') endCinematic();
+    if ((k === 'enter' || k === ' ' || k === 'e') && state === 'CINE') skipCine();
   });
   window.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase(); keys[k] = false;
