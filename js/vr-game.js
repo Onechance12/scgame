@@ -996,7 +996,7 @@ function loadHeroModels() {
     ['helene', 'sketchfab/helene/scene.gltf'],
     ['anne', 'sketchfab/anne/scene.gltf'],
     ['wolfram', 'sketchfab/wolfram/scene.gltf'],
-    ['fantasma', 'sketchfab/fantasma/scene.gltf'],
+    ['horrorkid', 'horror/horrorkid/scene.gltf'],   // the Child — a bound nursery child
     ['crawler2', 'horror/crawler2/scene.gltf'],   // the crawling mutated human
     ['ghoul', 'horror/ghoul/scene.gltf'],         // the Ghoul — basement corpse-eater
     ['closer', 'horror/closer/scene.gltf'],       // the Closer — the Ash's new body
@@ -1442,7 +1442,7 @@ const MOBMAP = {
   // The Night Nurse — Nurse Anne, sicklier, a charger
   nurse2: { key: 'anne', targetH: 1.8, translucent: true, opacity: 0.82, tint: 0xaecdb4, tintAmt: 0.3, aura: 'rgba(140,200,150,0.45)', auraS: 2.4, yaw: Math.PI },
   // The Child — Fantasma, a small floating phantom
-  child: { key: 'fantasma', targetH: 1.15, translucent: true, opacity: 0.66, tint: 0xdfe8f0, tintAmt: 0.4, fly: true, aura: 'rgba(190,210,235,0.5)', auraS: 1.8, yaw: 0 },
+  child: { key: 'horrorkid', targetH: 1.18, translucent: false, opacity: 1, tint: 0xb8b0aa, tintAmt: 0.22, aura: 'rgba(150,60,60,0.45)', auraS: 1.8, yaw: 0 },
   // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
   mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
   // The Crawler — a mutated human dragging itself along the floor (prone, so targetH is its low height)

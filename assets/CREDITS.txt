@@ -66,10 +66,10 @@ license.txt from Sketchfab.
               https://sketchfab.com/3d-models/the-heilwald-loophole-wolfram-dd3831d3381f4ae19385244233c74351
               (fred346b — https://sketchfab.com/fred346b — CC-BY-4.0)
 
-  The Child (a floating phantom):
-    fantasma/ "Fantasma Ghost Phantom"  by Marcos.Andre
-              https://sketchfab.com/3d-models/fantasma-ghost-phantom-ecc1f2ccf6fc43b48f791b06398b8cfe
-              (Marcos.Andre — https://sketchfab.com/Marcos.Andre — CC-BY-4.0)
+  The Child (a bound nursery child):
+    horror/horrorkid/ "Horror Kid"  by LostModels2025
+              https://sketchfab.com/3d-models/horror-kid-0cebfd4b5dbc429b91ba026223a5bcc8
+              (LostModels2025 — CC-BY-NC-4.0, non-commercial; fan-project compatible)
 
   The Crawler (a mutated human that drags itself along the floor):
     horror/crawler2/ "Crawling mutated human"  by Elisey
