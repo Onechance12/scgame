@@ -1,0 +1,11 @@
+Model Information:
+* title:	PSX - Cork/Evidence Board
+* source:	https://sketchfab.com/3d-models/psx-corkevidence-board-1aa12ebf9ed94305a79f344b4d08d0f4
+* author:	Kasujin (https://sketchfab.com/Kasujin)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "PSX - Cork/Evidence Board" (https://sketchfab.com/3d-models/psx-corkevidence-board-1aa12ebf9ed94305a79f344b4d08d0f4) by Kasujin (https://sketchfab.com/Kasujin) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

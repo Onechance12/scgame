@@ -1,0 +1,11 @@
+Model Information:
+* title:	Food pack
+* source:	https://sketchfab.com/3d-models/food-pack-233ee2b8cfa24a759497ea7e5a1b441d
+* author:	Homie (https://sketchfab.com/nurbolnygmanov)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Food pack" (https://sketchfab.com/3d-models/food-pack-233ee2b8cfa24a759497ea7e5a1b441d) by Homie (https://sketchfab.com/nurbolnygmanov) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

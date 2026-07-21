@@ -1142,10 +1142,34 @@ function loadHeroModels() {
     examtable: 'examtable', locker: 'locker', metalcab: 'metalcab', deadbody: 'deadbody', deadcovered: 'deadcovered',
     coffin: 'coffin', bloodybath: 'bloodybath', bathcab: 'bathcab', oldtv: 'oldtv', payphone: 'payphone',
     vending: 'vending', bookshelf: 'bookshelf', candle: 'candle', cross: 'cross', ceilinglights: 'ceilinglights',
-    gasstove: 'gasstove', voodoohang: 'voodoohang', shovel: 'shovel', bloodytarp: 'bloodytarp', wallblood: 'wallblood' };
+    gasstove: 'gasstove', voodoohang: 'voodoohang', shovel: 'shovel', bloodytarp: 'bloodytarp', wallblood: 'wallblood',
+    // batch 3 — clutter & set-pieces (CC-BY, credited)
+    evidenceboard: 'evidenceboard', cannedgoods: 'cannedgoods', toolset: 'toolset', kitchenware: 'kitchenware' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
+  // packs we pull single items out of (one download, several props)
+  const PACKS = { clockpack: 'clockpack', cobwebpack: 'cobwebpack' };
+  const PACKSCENES = {};
+  Object.entries(PACKS).forEach(([k, d]) => loads.push(
+    L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { PACKSCENES[k] = g.scene; }).catch((e) => console.warn('pack load failed:', d))));
+  // items to extract: key -> {pack, match substring of a node name}
+  const PACKITEMS = {
+    brokenclock: ['clockpack', 'clock007'], brokenclock2: ['clockpack', 'clock010'],
+    cobwebA: ['cobwebpack', 'cobweb002'], cobwebB: ['cobwebpack', 'cobweb004'], cobwebC: ['cobwebpack', 'cobweb006'],
+  };
   return Promise.all(loads).then(() => {
+    // extract named sub-objects from packs into standalone, upright, centred models
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    Object.entries(PACKITEMS).forEach(([key, [pk, want]]) => {
+      const sc = PACKSCENES[pk]; if (!sc) return;
+      let node = null; sc.traverse((o) => { if (!node && o.isMesh && norm(o.name).includes(want)) node = o; });
+      if (!node) { console.warn('pack item not found:', key, want); return; }
+      node.updateWorldMatrix(true, false);
+      const clone = node.clone(true);
+      node.matrixWorld.decompose(clone.position, clone.quaternion, clone.scale);  // bake world transform (keeps up-axis)
+      const holder = new THREE.Group(); holder.add(clone);
+      MODELS[key] = holder;
+    });
     window.HeroModels = MODELS; window.MobModels = MOB;
     if (MOB.ghost) MODELS.ghostGLB = MOB.ghost.scene;   // keep chapel/altar set-pieces working
     if (MOB.skel) MODELS.skelGLB = MOB.skel.scene;
@@ -1546,6 +1570,16 @@ const HPROP_CFG = {
   shovel:      { by: 'long', size: 1.20, tint: 0x5a5250, tintAmt: 0.28 },
   bloodytarp:  { by: 'long', size: 1.90, tint: 0x6a6a80, tintAmt: 0.12, mount: 'flat' },
   wallblood:   { by: 'long', size: 1.60, tint: 0x9a9088, tintAmt: 0.10, mount: 'wall' },
+  // batch 3 — clutter & set-pieces
+  evidenceboard:{ by: 'long', size: 1.85, tint: 0x9a8f7a, tintAmt: 0.10, mount: 'wall' },
+  cannedgoods: { by: 'long', size: 0.62, tint: 0x8a8a86, tintAmt: 0.14 },
+  toolset:     { by: 'long', size: 0.66, tint: 0x8a8580, tintAmt: 0.16 },
+  kitchenware: { by: 'long', size: 1.05, tint: 0x9098a0, tintAmt: 0.16 },
+  brokenclock: { by: 'h',    size: 0.40, tint: 0x8a8578, tintAmt: 0.14, mount: 'wall', delight: true },
+  brokenclock2:{ by: 'h',    size: 0.42, tint: 0x8a8578, tintAmt: 0.14, mount: 'wall', delight: true },
+  cobwebA:     { by: 'long', size: 1.10, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
+  cobwebB:     { by: 'long', size: 1.30, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
+  cobwebC:     { by: 'long', size: 1.15, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
 };
 function makeHProp(key, wx, wz, yaw) {
   const src = (window.HeroModels || {})[key];
@@ -1564,7 +1598,18 @@ function makeHProp(key, wx, wz, yaw) {
   else if (mount === 'wall') obj.position.y -= ctr.y;          // centred on the wall
   else obj.position.y -= box.min.y;                            // floor / flat: sit on the ground
   const retexMap = (cfg.retex && TEX.propTex) ? TEX.propTex[cfg.retex] : null;
-  obj.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (retexMap) { o.material.map = retexMap; if (o.material.metalness != null) o.material.metalness = 0.1; o.material.needsUpdate = true; } if (o.material.color) o.material.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.2); o.frustumCulled = true; } });
+  obj.traverse((o) => {
+    if (!(o.isMesh && o.material)) return;
+    let m = o.material.clone();
+    if (cfg.delight && m.isMeshBasicMaterial) {   // unlit -> lit so it darkens with the scene
+      m = new THREE.MeshStandardMaterial({ map: m.map, color: (m.color ? m.color.clone() : new THREE.Color(0xffffff)), roughness: 0.7, metalness: 0.05 });
+    }
+    if (retexMap) { m.map = retexMap; if (m.metalness != null) m.metalness = 0.1; m.needsUpdate = true; }
+    if (m.color) m.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt);
+    if (m.roughness != null) m.roughness = Math.min(1, m.roughness + 0.2);
+    if (cfg.web) { m.transparent = true; m.depthWrite = false; m.side = THREE.DoubleSide; if (!(m.opacity < 1)) m.opacity = 0.9; }
+    o.material = m; o.frustumCulled = true;
+  });
   const grp = new THREE.Group();
   grp.add(obj); grp.rotation.y = yaw;
   const gy = mount === 'ceiling' ? WALL_H - 0.04 : mount === 'wall' ? 1.45 : 0;
@@ -1681,6 +1726,28 @@ function placeHorrorProps(fi) {
   };
   const centerP = (r, key, yaw, ox, oz) => placeW(key, (r.cx + 0.5 + (ox || 0)) * TILE_M, (r.cy + 0.5 + (oz || 0)) * TILE_M, askew(yaw));
   const bed = () => (rnd() < 0.5 ? 'hospbed' : 'horrorbed');
+  // hang a wall item (board / clock) flush against a wall, facing into the room
+  const wallMount = (r, key, sidePref) => {
+    const sides = sidePref ? [sidePref] : ['N', 'S', 'E', 'W'].sort(() => rnd() - 0.5);
+    for (const side of sides) for (let t = 0; t < 5; t++) {
+      let tx, tz, yaw, ox = 0, oz = 0;
+      if (side === 'N') { tx = r.x + 1 + Math.floor(rnd() * (r.w - 2)); tz = r.y + 1; yaw = 0; oz = -0.42; }
+      else if (side === 'S') { tx = r.x + 1 + Math.floor(rnd() * (r.w - 2)); tz = r.y + r.h - 2; yaw = Math.PI; oz = 0.42; }
+      else if (side === 'W') { tz = r.y + 1 + Math.floor(rnd() * (r.h - 2)); tx = r.x + 1; yaw = Math.PI / 2; ox = -0.42; }
+      else { tz = r.y + 1 + Math.floor(rnd() * (r.h - 2)); tx = r.x + r.w - 2; yaw = -Math.PI / 2; ox = 0.42; }
+      if (!isFloor(tx, tz)) continue;
+      if (placeW(key, (tx + 0.5 + ox) * TILE_M, (tz + 0.5 + oz) * TILE_M, yaw)) return true;
+    }
+    return false;
+  };
+  // a cobweb up in a room corner (ceiling-mounted, no collision)
+  const cornerWeb = (r) => {
+    const web = ['cobwebA', 'cobwebB', 'cobwebC'][Math.floor(rnd() * 3)];
+    const cs = [[r.x + 1, r.y + 1, Math.PI * 0.25], [r.x + r.w - 2, r.y + 1, -Math.PI * 0.25],
+                [r.x + 1, r.y + r.h - 2, Math.PI * 0.75], [r.x + r.w - 2, r.y + r.h - 2, -Math.PI * 0.75]];
+    const c = cs[Math.floor(rnd() * 4)];
+    place(web, c[0], c[1], c[2]);
+  };
   const CAT = {
     ward: 'ward', recovery: 'ward', iso: 'ward', room207: 'ward', maternity: 'ward', mose: 'ward', quarters: 'ward',
     surgery: 'clinic', autopsy: 'clinic', xray: 'clinic', er: 'clinic', admitting: 'clinic',
@@ -1715,22 +1782,26 @@ function placeHorrorProps(fi) {
         wallRow(r, 'N', 'metalcab', 1.0, 0, 2.0, 4);
         wallRow(r, 'S', 'locker', 0.9, Math.PI, 2.2, 3);
         if (r.tag === 'storage' || r.tag === 'supply') placeIn(r, 'shovel', yaw4());
+        if (r.tag === 'pharmacy' || r.tag === 'supply') { centerP(r, 'cannedgoods', yaw4(), r.w * 0.14, 0); if (rnd() < 0.6) placeIn(r, 'cannedgoods', yaw4()); }
+        if (rnd() < 0.5) placeIn(r, 'toolset', yaw4());
         break;
       case 'library': // shelves lined up along the walls
         wallRow(r, 'N', 'bookshelf', 1.0, 0, 1.9, 4);
         if (r.w >= 5) wallRow(r, 'S', 'bookshelf', 1.0, Math.PI, 1.9, 3);
-        if (r.tag === 'matron') { centerP(r, 'oldtv', 0, r.w * 0.18, 0); if (rnd() < 0.6) placeIn(r, 'clock', 0); if (rnd() < 0.6) placeIn(r, 'candle', 0); }
+        if (r.tag === 'records') wallMount(r, 'evidenceboard');   // the investigation board
+        if (r.tag === 'matron') { centerP(r, 'oldtv', 0, r.w * 0.18, 0); if (rnd() < 0.6) wallMount(r, 'brokenclock'); if (rnd() < 0.6) placeIn(r, 'candle', 0); }
         break;
       case 'dining':  // tables in a tidy grid
         for (let gx = r.x + 2; gx <= r.x + r.w - 1.5; gx += 2.6) for (let gz = r.y + 2; gz <= r.y + r.h - 1.5; gz += 2.4) placeW('caftable', gx * TILE_M, gz * TILE_M, askew(0));
-        if (r.tag === 'kitchen') { wallRow(r, 'N', 'gasstove', 1.0, 0, 2.0, 2); wallRow(r, 'S', 'metalcab', 1.0, Math.PI, 2.2, 3); }
-        else wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 2.5, 1);
+        if (r.tag === 'kitchen') { wallRow(r, 'N', 'gasstove', 1.0, 0, 2.0, 2); wallRow(r, 'S', 'metalcab', 1.0, Math.PI, 2.2, 3); centerP(r, 'kitchenware', yaw4(), 0, r.h * 0.16); if (rnd() < 0.6) placeIn(r, 'cannedgoods', yaw4()); }
+        else { wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 2.5, 1); if (rnd() < 0.7) placeIn(r, 'cannedgoods', yaw4()); }
         break;
       case 'waiting': // a couple of rows of waiting-room seats, machines against a wall
         wallRow(r, 'N', 'wheelchair', 1.6, 0, 1.7);
         if (r.h >= 5) wallRow(r, 'S', 'wheelchair', 1.6, Math.PI, 1.7);
         if (rnd() < 0.8) wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 3, 1);
-        if (r.tag === 'lobby') { placeIn(r, 'clock', 0); placeIn(r, 'payphone', 0); placeIn(r, 'oldtv', 0); }
+        if (r.tag === 'lobby') { wallMount(r, 'brokenclock'); placeIn(r, 'payphone', 0); placeIn(r, 'oldtv', 0); wallMount(r, 'evidenceboard'); }
+        else if (rnd() < 0.5) wallMount(r, 'brokenclock');
         break;
       case 'chapel':  // cross at the front, a line of candles before it
         centerP(r, 'cross', 0, 0, -(r.h * 0.32));
@@ -1740,15 +1811,21 @@ function placeHorrorProps(fi) {
         wallRow(r, 'W', 'bloodybath', 1.3, Math.PI / 2, 2.6, 2);
         wallRow(r, 'E', 'bathcab', 0.9, -Math.PI / 2, 2.4, 2);
         break;
-      case 'boiler':  // industrial banks + a shovel
+      case 'boiler':  // industrial banks + tools scattered on the floor
         wallRow(r, 'N', 'metalcab', 1.0, 0, 2.2, 3);
         placeIn(r, 'shovel', yaw4());
+        centerP(r, 'toolset', yaw4(), r.w * 0.16, 0);
+        if (rnd() < 0.5) placeIn(r, 'toolset', yaw4());
         break;
       case 'ritual':  centerP(r, 'bloodytarp', 0); wallRow(r, 'N', 'candle', 1.3, 0, 1.6, 4); break;
       case 'nursery': if (rnd() < 0.7) placeIn(r, 'oldtv', yaw4()); if (rnd() < 0.6) placeIn(r, 'voodoohang', 0); break;
     }
     // one small out-of-place touch: a knocked bin or a lone wheelchair
     if (rnd() < 0.45) placeIn(r, rnd() < 0.6 ? 'bin' : 'wheelchair', yaw4());
+    // cobwebs collecting in the corners, and the odd stopped clock
+    if (rnd() < 0.6) cornerWeb(r);
+    if (rnd() < 0.3) cornerWeb(r);
+    if (cat !== 'waiting' && cat !== 'library' && rnd() < 0.22) wallMount(r, rnd() < 0.5 ? 'brokenclock' : 'brokenclock2');
   });
   // corridor dressing: dead pendant lights hang down the halls (no collision),
   // and the odd abandoned wheelchair sits against the corridor ends

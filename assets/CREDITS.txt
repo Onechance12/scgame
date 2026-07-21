@@ -137,6 +137,22 @@ attribution REQUIRED, given here). Textures downscaled to 512px, materials aged.
   Full model pages: sketchfab.com/3d-models/<slug>. This project is a
   non-commercial fan tribute, compatible with the NC term above.
 
+CLUTTER & SET-PIECES — assets/models/horror/ (all CC-BY-4.0; attribution
+REQUIRED, given here). Multi-item packs: individual items are extracted /
+grouped in-engine; big textures downscaled (kitchenware to 1K) for web weight.
+    evidenceboard/ "PSX Cork/Evidence Board"       by Kasujin
+                   https://sketchfab.com/3d-models/psx-corkevidence-board-1aa12ebf9ed94305a79f344b4d08d0f4
+    cannedgoods/   "Food Pack"                      by Jusai
+                   https://sketchfab.com/3d-models/food-pack-233ee2b8cfa24a759497ea7e5a1b441d
+    toolset/       "Tools Pack"                     by Jusai
+                   https://sketchfab.com/3d-models/tools-pack-59c5e176b95b4a0c9e0d9bd0f577a837
+    kitchenware/   "Kitchen Tools Pack"             by Jusai
+                   https://sketchfab.com/3d-models/kitchen-tools-pack-f2d3743f366c4a21a5680457823f0f78
+    clockpack/     "PSX Style Vintage Wall Clocks"  by Icevanilla  (broken-clock props)
+                   https://sketchfab.com/3d-models/psx-style-vintage-wall-clocks-9dc475ad89874ccc9d2b199d0ec00806
+    cobwebpack/    "Cobwebs"                        by DJMaesen  (corner-web props)
+                   https://sketchfab.com/3d-models/cobwebs-941c92fcf27b44caafbf6d690ba9593f
+
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.
