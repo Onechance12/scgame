@@ -625,21 +625,31 @@ function loadTextures() {
   TEX.ceilD = load('ceiling_diff.jpg', World.W / 2, World.H / 2);
   TEX.doorD = load('door_diff.jpg', 1, 1);
   // per-room floor skins — ONE shared GPU texture per skin (fixed repeat)
+  // Horror upgrades (Screaming Brain Studios, CC0): grimy tile/lino/concrete.
   TEX.rooms = {
-    tile: load('floor_tiles_06_diff.jpg', 5, 4),
+    tile: load('horror/floor_tile.jpg', 5, 4),
     bigtile: load('large_floor_tiles_02_diff.jpg', 4, 3),
-    lino: load('old_linoleum_flooring_01_diff.jpg', 5, 4),
+    lino: load('horror/floor_lino.jpg', 5, 4),
     wood: load('wood_floor_worn_diff.jpg', 4, 3),
-    conc: load('worn_concrete_floor_diff.jpg', 5, 4),
+    conc: load('horror/floor_conc.jpg', 5, 4),
     carpet: load('dirty_carpet_diff.jpg', 4, 3),
     mosaic: load('old_mosaic_floor_diff.jpg', 4, 3),
-    metal: load('rusty_metal_04_diff.jpg', 3, 3),
+    metal: load('horror/metal_rust.jpg', 3, 3),
   };
   // one material per skin, shared by every room using it
   TEX.roomMats = {};
   Object.keys(TEX.rooms).forEach((k) => {
     TEX.roomMats[k] = new THREE.MeshStandardMaterial({ map: TEX.rooms[k], color: 0x93969c, roughness: .95 });
   });
+  // Horror wall skins — a different grimy wall per floor (peeling, rust, mould, grunge)
+  TEX.hwall = [load('horror/wall_f1.jpg', 1, 1.2), load('horror/wall_f2.jpg', 1, 1.2),
+               load('horror/wall_f3.jpg', 1, 1.2), load('horror/wall_f4.jpg', 1, 1.2)];
+  TEX.hwallBase = load('horror/wall_base.jpg', 1.4, 1.4);
+  // blood / drip / grime decals (RGBA, alpha baked from luminance) — no tiling
+  const loadDecal = (file) => { const t = L.load('assets/textures/' + file, undefined, undefined, () => {}); if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+  TEX.blood = ['blood1', 'blood2', 'blood3'].map((n) => loadDecal('horror/decals/' + n + '.png'));
+  TEX.drip = ['drip1', 'drip2'].map((n) => loadDecal('horror/decals/' + n + '.png'));
+  TEX.grime = [loadDecal('horror/decals/grime1.png')];
 }
 
 // which floor skin each room type wears
@@ -705,10 +715,12 @@ function buildFloor(fi) {
   let wallCount = 0;
   for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) if (g[y][x] === TILE.WALL) wallCount++;
   const wallGeo = new THREE.BoxGeometry(TILE_M, WALL_H, TILE_M);
+  // horror wall skin per floor (basement uses the mossy-stone skin); Poly Haven as fallback
+  const hw = fi === 0 ? TEX.hwallBase : (TEX.hwall && TEX.hwall[fi - 1]);
   const wallMat = new THREE.MeshStandardMaterial({
-    map: fi === 0 ? TEX.wall2D : TEX.wallD,
-    normalMap: fi === 0 ? TEX.wall2N : TEX.wallN,
-    color: 0xb7bac0, roughness: .95,
+    map: hw || (fi === 0 ? TEX.wall2D : TEX.wallD),
+    normalMap: hw ? null : (fi === 0 ? TEX.wall2N : TEX.wallN),
+    color: hw ? 0x9aa0a8 : 0xb7bac0, roughness: .96,
   });
   const walls = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
   walls.castShadow = true; walls.receiveShadow = true;
@@ -787,6 +799,8 @@ function buildFloor(fi) {
 
   // real hospital furniture scattered through the wards, halls and rooms
   try { placeHorrorProps(fi); } catch (e) { console.warn('horror props failed:', e); }
+  // blood, drips and grime on the floors of the worst rooms
+  try { placeDecals(fi); } catch (e) { console.warn('decals failed:', e); }
 
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
@@ -1193,6 +1207,35 @@ function addDocMesh(d) {
   docMeshes.set(d.id, g);
 }
 
+// ---- blood / drip / grime decals on the floor of the worst rooms ----
+function placeDecals(fi) {
+  if (!TEX.blood || !TEX.blood.length) return;
+  const rooms = data.floors[fi].rooms || [];
+  const g = data.floors[fi].grid;
+  let seed = 4242 + fi * 331;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  // how many decals each kind of room earns (the more clinical/violent, the more)
+  const HORROR = { er: 3, surgery: 3, morgue: 4, incinerator: 4, autopsy: 3, ritual: 3,
+    ward: 2, iso: 2, kitchen: 2, boiler: 2, room207: 2, mose: 2, recovery: 1, maternity: 1, pharmacy: 1, bath: 1, nursery: 1 };
+  const grp = new THREE.Group();
+  const pick = () => { const r = rnd(); return r < 0.5 ? TEX.blood[Math.floor(rnd() * TEX.blood.length)] : r < 0.78 ? TEX.drip[Math.floor(rnd() * TEX.drip.length)] : TEX.grime[0]; };
+  rooms.forEach((r) => {
+    const n = HORROR[r.tag]; if (!n || r.w < 3 || r.h < 3) return;
+    for (let k = 0; k < n; k++) {
+      const tx = r.x + 1 + Math.floor(rnd() * (r.w - 2));
+      const ty = r.y + 1 + Math.floor(rnd() * (r.h - 2));
+      if (!g[ty] || g[ty][tx] !== TILE.FLOOR) continue;
+      const size = 0.9 + rnd() * 1.4;
+      const mat = new THREE.MeshStandardMaterial({ map: pick(), transparent: true, opacity: 0.72 + rnd() * 0.26,
+        roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+      pl.rotation.x = -Math.PI / 2; pl.rotation.z = rnd() * 6.28;
+      pl.position.set((tx + 0.5) * TILE_M, 0.02, (ty + 0.5) * TILE_M);
+      grp.add(pl);
+    }
+  });
+  floorGroup.add(grp);
+}
 // ---- real horror furniture (CC-BY hospital props) ----
 // Each model ships at a different authored scale, so normalize by bounding box to
 // a real-world size, ground it, age the material, then register a collision box.

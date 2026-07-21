@@ -15,6 +15,14 @@ All downscaled to 1K JPG for fast web/headset loading. License: CC0 1.0.
 Poly Haven is community-funded — https://polyhaven.com/support if you want to
 support the artists.
 
+Horror surface textures in assets/textures/horror/ are CC0 (public domain, no
+attribution required) from the "Horror Texture Pack" by Screaming Brain Studios
+(https://opengameart.org/content/horror-texture-pack) — credited here as a
+courtesy. Used for the per-floor grimy walls (peeling paint / rust / mould /
+grunge), the mossy-stone basement, the tile/lino/concrete floors, rusted metal,
+and the blood / drip / grime floor decals (alpha baked from luminance in-engine).
+Re-encoded to 512px JPG / RGBA PNG for web/headset weight.
+
 Fonts in assets/fonts/ are from Google Fonts under the SIL Open Font License
 (OFL 1.1 — free for any use; https://openfontlicense.org):
   creepster.woff2        "Creepster"        by Sideshow
