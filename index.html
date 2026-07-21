@@ -104,15 +104,14 @@
       <button id="btn-restart-win" class="btn">PLAY AGAIN</button></div>
   </div>
 
-  <!-- Three.js (global build) vendored locally so it works offline & on-headset -->
-  <script src="js/vendor/three.min.js"></script>
-  <!-- shared data + logic -->
+  <!-- shared data + logic (classic scripts, set window globals) -->
   <script src="js/audio.js"></script>
   <script src="js/world.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/props.js"></script>
   <script src="js/survival.js"></script>
-  <!-- the VR game (classic script, uses global THREE) -->
-  <script src="js/vr-game.js"></script>
+  <!-- ES modules: real Three.js + GLTFLoader for real 3D models -->
+  <script type="importmap">{ "imports": { "three": "./js/vendor/three.module.min.js" } }</script>
+  <script type="module" src="js/vr-game.js"></script>
 </body>
 </html>

@@ -306,6 +306,17 @@ const Props = (() => {
     return g;
   }
   function rocker() { return chair(); }
+  function papers() { // loose paperwork dropped on the floor overnight
+    const g = new (T().Group)(), m = mats();
+    for (let i = 0; i < 4; i++) {
+      const p = new (T().Mesh)(new (T().PlaneGeometry)(0.21, 0.3), m.sheet);
+      p.rotation.x = -Math.PI / 2; p.rotation.z = Math.random() * 6.28;
+      p.position.set((Math.random() - 0.5) * 0.9, 0.012 + i * 0.002, (Math.random() - 0.5) * 0.9);
+      g.add(p);
+    }
+    g.userData = { fw: 0.4, fd: 0.4, solid: false };
+    return g;
+  }
   function pipes() {
     const g = new (T().Group)(), m = mats();
     g.add(cyl(0.1, 0.1, 3, m.rust, 0, 2.6, 0, 8)); g.children[0].rotation.z = Math.PI / 2;
@@ -391,7 +402,7 @@ const Props = (() => {
     bed, crib, wheelchair, operating: operatingTable, examlight: examLight, drawers: morgueDrawers,
     slab, cabinet, shelf, crates, chair, table, desk, counter, stove, sink, bathtub, iv: ivStand,
     boiler, incinerator, washer, pew, cross, altar, bell, xraymachine: xrayMachine, window: windowProp,
-    preptable, tray, rocker, pipes, cart: crates,
+    preptable, tray, rocker, pipes, cart: crates, papers,
     bassinet, rockinghorse: rockingHorse, teddy, toyblocks: toyBlocks, ball, mobile, toybox, incubator,
     casket, shroud: shroudBody,
   };
@@ -434,7 +445,14 @@ const Props = (() => {
     matron: { items: ['desk', 'cabinet'], style: 'walls' },
     xray: { items: ['xraymachine', 'table'], style: 'center' },
   };
-  const DEFAULT_FILL = { items: ['chair', 'crates'], style: 'walls' };
+  const DEFAULT_FILL = { items: ['chair', 'table', 'crates', 'cabinet'], style: 'walls' };
+
+  // prop name -> hero glTF model key (see vr-game loadHeroModels)
+  const HERO_MAP = { bed: 'bed', rocker: 'rocker', chair: 'chair', table: 'table', cabinet: 'cabinet', boiler: 'boiler' };
+  const HERO_FP = {
+    bed: { fw: 1.15, fd: 2.2 }, rocker: { fw: 0.7, fd: 1.05 }, chair: { fw: 0.55, fd: 0.55 },
+    table: { fw: 1.7, fd: 0.95 }, cabinet: { fw: 0.75, fd: 0.55 }, boiler: { fw: 0.95, fd: 0.95 },
+  };
 
   // place props for one room
   function fillRoom(group, solids, animated, room, TILE_M, bloodyChance) {
@@ -446,6 +464,24 @@ const Props = (() => {
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
 
     const place = (name, xm, zm, rotY) => {
+      // real glTF furniture when available (loaded by vr-game.js)
+      const hm = (typeof window !== 'undefined') && window.HeroModels;
+      const hkey = HERO_MAP[name];
+      if (hm && hkey && hm[hkey]) {
+        const g = hm[hkey].clone();
+        g.position.set(xm, 0, zm);
+        g.rotation.y = (rotY || 0) + (Math.random() - 0.5) * 0.25;   // nothing sits square
+        if (name === 'chair' && Math.random() < 0.22) {              // knocked over overnight
+          g.rotation.z = Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1);
+          g.position.y = 0.25;
+        }
+        group.add(g);
+        const fp = HERO_FP[name] || { fw: 0.8, fd: 0.8 };
+        const rot = Math.abs((rotY || 0) % Math.PI) > 0.7;
+        const w = rot ? fp.fd : fp.fw, d = rot ? fp.fw : fp.fd;
+        solids.push({ x0: xm - w / 2, z0: zm - d / 2, x1: xm + w / 2, z1: zm + d / 2 });
+        return;
+      }
       const b = BUILDERS[name]; if (!b) return;
       const g = b(name === 'bed' && Math.random() < bloodyChance);
       g.position.set(xm, 0, zm); g.rotation.y = rotY || 0;
@@ -463,8 +499,8 @@ const Props = (() => {
 
     // generic clutter pass — big rooms get scattered debris so nothing feels bare
     const areaT = (room.w - 2) * (room.h - 2);
-    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart'];
-    const nClutter = Math.min(6, Math.floor(areaT / 16));
+    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart', 'papers', 'papers', 'chair'];
+    const nClutter = Math.min(9, Math.floor(areaT / 11));
     for (let i = 0; i < nClutter; i++) {
       const cxm = x0 + Math.random() * (x1 - x0);
       const czm = z0 + Math.random() * (z1 - z0);

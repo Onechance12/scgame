@@ -10,11 +10,12 @@
  * tile coords from the camera each frame and let Entities do the rest.
  * ==========================================================================*/
 
-/* Loaded as a classic script after three.min.js (global THREE) and after
- * audio.js / world.js / entities.js. Wrapped in an IIFE to avoid colliding
- * with those scripts' top-level declarations (e.g. TILE). */
+/* ES module. Classic scripts (audio/world/entities/props/survival) load first
+ * and set window globals; we hand them THREE via window for props.js. */
+import * as THREE from 'three';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
+window.THREE = THREE;
 (() => {
-const THREE = window.THREE;
 
 const TILE_M = 2.7;      // metres per map tile
 const WALL_H = 3.2;      // wall / ceiling height
@@ -55,6 +56,8 @@ let xrSupported = false;
 let autosaveT = 8;
 let wakeLock = null;
 let moodLights = [];           // per-room coloured lights
+let heroReady = Promise.resolve();
+let dust = null, dustBase = null;
 let carter = null, carterTimer = 50;   // the chain-dragging apparition
 let fallingDebris = [], debrisKept = [], dropCooldown = 25;
 let morgueScared = false, sceneAnims = [];
@@ -110,7 +113,7 @@ function init() {
   fog = new THREE.FogExp2(0x03030a, 0.055);
   scene.fog = fog;
 
-  ambient = new THREE.AmbientLight(0x3a4652, 0.14);
+  ambient = new THREE.AmbientLight(0x3a4652, 0.10);
   scene.add(ambient);
   // hemisphere gives cheap depth (cool from above, rot from below)
   scene.add(new THREE.HemisphereLight(0x2c3a4c, 0x0c0906, 0.22));
@@ -134,6 +137,9 @@ function init() {
   clock = new THREE.Clock();
 
   loadTextures();
+  heroReady = loadHeroModels();      // real furniture, preloads during the menu
+  flashlight.map = makeBeamCookie(); // textured beam — dappled, real
+  makeDust();
   setupControllers();
   setupVignette();
   setupWristPanel();
@@ -374,7 +380,7 @@ function enterVR(saved) {
     session.addEventListener('end', () => { isVR = false; });
     wristPanel.visible = true;
     document.getElementById('vr-crosshair').style.display = 'none';
-    newGame(saved);
+    heroReady.then(() => newGame(saved));
   }).catch((err) => {
     console.warn('VR session failed:', err);
     startDesktop(saved);
@@ -390,7 +396,7 @@ function startDesktop(saved) {
     'WASD move · mouse look · F flashlight · E interact · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
-  newGame(saved);
+  heroReady.then(() => newGame(saved));
 }
 
 function newGame(saved) {
@@ -773,6 +779,64 @@ function updatePeekers(dt) {
       if (p.t <= 0) { p.state = 'hidden'; p.cool = 4 + Math.random() * 5; }
     }
   }
+}
+
+// ---- real furniture (Poly Haven glTF, CC0) ----
+function loadHeroModels() {
+  const L = new GLTFLoader();
+  const defs = { bed: 'GothicBed_01', rocker: 'Rockingchair_01', chair: 'WoodenChair_01',
+    table: 'WoodenTable_01', cabinet: 'drawer_cabinet', boiler: 'barrel_stove', candles: 'brass_candleholders' };
+  const MODELS = {};
+  return Promise.all(Object.entries(defs).map(([k, id]) =>
+    L.loadAsync('assets/models/' + id + '/' + id + '_1k.gltf')
+      .then((g) => { MODELS[k] = g.scene; })
+      .catch((e) => console.warn('hero model failed:', id))
+  )).then(() => { window.HeroModels = MODELS; });
+}
+
+// ---- atmosphere: dappled flashlight cookie + dust motes in the beam ----
+function makeBeamCookie() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(128, 128, 12, 128, 128, 128);
+  g.addColorStop(0, '#fff'); g.addColorStop(0.65, '#c9c9c9'); g.addColorStop(1, '#000');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 70; i++) {
+    x.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.22) + ')';
+    x.beginPath(); x.arc(Math.random() * 256, Math.random() * 256, 4 + Math.random() * 20, 0, 6.28); x.fill();
+  }
+  return new THREE.CanvasTexture(c);
+}
+function makeDust() {
+  const N = 130;
+  dustBase = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    dustBase[i * 3] = (Math.random() - 0.5) * 7;
+    dustBase[i * 3 + 1] = 0.2 + Math.random() * 2.3;
+    dustBase[i * 3 + 2] = (Math.random() - 0.5) * 7;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(dustBase.slice(), 3));
+  const m = new THREE.PointsMaterial({ color: 0xc9ba98, size: 0.018, transparent: true,
+    opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
+  dust = new THREE.Points(g, m);
+  dust.frustumCulled = false;
+  scene.add(dust);
+}
+function updateDust(dt) {
+  if (!dust) return;
+  dust.visible = !!(player && player.hasLight && player.lightOn);
+  if (!dust.visible) return;
+  camera.getWorldPosition(tmpV);
+  dust.position.set(tmpV.x, 0, tmpV.z);
+  const a = dust.geometry.attributes.position.array;
+  const t = performance.now() / 1000;
+  for (let i = 0; i < a.length; i += 3) {
+    a[i] = dustBase[i] + Math.sin(t * 0.3 + i) * 0.25;
+    a[i + 1] = dustBase[i + 1] + Math.sin(t * 0.17 + i * 1.7) * 0.15;
+    a[i + 2] = dustBase[i + 2] + Math.cos(t * 0.23 + i * 0.9) * 0.25;
+  }
+  dust.geometry.attributes.position.needsUpdate = true;
 }
 
 // ---- static-prop merger: hundreds of furniture meshes -> ~1 draw call per material
@@ -1651,6 +1715,7 @@ function update(dt) {
 
   updateSpiritObjective(dt);
 
+  updateDust(dt);
   // flickering fixtures + animated toys + the haunted nursery + wall children
   updateFixtures(dt);
   animateProps(dt);
