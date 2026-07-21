@@ -36,14 +36,18 @@
     #signin .row{display:flex;gap:8px}#signin .row .btn{flex:1;margin:6px 0}
     #signin .err{color:#e78a8a;font-size:12px;min-height:16px;text-align:center}
     #signin .hint2{font-size:11px;color:#7a8590;text-align:center;line-height:1.5;margin-top:6px}
-    #leaderboard{max-width:420px;margin:8px auto;padding:14px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:rgba(0,0,0,.35);display:none}
-    #leaderboard.show{display:block}
-    #leaderboard h3{margin:0 0 10px;color:#e7edf2;letter-spacing:2px}
-    #leaderboard table{width:100%;border-collapse:collapse;font-size:13px}
-    #leaderboard td,#leaderboard th{padding:5px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}
-    #leaderboard th{color:#8a95a0;font-weight:normal;font-size:11px;letter-spacing:1px}
+    #leaderboard,#profile{max-width:460px;margin:8px auto;padding:14px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:rgba(0,0,0,.35);display:none}
+    #leaderboard.show,#profile.show{display:block}
+    #leaderboard h3,#profile h3{margin:0 0 10px;color:#e7edf2;letter-spacing:2px}
+    #leaderboard table,#profile table{width:100%;border-collapse:collapse;font-size:13px}
+    #leaderboard td,#leaderboard th,#profile td,#profile th{padding:5px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}
+    #leaderboard th,#profile th{color:#8a95a0;font-weight:normal;font-size:11px;letter-spacing:1px}
     #leaderboard tr.me{background:rgba(160,18,18,.16)}
     #leaderboard .rank{color:#c9a24a;width:26px}
+    #profile .out-death{color:#e78a8a}#profile .out-dawn{color:#8fdca6}#profile .out-unbound{color:#e8d48a}
+    #pf-sum{font-size:12px;color:#9aa7b0;margin:0 0 10px;line-height:1.6}
+    #pf-sum b{color:#e7edf2}
+    #profile .when{color:#7a8590;font-size:11px;white-space:nowrap}
     #records-strip{font-size:12px;color:#9aa7b0;margin:2px 0 10px}
     #records-strip b{color:#e7a0a0}
   </style>
@@ -96,6 +100,7 @@
         <span id="acct-status">Not signed in</span>
         <span class="acct-link" id="acct-toggle">Sign in / Create</span>
         <span class="acct-link" id="acct-board">🏆 Leaderboard</span>
+        <span class="acct-link" id="acct-profile" style="display:none">📜 My Nights</span>
         <span class="acct-link" id="acct-signout" style="display:none">Sign out</span>
       </div>
       <div id="records-strip"></div>
@@ -115,6 +120,13 @@
         <h3>🏆 LEADERBOARD — LONGEST SURVIVED</h3>
         <table id="lb-table"><tbody></tbody></table>
         <button id="lb-close" class="btn ghost" style="margin-top:10px">CLOSE</button>
+      </div>
+      <!-- profile: your past nights -->
+      <div id="profile">
+        <h3>📜 MY NIGHTS AT COLLEGE HILL</h3>
+        <div id="pf-sum"></div>
+        <table id="pf-table"><tbody></tbody></table>
+        <button id="pf-close" class="btn ghost" style="margin-top:10px">CLOSE</button>
       </div>
       <div id="mode-select">
         <button id="mode-night" class="mode selected">🌙 ONE NIGHT<span>~20 min</span></button>

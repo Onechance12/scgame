@@ -29,7 +29,7 @@ const Accounts = (() => {
     if (!/^\d{4,8}$/.test(String(pin))) return { ok: false, err: 'PIN must be 4–8 digits.' };
     const a = load(); const acc = a[phone];
     if (acc) { if (acc.pin !== hash(pin)) return { ok: false, err: 'Wrong PIN for that number.' }; }
-    else { a[phone] = { pin: hash(pin), created: Date.now(), records: emptyRecords(), save: null }; }
+    else { a[phone] = { pin: hash(pin), created: Date.now(), records: emptyRecords(), history: [], save: null }; }
     saveAll(a);
     try { localStorage.setItem(CK, phone); } catch (e) { }
     return { ok: true, phone, isNew: !acc };
@@ -43,19 +43,33 @@ const Accounts = (() => {
   function loadGame() { const acc = get(current()); return acc ? acc.save : null; }
   function clearGame() { _update((acc) => { acc.save = null; }); }
 
-  function recordDeath(timeSec) { _update((acc) => { acc.records.deaths++; if (timeSec > acc.records.bestTimeSec) acc.records.bestTimeSec = timeSec; acc.records.totalPlaySec += timeSec | 0; }); }
-  function recordWin(timeSec, rite) { _update((acc) => { acc.records.wins++; acc.records.nightsSurvived++; if (rite) acc.records.ritesCompleted++; if (timeSec > acc.records.bestTimeSec) acc.records.bestTimeSec = timeSec; acc.records.totalPlaySec += timeSec | 0; }); }
+  // every run becomes a history entry: when, how long, how it ended, who ended it
+  function pushRun(acc, run) {
+    if (!acc.history) acc.history = [];   // migrate accounts made before history existed
+    acc.history.unshift(run);
+    if (acc.history.length > 40) acc.history.length = 40;
+  }
+  function recordDeath(timeSec, by, meta) { _update((acc) => {
+    acc.records.deaths++; if (timeSec > acc.records.bestTimeSec) acc.records.bestTimeSec = timeSec; acc.records.totalPlaySec += timeSec | 0;
+    pushRun(acc, { t: Date.now(), sec: timeSec | 0, out: 'death', by: by || 'the dark', truths: (meta && meta.truths) || 0, mode: (meta && meta.mode) || 'night' });
+  }); }
+  function recordWin(timeSec, rite, meta) { _update((acc) => {
+    acc.records.wins++; acc.records.nightsSurvived++; if (rite) acc.records.ritesCompleted++;
+    if (timeSec > acc.records.bestTimeSec) acc.records.bestTimeSec = timeSec; acc.records.totalPlaySec += timeSec | 0;
+    pushRun(acc, { t: Date.now(), sec: timeSec | 0, out: rite ? 'unbound' : 'dawn', truths: (meta && meta.truths) || 0, mode: (meta && meta.mode) || 'night' });
+  }); }
+  function history(phone) { const acc = get(phone || current()); return (acc && acc.history) || []; }
 
   function leaderboard() {
     const a = load();
     return Object.keys(a).map((phone) => {
       const r = a[phone].records || emptyRecords();
-      return { phone, mask: maskPhone(phone), best: r.bestTimeSec || 0, nights: r.nightsSurvived || 0, wins: r.wins || 0, deaths: r.deaths || 0 };
+      return { phone, mask: maskPhone(phone), best: r.bestTimeSec || 0, nights: r.nightsSurvived || 0, wins: r.wins || 0, deaths: r.deaths || 0, rites: r.ritesCompleted || 0, runs: (r.wins || 0) + (r.deaths || 0) };
     }).sort((x, y) => (y.best - x.best) || (y.nights - x.nights));
   }
 
   function fmtTime(sec) { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; }
 
-  return { signIn, signOut, current, get, records, saveGame, loadGame, clearGame, recordDeath, recordWin, leaderboard, maskPhone, fmtTime };
+  return { signIn, signOut, current, get, records, history, saveGame, loadGame, clearGame, recordDeath, recordWin, leaderboard, maskPhone, fmtTime };
 })();
 if (typeof window !== 'undefined') window.Accounts = Accounts;

@@ -112,7 +112,7 @@ let wisp = null;              // the guiding spirit-light that drifts toward you
 let messages = [], msgText = '', msgTimer = 0;
 let spiritActive = false, spiritHold = 0;
 let ambientEventTimer = 6, scareCooldown = 0, flashFlicker = 1;
-let interactTarget = null, deathBy = '';
+let interactTarget = null, deathBy = '', lastKiller = '';
 let isVR = false;
 let desk = { yaw: 0, pitch: 0, dragging: false, px: 0, py: 0 }; // desktop look
 let hudTick = 0;
@@ -433,11 +433,13 @@ function refreshAcctBar() {
   const toggle = document.getElementById('acct-toggle');
   const signout = document.getElementById('acct-signout');
   const strip = document.getElementById('records-strip');
+  const profLink = document.getElementById('acct-profile');
   if (phone) {
     const r = A.records() || {};
     if (status) status.innerHTML = 'Signed in as <b>' + A.maskPhone(phone) + '</b>';
     if (toggle) toggle.style.display = 'none';
     if (signout) signout.style.display = '';
+    if (profLink) profLink.style.display = '';
     if (strip) strip.innerHTML = r.bestTimeSec
       ? 'Best survived: <b>' + A.fmtTime(r.bestTimeSec) + '</b> · Nights won: <b>' + (r.nightsSurvived || 0) + '</b> · Rites: <b>' + (r.ritesCompleted || 0) + '</b> · Deaths: <b>' + (r.deaths || 0) + '</b>'
       : 'No runs yet — survive the night and set your record.';
@@ -445,6 +447,7 @@ function refreshAcctBar() {
     if (status) status.textContent = 'Not signed in (playing as guest)';
     if (toggle) toggle.style.display = '';
     if (signout) signout.style.display = 'none';
+    if (profLink) profLink.style.display = 'none';
     if (strip) strip.innerHTML = '';
   }
   offerResume();   // the resume button follows the active account's save
@@ -453,24 +456,46 @@ function renderLeaderboard() {
   const A = window.Accounts; if (!A) return;
   const rows = A.leaderboard(); const me = A.current();
   const tb = document.querySelector('#lb-table tbody'); if (!tb) return;
-  let h = '<tr><th class="rank">#</th><th>Player</th><th>Best time</th><th>Nights</th></tr>';
-  if (!rows.length) h += '<tr><td colspan="4" style="color:#7a8590">No records yet. Be the first to survive.</td></tr>';
+  let h = '<tr><th class="rank">#</th><th>Player</th><th>Best time</th><th>Dawns</th><th>Rites</th><th>Deaths</th></tr>';
+  if (!rows.length) h += '<tr><td colspan="6" style="color:#7a8590">No records yet. Be the first to survive.</td></tr>';
   rows.slice(0, 12).forEach((r, i) => {
     h += '<tr class="' + (r.phone === me ? 'me' : '') + '"><td class="rank">' + (i + 1) + '</td><td>' + r.mask +
-      '</td><td>' + (r.best ? A.fmtTime(r.best) : '—') + '</td><td>' + r.nights + '</td></tr>';
+      '</td><td>' + (r.best ? A.fmtTime(r.best) : '—') + '</td><td>' + r.nights + '</td><td>' + (r.rites ? '⚱' + r.rites : '—') + '</td><td>' + r.deaths + '</td></tr>';
+  });
+  tb.innerHTML = h;
+}
+// ---- the profile: every night you've played, and how it ended ----
+function renderProfile() {
+  const A = window.Accounts; if (!A || !A.current()) return;
+  const r = A.records() || {}; const runs = A.history();
+  const sum = document.getElementById('pf-sum');
+  if (sum) sum.innerHTML =
+    'Signed in as <b>' + A.maskPhone(A.current()) + '</b> · Longest night: <b>' + (r.bestTimeSec ? A.fmtTime(r.bestTimeSec) : '—') + '</b><br>' +
+    'Dawns: <b>' + (r.nightsSurvived || 0) + '</b> · Rites completed: <b>' + (r.ritesCompleted || 0) + '</b> · Deaths: <b>' + (r.deaths || 0) + '</b> · Time inside: <b>' + A.fmtTime(r.totalPlaySec || 0) + '</b>';
+  const tb = document.querySelector('#pf-table tbody'); if (!tb) return;
+  let h = '<tr><th>Night</th><th>Outcome</th><th>Survived</th><th>Truths</th></tr>';
+  if (!runs.length) h += '<tr><td colspan="4" style="color:#7a8590">No nights on record yet. The hospital is waiting.</td></tr>';
+  runs.slice(0, 15).forEach((run) => {
+    const when = new Date(run.t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const out = run.out === 'death' ? '<span class="out-death">💀 Taken by ' + (run.by || 'the dark') + '</span>'
+      : run.out === 'unbound' ? '<span class="out-unbound">⚱ The Unbinding — every soul freed</span>'
+      : '<span class="out-dawn">🌅 Survived to dawn</span>';
+    h += '<tr><td class="when">' + when + (run.mode === '24h' ? ' · 24H' : '') + '</td><td>' + out + '</td><td>' + A.fmtTime(run.sec) + '</td><td>' + (run.truths || 0) + '/4</td></tr>';
   });
   tb.innerHTML = h;
 }
 function bindAccountUI() {
   const A = window.Accounts; if (!A) return;
   const $ = (id) => document.getElementById(id);
-  const panel = $('signin'), board = $('leaderboard');
+  const panel = $('signin'), board = $('leaderboard'), prof = $('profile');
   const show = (el, on2) => el && el.classList.toggle('show', on2);
-  if ($('acct-toggle')) $('acct-toggle').onclick = () => { show(board, false); show(panel, !panel.classList.contains('show')); if ($('in-err')) $('in-err').textContent = ''; const ph = $('in-phone'); if (ph) ph.focus(); };
+  if ($('acct-toggle')) $('acct-toggle').onclick = () => { show(board, false); show(prof, false); show(panel, !panel.classList.contains('show')); if ($('in-err')) $('in-err').textContent = ''; const ph = $('in-phone'); if (ph) ph.focus(); };
   if ($('in-cancel')) $('in-cancel').onclick = () => show(panel, false);
-  if ($('acct-signout')) $('acct-signout').onclick = () => { A.signOut(); refreshAcctBar(); };
-  if ($('acct-board')) $('acct-board').onclick = () => { show(panel, false); renderLeaderboard(); show(board, !board.classList.contains('show')); };
+  if ($('acct-signout')) $('acct-signout').onclick = () => { A.signOut(); show(prof, false); refreshAcctBar(); };
+  if ($('acct-board')) $('acct-board').onclick = () => { show(panel, false); show(prof, false); renderLeaderboard(); show(board, !board.classList.contains('show')); };
   if ($('lb-close')) $('lb-close').onclick = () => show(board, false);
+  if ($('acct-profile')) $('acct-profile').onclick = () => { show(panel, false); show(board, false); renderProfile(); show(prof, !prof.classList.contains('show')); };
+  if ($('pf-close')) $('pf-close').onclick = () => show(prof, false);
   const doSignIn = () => {
     const res = A.signIn($('in-phone').value, $('in-pin').value);
     if (!res.ok) { if ($('in-err')) $('in-err').textContent = res.err; return; }
@@ -553,7 +578,7 @@ function newGame(saved) {
   graceUntil = saved ? 0 : 100;
   onboardStep = saved ? -1 : 0; onboardT = saved ? 0 : 3;
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false; phoneRang = false;
-  deathBy = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
+  deathBy = ''; lastKiller = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   data.objectives.forEach((o) => (o.done = false));
 
@@ -3203,7 +3228,7 @@ function update(dt) {
     peace: Survival.peaceActive() || grace,   // the dead keep to their dens during the grace
     diff: HAUNT[OPTS.haunt] || HAUNT.restless,
     beamHits: (ex, ey) => beamHits(ex, ey),
-    onCatch: (e) => { deathBy = catchLine(e); die(); },
+    onCatch: (e) => { deathBy = catchLine(e); lastKiller = e.name; die(); },
   };
   updateWard(dt);   // apply the cross's ward BEFORE the dead act this frame (no lag)
   updateWeapon(dt); // and the crowbar swing, same frame-order guarantee
@@ -3606,33 +3631,43 @@ function resumeGame() {
   document.getElementById('pausescreen').classList.remove('show');
   state = 'PLAY'; Audio2.resume(); clock.getDelta();
 }
+function runMeta() { return { truths: data.objectives.filter((o) => o.done).length, mode: realMode ? '24h' : 'night' }; }
+function filedLine() {
+  return (window.Accounts && Accounts.current())
+    ? 'Filed to your record (📜 My Nights): survived ' + Accounts.fmtTime(elapsed) + '.' : null;
+}
 function die() {
   if (state === 'DEAD') return;
-  if (window.Accounts) Accounts.recordDeath(elapsed);
+  if (window.Accounts) Accounts.recordDeath(elapsed, lastKiller || 'Fear itself', runMeta());
   state = 'DEAD'; stopSpirit(); Audio2.stinger(true); clearSave();
   setTimeout(() => Audio2.suspend(), 1600);
-  if (isVR) showBigPanel('YOU DIED', [deathBy].concat(data.LORE.ending_bad), '#e02a2a');
+  const filed = filedLine();
+  if (isVR) showBigPanel('YOU DIED', [deathBy].concat(data.LORE.ending_bad, filed ? [filed] : []), '#e02a2a');
   else {
     setText('death-reason', deathBy);
-    const dl = document.getElementById('death-lore'); if (dl) dl.innerHTML = data.LORE.ending_bad.map((l) => `<p>${l}</p>`).join('');
+    const dl = document.getElementById('death-lore');
+    if (dl) dl.innerHTML = data.LORE.ending_bad.map((l) => `<p>${l}</p>`).join('') + (filed ? `<p class="hint" style="color:#8a95a0">${filed}</p>` : '');
     document.getElementById('deathscreen').classList.add('show');
   }
+  refreshAcctBar();   // records strip + resume state stay current for the menu
 }
 function win() {
   if (state === 'WIN') return;
-  if (window.Accounts) Accounts.recordWin(elapsed, false);
+  if (window.Accounts) Accounts.recordWin(elapsed, false, runMeta());
   state = 'WIN'; stopSpirit(); clearSave();
-  if (isVR) showBigPanel('DAWN', data.LORE.ending_good, '#8affb0');
+  const filedW = filedLine();
+  if (isVR) showBigPanel('DAWN', data.LORE.ending_good.concat(filedW ? [filedW] : []), '#8affb0');
   else {
-    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_good.map((l) => `<p>${l}</p>`).join('');
+    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_good.map((l) => `<p>${l}</p>`).join('') + (filedW ? `<p class="hint" style="color:#8a95a0">${filedW}</p>` : '');
     document.getElementById('winscreen').classList.add('show');
   }
+  refreshAcctBar();
   setTimeout(() => Audio2.suspend(), 6000);
 }
 // The true ending — reached by completing the Unbinding Rite (not just surviving).
 function trueEnding() {
   if (state === 'WIN') return;
-  if (window.Accounts) Accounts.recordWin(elapsed, true);
+  if (window.Accounts) Accounts.recordWin(elapsed, true, runMeta());
   riteClimax = false;
   state = 'WIN'; stopSpirit(); clearSave();
   const title = 'THE HOUSE IS EMPTY';
@@ -3641,9 +3676,10 @@ function trueEnding() {
     const ws = document.getElementById('winscreen');
     const h2 = ws && ws.querySelector('h2'); if (h2) h2.textContent = title;
     const reason = ws && ws.querySelector('.reason'); if (reason) reason.textContent = 'You performed the Unbinding Rite and set every soul free.';
-    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_true.map((l) => `<p>${l}</p>`).join('');
+    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_true.map((l) => `<p>${l}</p>`).join('') + (filedLine() ? `<p class="hint" style="color:#8a95a0">${filedLine()}</p>` : '');
     ws.classList.add('show');
   }
+  refreshAcctBar();
   setTimeout(() => Audio2.suspend(), 8000);
 }
 function restartFromPanel() { newGame(); }
