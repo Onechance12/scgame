@@ -14,6 +14,7 @@
  * and set window globals; we hand them THREE via window for props.js. */
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
+import { clone as skeletonClone } from './utils/SkeletonUtils.js';
 window.THREE = THREE;
 (() => {
 
@@ -60,8 +61,15 @@ let heroReady = Promise.resolve();
 let dust = null, dustBase = null;
 let stepT = 0, lastTileType = -1, lowBatWarned = false;
 // player options (persisted): swapHands = move on right stick; walkLook = hold A/X to glide; bright = dim-lights mode
-const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true },
+const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true, haunt: 'restless' },
   (() => { try { return JSON.parse(localStorage.getItem('collegehill_opts')) || {}; } catch (e) { return {}; } })());
+// difficulty ("Haunt level"): scales the dead's speed, senses, and numbers
+const HAUNT = {
+  faint: { speedMul: 0.82, senseMul: 0.78, extra: false, label: 'FAINT' },
+  restless: { speedMul: 1.0, senseMul: 1.0, extra: false, label: 'RESTLESS' },
+  infested: { speedMul: 1.2, senseMul: 1.22, extra: true, label: 'INFESTED' },
+};
+const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
 let hemi = null, lanternLight = null, stickBtnWas = false;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
@@ -378,6 +386,12 @@ function bindUI() {
     el.onclick = () => { OPTS[key] = !OPTS[key]; saveOpts(); applyBrightness(); paint(); };
     paint();
   };
+  const hb = document.getElementById('opt-haunt');
+  if (hb) {
+    const paintH = () => { hb.textContent = '💀 Haunt: ' + HAUNT[OPTS.haunt].label; hb.classList.toggle('selected', OPTS.haunt !== 'restless'); };
+    hb.onclick = () => { const i = HAUNT_ORDER.indexOf(OPTS.haunt); OPTS.haunt = HAUNT_ORDER[(i + 1) % 3]; saveOpts(); paintH(); };
+    paintH();
+  }
   optBtn('opt-bright', 'bright', (o) => '💡 Lights: ' + (o.bright ? 'DIM' : 'PITCH-DARK'));
   optBtn('opt-swap', 'swapHands', (o) => '🕹 Move stick: ' + (o.swapHands ? 'RIGHT' : 'LEFT'));
   optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold A/X to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
@@ -427,7 +441,7 @@ function newGame(saved) {
   hideAllScreens();
   hideBigPanel();
   data = World.build();
-  ents = Entities.spawnAll(data);
+  ents = Entities.spawnAll(data, { extra: (HAUNT[OPTS.haunt] || HAUNT.restless).extra });
   documents = data.documents || [];
   ritual = data.ritual ? { floor: data.ritual.floor, cx: data.ritual.cx, cy: data.ritual.cy, done: false,
     nodes: data.ritual.nodes.map((n) => ({ dx: n.dx, dy: n.dy, lit: false })) } : null;
@@ -937,10 +951,15 @@ function loadHeroModels() {
     L.loadAsync('assets/models/' + id + '/' + id + '_1k.gltf')
       .then((g) => { MODELS[k] = g.scene; })
       .catch((e) => console.warn('hero model failed:', id)));
-  // CC0 apparition models (Kenney)
-  loads.push(L.loadAsync('assets/models/monsters/ghost.glb').then((g) => { MODELS.ghostGLB = g.scene; }).catch(() => {}));
-  loads.push(L.loadAsync('assets/models/monsters/skeleton.glb').then((g) => { MODELS.skelGLB = g.scene; }).catch(() => {}));
-  return Promise.all(loads).then(() => { window.HeroModels = MODELS; });
+  // CC0 apparition models WITH animation clips (Kenney, Quaternius, KayKit)
+  const MOB = {};
+  const monsters = [['ghost', 'ghost.glb'], ['skel', 'skeleton.glb'], ['demon', 'monster.glb'], ['kaykit', 'skeleton_warrior.glb']];
+  monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/monsters/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
+  return Promise.all(loads).then(() => {
+    window.HeroModels = MODELS; window.MobModels = MOB;
+    if (MOB.ghost) MODELS.ghostGLB = MOB.ghost.scene;   // keep chapel/altar set-pieces working
+    if (MOB.skel) MODELS.skelGLB = MOB.skel.scene;
+  });
 }
 
 // ---- atmosphere: dappled flashlight cookie + dust motes in the beam ----
@@ -1057,20 +1076,45 @@ function addCandle(wx, wz) {
   candleLights.push({ light, base: 1.4 });
 }
 function addStairs(wx, wz, up) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x223247, roughness: .9, emissive: 0x0a1830 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: .95 });
   const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.8, 0.5, TILE_M * 0.8), mat);
   m.position.set(wx, 0.25, wz); floorGroup.add(m);
-  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 4),
-    new THREE.MeshBasicMaterial({ color: 0x7fb0ff }));
-  arrow.position.set(wx, 1.0, wz);
+  // a small dim EXIT-style sign so you can find the stairwell — not a glowing block
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.28, 4),
+    new THREE.MeshStandardMaterial({ color: 0x0a1a0a, emissive: 0x2a6a2a, emissiveIntensity: 0.5 }));
+  arrow.position.set(wx, WALL_H - 0.3, wz);
   arrow.rotation.x = up ? 0 : Math.PI;
   floorGroup.add(arrow);
 }
 function addExit(wx, wz) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x123a24, emissive: 0x0a5030, roughness: .6 });
-  const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.95, WALL_H * 0.95, 0.25), mat);
-  m.position.set(wx, WALL_H * 0.47, wz); floorGroup.add(m);
+  // the chained front doors — real double doors, dark wood, chains across
+  const wood = new THREE.MeshStandardMaterial({ map: TEX.doorD, color: 0x5a4a38, roughness: .9 });
+  const frame = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 });
+  const g = new THREE.Group(); g.position.set(wx, 0, wz);
+  // frame
+  g.add(mkBox(TILE_M * 1.02, WALL_H * 0.98, 0.12, frame, 0, WALL_H * 0.49, -0.06));
+  // two door leaves
+  g.add(mkBox(TILE_M * 0.46, WALL_H * 0.9, 0.16, wood, -TILE_M * 0.24, WALL_H * 0.46, 0.02));
+  g.add(mkBox(TILE_M * 0.46, WALL_H * 0.9, 0.16, wood, TILE_M * 0.24, WALL_H * 0.46, 0.02));
+  // handles
+  const brass = new THREE.MeshStandardMaterial({ color: 0x8a6a2a, metalness: .6, roughness: .5 });
+  g.add(mkBox(0.06, 0.2, 0.06, brass, -0.12, WALL_H * 0.46, 0.12));
+  g.add(mkBox(0.06, 0.2, 0.06, brass, 0.12, WALL_H * 0.46, 0.12));
+  // heavy chains slung across the doors + a padlock
+  const chainMat = new THREE.MeshStandardMaterial({ color: 0x3a3a40, metalness: .7, roughness: .55 });
+  for (let cy = 1.0; cy <= 2.1; cy += 0.55) {
+    const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, TILE_M * 0.95, 6), chainMat);
+    chain.rotation.z = Math.PI / 2 + (Math.random() - 0.5) * 0.06; chain.position.set(0, cy, 0.16);
+    g.add(chain);
+  }
+  g.add(mkBox(0.14, 0.2, 0.08, chainMat, 0, 1.55, 0.2)); // padlock
+  // a small dim green EXIT sign above the frame (so it's findable, not a wall)
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.16),
+    new THREE.MeshStandardMaterial({ color: 0x0a1a0a, emissive: 0x2f7a2f, emissiveIntensity: 0.6 }));
+  sign.position.set(0, WALL_H * 0.98, 0.14); g.add(sign);
+  floorGroup.add(g);
 }
+function mkBox(w, h, d, mat, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; }
 function addLocker(wx, wz) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x30323c, metalness: .3, roughness: .7 });
   const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.6, WALL_H * 0.8, TILE_M * 0.4), mat);
@@ -1153,10 +1197,70 @@ function auraTex(hex) {
   x.fillStyle = g; x.fillRect(0, 0, 128, 128);
   return (auraTexCache[hex] = new THREE.CanvasTexture(c));
 }
+// kind -> animated model + spectral styling
+const MOBMAP = {
+  nurse: { key: 'ghost', targetH: 1.85, translucent: true, opacity: 0.72, tint: 0xcfe0f0, aura: 'rgba(150,180,220,0.5)', auraS: 2.6, yaw: 0 },
+  child: { key: 'ghost', targetH: 1.05, translucent: true, opacity: 0.7, tint: 0xdfe8f0, aura: 'rgba(190,210,235,0.5)', auraS: 1.7, yaw: 0 },
+  mose: { key: 'kaykit', targetH: 2.0, translucent: false, opacity: 1, tint: 0x39323f, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: 0 },
+  crawler: { key: 'skel', targetH: 1.2, low: true, translucent: false, opacity: 1, tint: 0x2a2a34, emissive: 0x0a0010, aura: 'rgba(80,10,20,0.5)', auraS: 1.7, yaw: 0 },
+  // ash intentionally omitted — uses its char-core + ember-swarm builder (the demon model didn't read well)
+};
+function auraSprite(rec, grp, hex, size, y) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+  s.scale.set(size, size, 1); s.position.y = y; grp.add(s); rec.aura = s;
+}
+function buildEmbers(rec, grp) {
+  const N = 90, ep = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { const a = Math.random() * 6.28, r = 0.3 + Math.random() * 0.7; ep[i * 3] = Math.cos(a) * r; ep[i * 3 + 1] = 0.2 + Math.random() * 1.9; ep[i * 3 + 2] = Math.sin(a) * r; }
+  const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.BufferAttribute(ep, 3));
+  rec.embers = new THREE.Points(eg, new THREE.PointsMaterial({ color: 0xff6a1e, size: 0.05, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+  grp.add(rec.embers);
+  const glow = new THREE.PointLight(0xff5a1e, 0.8, 4, 2); glow.position.y = 1; grp.add(glow); grp.userData.ember = glow;
+}
 function ensureEntityMesh(e) {
   if (entityMeshes.has(e)) return entityMeshes.get(e);
   const grp = new THREE.Group();
-  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null };
+  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null, mixer: null, clips: null, cur: null, action: null, yaw: 0, hasModel: false };
+  const MOB = window.MobModels || {};
+  const map = MOBMAP[e.kind];
+  // --- real animated model path ---
+  if (map && MOB[map.key] && MOB[map.key].scene) {
+    try {
+      const src = MOB[map.key];
+      const model = skeletonClone(src.scene);
+      let box = new THREE.Box3().setFromObject(model);
+      const h = (box.max.y - box.min.y) || 1;
+      model.scale.setScalar(map.targetH / h);
+      if (map.low) model.scale.y *= 0.55;
+      box = new THREE.Box3().setFromObject(model);
+      model.position.y = -box.min.y + (map.fly ? 0.4 : 0);
+      model.traverse((o) => {
+        if (!o.isMesh || !o.material) return;
+        o.frustumCulled = false;
+        o.material = o.material.clone();
+        if (o.material.color) o.material.color.lerp(new THREE.Color(map.tint), 0.55);
+        if (o.material.emissive && map.emissive != null) o.material.emissive.setHex(map.emissive);
+        if (map.translucent) { o.material.transparent = true; o.material.opacity = map.opacity; o.material.depthWrite = false; }
+      });
+      grp.add(model); rec.hasModel = true; rec.yaw = map.yaw || 0;
+      if (src.animations && src.animations.length) {
+        rec.mixer = new THREE.AnimationMixer(model);
+        const find = (...keys) => { for (const k of keys) { const c = src.animations.find((a) => a.name.toLowerCase().includes(k)); if (c) return c; } return null; };
+        rec.clips = {
+          idle: find('flying_idle', 'idle', 'static') || src.animations[0],
+          walk: find('walking_a', 'walk', 'flying_idle') || null,
+          run: find('running_a', 'sprint', 'run', 'fast_flying') || null,
+        };
+        rec.clips.walk = rec.clips.walk || rec.clips.idle;
+        rec.clips.run = rec.clips.run || rec.clips.walk;
+        rec.action = rec.mixer.clipAction(rec.clips.idle); rec.action.play(); rec.cur = rec.clips.idle;
+      }
+      if (e.kind === 'ash') buildEmbers(rec, grp);
+      auraSprite(rec, grp, map.aura, map.auraS, map.targetH * 0.6);
+      grp.visible = false; scene.add(grp); entityMeshes.set(e, rec); return rec;
+    } catch (err) { console.warn('mob model build failed', e.kind, err); }
+  }
+  // --- fallback: procedural spectral shroud ---
   const shroud = (color, op, r0, r1, h, y) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 12, 1, true),
       new THREE.MeshStandardMaterial({ color, transparent: true, opacity: op, roughness: 1, side: THREE.DoubleSide, depthWrite: false }));
@@ -1225,14 +1329,36 @@ function ensureEntityMesh(e) {
   entityMeshes.set(e, rec);
   return rec;
 }
-// per-frame spectral motion: float, sway, breathe, swirl
+// per-frame spectral motion + animation + facing
 function animateGhost(rec, e, dt) {
   const t = performance.now() / 1000 + rec.phase;
   const hunt = e.state === Entities.S.HUNT;
+  // face movement direction when moving, else face the player
+  let yaw;
+  if (e.moving) { const dirX = Math.cos(e.facing), dirZ = Math.sin(e.facing); yaw = Math.atan2(dirX, dirZ); }
+  else { camera.getWorldPosition(tmpV2); yaw = Math.atan2(tmpV2.x - e.x * TILE_M, tmpV2.z - e.y * TILE_M); }
+  rec.group.rotation.y = yaw + (rec.yaw || 0);
+
+  if (rec.hasModel) {
+    if (rec.mixer) {
+      rec.mixer.update(dt);
+      const want = !e.moving ? rec.clips.idle : (e.fast ? rec.clips.run : rec.clips.walk);
+      if (want && rec.cur !== want) {
+        const next = rec.mixer.clipAction(want);
+        next.reset().fadeIn(0.22).play();
+        if (rec.action) rec.action.fadeOut(0.22);
+        rec.action = next; rec.cur = want;
+      }
+    }
+    if (rec.aura) rec.aura.material.opacity = (hunt ? 0.6 : 0.32) + Math.sin(t * 5) * 0.1;
+    if (rec.embers) rec.embers.rotation.y += dt * (hunt ? 3.5 : 1.2);
+    return;
+  }
+  // shroud fallback: float, sway
   rec.group.position.y = Math.sin(t * (hunt ? 3.2 : 1.6)) * 0.07 + (e.kind === 'child' ? 0 : 0.05);
   rec.gown.forEach((m2, i) => { m2.rotation.y = Math.sin(t * 0.8 + i) * 0.15; m2.rotation.z = Math.sin(t * 1.1 + i * 2) * 0.05; });
-  if (rec.aura) { rec.aura.material.opacity = (hunt ? 0.6 : 0.35) + Math.sin(t * 5) * 0.12; }
-  if (rec.embers) { rec.embers.rotation.y += dt * (hunt ? 3.5 : 1.2); }
+  if (rec.aura) rec.aura.material.opacity = (hunt ? 0.6 : 0.35) + Math.sin(t * 5) * 0.12;
+  if (rec.embers) rec.embers.rotation.y += dt * (hunt ? 3.5 : 1.2);
 }
 
 // ============================================================ locomotion
@@ -1634,7 +1760,6 @@ function render() {
   else if (state === 'MENU') { camera.position.set(0, EYE, 0); }
   spinItems(dt);
   renderer.render(scene, camera);
-  window.__ri = renderer.info.render.calls;  // perf probe (draw calls)
 }
 
 function spinItems(dt) {
@@ -1925,6 +2050,7 @@ function update(dt) {
     hour, noise,
     playerLit: isPlayerLit(),
     peace: Survival.peaceActive(),
+    diff: HAUNT[OPTS.haunt] || HAUNT.restless,
     beamHits: (ex, ey) => beamHits(ex, ey),
     onCatch: (e) => { deathBy = catchLine(e); die(); },
   };
@@ -1936,9 +2062,8 @@ function update(dt) {
       ensureEntityMesh(e);
       const rec = entityMeshes.get(e);
       rec.group.visible = true;
-      rec.group.position.set(e.x * TILE_M, 0, e.y * TILE_M);
-      // face the player
-      rec.group.lookAt(camera.getWorldPosition(tmpV2).x, 0, camera.getWorldPosition(tmpV2).z);
+      if (!rec.hasModel) rec.group.position.set(e.x * TILE_M, 0, e.y * TILE_M);
+      else { rec.group.position.x = e.x * TILE_M; rec.group.position.z = e.y * TILE_M; }
       if (e.kind === 'ash' && rec.group.userData.ember) rec.group.userData.ember.intensity = 0.5 + Math.random();
       animateGhost(rec, e, eDt);
       const d = Math.hypot(e.x - player.x, e.y - player.y);
