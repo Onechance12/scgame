@@ -363,6 +363,13 @@ const World = (() => {
       'Four floors of the most modern care in Appalachia — and beneath',
       'them, a basement for the work the public need not see.',
     ]);
+    addDoc(1, 'lobby', 'doc_lockdown', 'file', 'Lockdown Order — Final Week, 1988', [
+      'Close her ward by ward. Chain every stairwell as you go.',
+      'Leave the keys where staff will know to look:',
+      'RECORDS keeps the ward key. The 2nd-floor STATION keeps surgery.',
+      'RECOVERY keeps the attic stair. The KITCHEN keeps the cellar.',
+      'Last one out rings the bell. Nobody rang it. — Maintenance',
+    ], 1, 1);
     addDoc(2, 'station', 'doc_nurse_letter', 'letter', 'Letter — Nurse Ada Coyle', [
       'Dear Mother — the night shift is long but the patients are kind.',
       'I am always running late; the road down the hill is wicked in rain.',

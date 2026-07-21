@@ -489,6 +489,13 @@ function restoreFrom(s) {
   (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
+  // stairwell-key compatibility: a save from before the lockdown update (or any
+  // save made past a stairwell) must never strand the player — grant the keys
+  // for every floor between the start floor and wherever they already are.
+  if (player.floor !== 1) {
+    const lo = Math.min(1, player.floor), hi = Math.max(1, player.floor);
+    for (let f = lo; f <= hi; f++) { const k = STAIR_KEYS[f]; if (k) player.keys[k] = true; }
+  }
   if (s.survival) Survival.restore(s.survival);
   if (ritual) {
     ritual.done = !!s.ritualDone;
