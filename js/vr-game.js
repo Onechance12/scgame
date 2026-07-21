@@ -101,6 +101,8 @@ let bigPanel, bigCtx, bigTex;   // in-VR message/title panel
 let controller1, controller2, grip1, grip2;
 let sources = { left: null, right: null };
 let snapCooldown = 0, prevBBtn = false;
+let crouched = false, jumpY = 0, jumpVel = 0, prevStickMove = false, prevStickTurn = false, crouchLerp = 0;
+let wristMenu = false, prevYBtn = false, wristMenuPanel = null, wristMenuCtx = null, wristMenuTex = null, wristMenuT = 0;
 
 // ---- game state (ported) ----
 let data, ents, player;
@@ -245,7 +247,7 @@ function checkXR() {
       xrSupported = ok;
       if (ok) {
         note.innerHTML = 'Headset detected. Press <b>ENTER IN VR</b> and put it on. ' +
-          'Left stick walk · right stick snap-turn · trigger interact · right grip = flashlight (or SWING the crowbar once you carry it — <b>B</b> becomes the light) · hold <b>A</b> to raise the cross · hold left grip for the spirit box.';
+          'Left stick walk · right stick snap-turn · trigger interact · right grip = flashlight (or SWING the crowbar once you carry it — <b>B</b> becomes the light) · hold <b>A</b> to raise the cross · hold left grip for the spirit box · <b>Y</b> opens your pack on your wrist · click sticks to crouch / jump.';
       } else {
         btnVR.disabled = true; btnVR.style.opacity = .5;
         note.innerHTML = 'No VR headset on this device. On a <b>Meta Quest</b>, open this page in the Quest browser (served over HTTPS) and the VR button lights up. Use <b>Play on Desktop</b> here.';
@@ -716,7 +718,7 @@ function startDesktop(saved) {
   document.getElementById('vr-hud').classList.add('show');
   document.getElementById('vr-crosshair').style.display = 'block';
   document.getElementById('controls-hint').textContent =
-    'WASD move · mouse look · F flashlight · E interact · R hold up CROSS · G/click swing CROWBAR · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
+    'WASD move · mouse look · Space jump · Z crouch · F flashlight · E interact · R hold up CROSS · G/click swing CROWBAR · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
   heroReady.then(() => newGame(saved));
@@ -1081,6 +1083,8 @@ function buildFloor(fi) {
   const walls = new THREE.Mesh(buildWallGeometry(g), wallMat);
   walls.castShadow = true; walls.receiveShadow = true;
   floorGroup.add(walls);
+  // collision & fixture state resets FIRST — addStairs pushes stair colliders
+  propSolids = []; flickers = []; emberProp = null;
   // fixtures the grid still drives: doors, candles, stairs, exits, hide-lockers
   for (let y = 0; y < World.H; y++) {
     for (let x = 0; x < World.W; x++) {
@@ -1095,13 +1099,12 @@ function buildFloor(fi) {
   }
 
   // furniture + fixtures (props.js)
-  propSolids = []; flickers = []; emberProp = null;
   if (window.Props) {
     try {
       const p = Props.populate(fi, data, { TILE_M, WALL_H });
       mergeStaticProps(p.group);   // collapse static furniture into few draw calls
       floorGroup.add(p.group);
-      propSolids = p.solids || [];
+      propSolids = propSolids.concat(p.solids || []);   // keep the stair colliders
       flickers = p.fixtures || [];
       emberProp = p.ember || null;
       animatedProps = p.animated || [];
@@ -1741,13 +1744,38 @@ function addStairs(wx, wz, up) {
     s.position.x -= ctr.x; s.position.z -= ctr.z; s.position.y -= b.min.y;
     s.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.82); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.15); o.frustumCulled = true; } });
     const g = new THREE.Group(); g.add(s);
-    // the flight climbs into the open corridor from its edge; base hugs the outer wall
+    // the flight CLIMBS INTO the outer wall — you walk up it and the building
+    // takes you. Its top is flush with the wall face, its base opens onto the
+    // corridor, right over the transition tile.
     const topEdge = Math.abs(tileY - ct) <= Math.abs(tileY - cb);
-    g.rotation.y = topEdge ? 0 : Math.PI;   // top-edge stair climbs +z into the band, bottom-edge climbs -z
-    const baseZ = topEdge ? (ct * TILE_M + STAIR_TUNE.edgeM + bs.z / 2)
-                          : ((cb + 1) * TILE_M - STAIR_TUNE.edgeM - bs.z / 2);
-    g.position.set(wx, 0, baseZ);
+    g.rotation.y = topEdge ? Math.PI : 0;   // top-edge flight faces the corridor, climbing -z into the wall
+    const wallFace = topEdge ? ct * TILE_M : (cb + 1) * TILE_M;
+    const centerZ = topEdge ? wallFace + bs.z / 2 : wallFace - bs.z / 2;
+    g.position.set(wx, 0, centerZ);
     floorGroup.add(g);
+    // colliders: side railings the full run (you can't strafe through the rails)
+    // and a block at the top against the wall — but the base and the transition
+    // tile stay open so walking UP the flight still changes floors.
+    const halfW = Math.min(bs.x / 2, 0.85);
+    const z0 = Math.min(wallFace, topEdge ? wallFace + bs.z : wallFace - bs.z);
+    const z1 = Math.max(wallFace, topEdge ? wallFace + bs.z : wallFace - bs.z);
+    propSolids.push({ x0: wx - halfW - 0.14, z0, x1: wx - halfW + 0.02, z1 });      // left rail
+    propSolids.push({ x0: wx + halfW - 0.02, z0, x1: wx + halfW + 0.14, z1 });      // right rail
+    const topBlockZ = topEdge ? [wallFace, wallFace + 0.55] : [wallFace - 0.55, wallFace];
+    propSolids.push({ x0: wx - halfW, z0: topBlockZ[0], x1: wx + halfW, z1: topBlockZ[1] });   // top of the flight
+    // a dim glowing STAIRS sign floating at the base, so nobody mistakes a doorway
+    const signC = document.createElement('canvas'); signC.width = 256; signC.height = 64;
+    const sx2 = signC.getContext('2d');
+    sx2.fillStyle = '#06140a'; sx2.fillRect(0, 0, 256, 64);
+    sx2.fillStyle = '#57d47f'; sx2.font = "bold 34px 'Special Elite', monospace"; sx2.textAlign = 'center';
+    sx2.fillText(up ? 'STAIRS ▲' : 'STAIRS ▼', 128, 44);
+    const signT = new THREE.CanvasTexture(signC); if ('colorSpace' in signT) signT.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.18),
+      new THREE.MeshBasicMaterial({ map: signT, transparent: true, opacity: 0.85, fog: false, side: THREE.DoubleSide }));
+    const signZ = topEdge ? wallFace + bs.z + 0.25 : wallFace - bs.z - 0.25;
+    sign.position.set(wx, 2.05, signZ);
+    sign.rotation.y = topEdge ? 0 : Math.PI;
+    floorGroup.add(sign);
   } else {
     const mat = new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: .95 });
     const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.8, 0.5, TILE_M * 0.8), mat);
@@ -2120,16 +2148,20 @@ function placeHorrorProps(fi) {
   };
   const centerP = (r, key, yaw, ox, oz) => placeW(key, (r.cx + 0.5 + (ox || 0)) * TILE_M, (r.cy + 0.5 + (oz || 0)) * TILE_M, askew(yaw));
   const bed = () => (rnd() < 0.5 ? 'hospbed' : 'horrorbed');
-  // hang a wall item (board / clock) flush against a wall, facing into the room
+  // hang a wall item (board / clock) flush against a wall, facing into the room.
+  // The tile BEHIND the mount must be actual WALL — never a doorway or open floor,
+  // or the thing hangs in mid-air (the floating-clock bug from real Quest play).
+  const wallAt = (tx, ty) => g[ty] && g[ty][tx] === TILE.WALL;
   const wallMount = (r, key, sidePref) => {
     const sides = sidePref ? [sidePref] : ['N', 'S', 'E', 'W'].sort(() => rnd() - 0.5);
     for (const side of sides) for (let t = 0; t < 5; t++) {
-      let tx, tz, yaw, ox = 0, oz = 0;
-      if (side === 'N') { tx = r.x + 1 + Math.floor(rnd() * (r.w - 2)); tz = r.y + 1; yaw = 0; oz = -0.42; }
-      else if (side === 'S') { tx = r.x + 1 + Math.floor(rnd() * (r.w - 2)); tz = r.y + r.h - 2; yaw = Math.PI; oz = 0.42; }
-      else if (side === 'W') { tz = r.y + 1 + Math.floor(rnd() * (r.h - 2)); tx = r.x + 1; yaw = Math.PI / 2; ox = -0.42; }
-      else { tz = r.y + 1 + Math.floor(rnd() * (r.h - 2)); tx = r.x + r.w - 2; yaw = -Math.PI / 2; ox = 0.42; }
+      let tx, tz, yaw, ox = 0, oz = 0, nx = 0, nz = 0;
+      if (side === 'N') { tx = r.x + 1 + Math.floor(rnd() * (r.w - 2)); tz = r.y + 1; yaw = 0; oz = -0.42; nz = -1; }
+      else if (side === 'S') { tx = r.x + 1 + Math.floor(rnd() * (r.w - 2)); tz = r.y + r.h - 2; yaw = Math.PI; oz = 0.42; nz = 1; }
+      else if (side === 'W') { tz = r.y + 1 + Math.floor(rnd() * (r.h - 2)); tx = r.x + 1; yaw = Math.PI / 2; ox = -0.42; nx = -1; }
+      else { tz = r.y + 1 + Math.floor(rnd() * (r.h - 2)); tx = r.x + r.w - 2; yaw = -Math.PI / 2; ox = 0.42; nx = 1; }
       if (!isFloor(tx, tz)) continue;
+      if (!wallAt(tx + nx, tz + nz)) continue;   // nothing to hang it on — try elsewhere
       if (placeW(key, (tx + 0.5 + ox) * TILE_M, (tz + 0.5 + oz) * TILE_M, yaw)) return true;
     }
     return false;
@@ -2743,6 +2775,21 @@ function entitySounds(rec, e, dt, d) {
     if (rec.breathT <= 0) { rec.breathT = 2.4 + Math.random() * 1.2; Audio2.breathPan(pan, 0.04 + (1 - d / 3.6) * 0.05); }
   }
 
+  // --- spider-sense: something close that you CAN'T SEE pulses the controller
+  // on the side it's coming from, faster as it closes. Your skin knows first. ---
+  if (d < 7 && e.state !== Entities.S.DORMANT) {
+    camera.getWorldDirection(tmpV2);
+    const toE = Math.atan2(e.x - player.x, e.y - player.y);
+    const rel = normAng(toE - Math.atan2(tmpV2.x, tmpV2.z));
+    if (Math.abs(rel) > 1.2) {   // outside your field of view
+      rec.senseT = (rec.senseT || 0) - dt;
+      if (rec.senseT <= 0) {
+        rec.senseT = 0.4 + (d / 7) * 1.4;   // 7m: slow tap … arm's length: drumroll
+        haptic(0.12 + (1 - d / 7) * 0.5, 50, pan < 0 ? 'left' : 'right');
+      }
+    }
+  }
+
   // --- the flashlight beam staggers a hunter (it hates the light) ---
   if (rec.beamCd > 0) rec.beamCd -= dt;
   if (hunt && player.lightOn && player.battery > 0 && rec.beamCd <= 0 && beamHits(e.x, e.y)) {
@@ -2812,7 +2859,7 @@ function vrLocomotion(dt) {
   const turnSrc = OPTS.swapHands ? sources.left : sources.right;
   const [lx, ly] = readAxes(moveSrc);
   if (lx || ly) {
-    const speed = 4.2;   // m/s — VR walking wants to feel a touch brisk
+    const speed = crouched ? 2.1 : 4.2;   // m/s — brisk upright, careful when low
     // forward is -y stick; strafe is x. Right vector = yaw - 90° (was +90°: inverted!)
     const fwd = -ly, str = lx;
     const dz = (Math.cos(yaw) * fwd + Math.cos(yaw - Math.PI / 2) * str);
@@ -2820,11 +2867,11 @@ function vrLocomotion(dt) {
     const step = speed * dt / TILE_M;
     moveDolly(dx * step, dz * step);
   }
-  // look-to-walk option: hold X/Y on the MOVE hand only — the other hand's A is
-  // the cross and its B is the flashlight, so they must never double as walking
+  // look-to-walk option: hold X on the MOVE hand only — that hand's Y is the
+  // wrist pack, and the other hand's A/B are the cross and the flashlight
   if (OPTS.walkLook) {
     const g = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
-    const pressed = g && g.buttons && ((g.buttons[4] && g.buttons[4].pressed) || (g.buttons[5] && g.buttons[5].pressed));
+    const pressed = g && g.buttons && (g.buttons[4] && g.buttons[4].pressed);
     if (pressed) {
       camera.getWorldDirection(tmpV);
       const l = Math.hypot(tmpV.x, tmpV.z) || 1;
@@ -2844,6 +2891,18 @@ function vrLocomotion(dt) {
   const bNow = !!(gT && gT.buttons && gT.buttons[5] && gT.buttons[5].pressed);
   if (bNow && !prevBBtn && state === 'PLAY') toggleFlash();
   prevBBtn = bNow;
+  // stick clicks: move-hand = crouch toggle, turn-hand = jump
+  const gM = moveSrc && moveSrc.userData.inputSource && moveSrc.userData.inputSource.gamepad;
+  const smNow = !!(gM && gM.buttons && gM.buttons[3] && gM.buttons[3].pressed);
+  if (smNow && !prevStickMove && state === 'PLAY') crouched = !crouched;
+  prevStickMove = smNow;
+  const stNow = !!(gT && gT.buttons && gT.buttons[3] && gT.buttons[3].pressed);
+  if (stNow && !prevStickTurn && state === 'PLAY' && jumpY <= 0 && !crouched) { jumpVel = 2.4; jumpY = 0.001; }
+  prevStickTurn = stNow;
+  // Y on the move hand: the wrist pack menu
+  const yNow = !!(gM && gM.buttons && gM.buttons[5] && gM.buttons[5].pressed);
+  if (yNow && !prevYBtn && state === 'PLAY') toggleWristMenu();
+  prevYBtn = yNow;
 }
 function keysSprint() { return false; } // VR: no sprint stick button by default
 
@@ -2873,6 +2932,8 @@ function bindDesktopInput() {
     if (k === 'c' && state === 'PLAY') Survival.drink();
     if (k === 'v' && state === 'PLAY') Survival.useMedkit();
     if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
+    if (k === ' ' && state === 'PLAY' && jumpY <= 0 && !crouched) { jumpVel = 2.7; jumpY = 0.001; }
+    if (k === 'z' && state === 'PLAY') crouched = !crouched;
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
     if ((k === 'enter' || k === ' ' || k === 'e') && state === 'CINE') skipCine();
   });
@@ -2915,7 +2976,7 @@ function desktopUpdate(dt) {
   if (keys['d'] || keys['arrowright']) str += 1;
   const sprint = keys['shift'] && player.stamina > 1;
   if (fwd || str) {
-    const speed = sprint ? 6 : 3.4;
+    const speed = crouched ? 1.8 : (sprint ? 6 : 3.4);
     const yaw = desk.yaw;
     const dx = -Math.sin(yaw) * fwd + Math.cos(yaw) * str;
     const dz = -Math.cos(yaw) * fwd - Math.sin(yaw) * str;
@@ -3414,8 +3475,9 @@ function updateSceneAnims(dt) {
   for (let i = sceneAnims.length - 1; i >= 0; i--) if (!sceneAnims[i](dt)) sceneAnims.splice(i, 1);
 }
 
-function haptic(intensity, ms) {   // rumble both hands (VR only, fail-soft)
-  [sources.left, sources.right].forEach((c) => {
+function haptic(intensity, ms, hand) {   // rumble hands (VR only, fail-soft); hand: 'left'|'right'|both
+  const set = hand === 'left' ? [sources.left] : hand === 'right' ? [sources.right] : [sources.left, sources.right];
+  set.forEach((c) => {
     try {
       const g = c && c.userData.inputSource && c.userData.inputSource.gamepad;
       if (g && g.hapticActuators && g.hapticActuators[0]) g.hapticActuators[0].pulse(intensity, ms);
@@ -3499,6 +3561,10 @@ function update(dt) {
 
   if (isVR) vrLocomotion(dt);
   else desktopUpdate(dt);
+  // jump arc + crouch height, applied to the rig as one vertical offset
+  if (jumpY > 0) { jumpY += jumpVel * dt; jumpVel -= 9.6 * dt; if (jumpY <= 0) { jumpY = 0; jumpVel = 0; Audio2.thud(0.12); } }
+  crouchLerp += ((crouched ? -0.72 : 0) - crouchLerp) * Math.min(1, dt * 8);
+  dolly.position.y = jumpY + crouchLerp;
   playerTileFromCamera();
 
   // flashlight battery + aim
@@ -3521,6 +3587,8 @@ function update(dt) {
   if (player.moving) noise = player.sprinting ? 0.55 : 0.12;
   if (isVR && (readAxes(sources.left)[0] || readAxes(sources.left)[1])) noise = Math.max(noise, 0.14);
   if (spiritActive) noise = Math.max(noise, 0.85);
+  if (crouched) noise *= 0.45;   // low and slow — the dead hear less of you
+  if (jumpY > 0.05) noise = Math.max(noise, 0.4);   // jumping is NOT quiet
   if (player.hidden) noise = 0;
 
   const grace = elapsed < graceUntil;
@@ -3635,7 +3703,15 @@ function update(dt) {
 
   interactTarget = findInteract();
 
-  Audio2.setFear(player.fear);
+  // the heart knows before you do: proximity to anything awake drives the pulse
+  // even when fear is low — closer = faster, a hunter close = hammering
+  let dangerPulse = 0;
+  ents.forEach((e) => {
+    if (e.floor !== player.floor || e.state === Entities.S.DORMANT) return;
+    const d = Math.hypot(e.x - player.x, e.y - player.y);
+    if (d < 12) dangerPulse = Math.max(dangerPulse, (1 - d / 12) * (e.state === Entities.S.HUNT ? 100 : 62));
+  });
+  Audio2.setFear(Math.max(player.fear, dangerPulse));
   Audio2.tickHeart(dt);
 
   // fog + fear visuals
@@ -3876,6 +3952,65 @@ function updateHUD() {
   // in-VR wrist panel
   drawWrist(done);
 }
+// ---- the wrist PACK: press Y (move hand) and your whole kit is on your arm ----
+function toggleWristMenu() {
+  wristMenu = !wristMenu;
+  if (!wristMenuPanel) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 560;
+    wristMenuCtx = c.getContext('2d');
+    wristMenuTex = new THREE.CanvasTexture(c);
+    if ('colorSpace' in wristMenuTex) wristMenuTex.colorSpace = THREE.SRGBColorSpace;
+    wristMenuPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.26),
+      new THREE.MeshBasicMaterial({ map: wristMenuTex, transparent: true, opacity: 0.96, fog: false, side: THREE.DoubleSide }));
+    wristMenuPanel.position.set(0, 0.20, -0.04);
+    wristMenuPanel.rotation.x = -Math.PI / 3.2;
+  }
+  const host = wristPanel && wristPanel.parent;   // ride the same wrist as the HUD
+  if (wristMenu && host) { host.add(wristMenuPanel); drawWristMenu(); Audio2.pickup(); }
+  else if (wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
+}
+function drawWristMenu() {
+  if (!wristMenuCtx) return;
+  const c = wristMenuCtx; c.clearRect(0, 0, 512, 560);
+  c.fillStyle = 'rgba(8,9,14,0.93)'; c.fillRect(0, 0, 512, 560);
+  c.strokeStyle = 'rgba(201,162,74,0.5)'; c.strokeRect(3, 3, 506, 554);
+  c.fillStyle = '#e7edf2'; c.font = "30px 'Special Elite', monospace"; c.textAlign = 'left';
+  c.fillText('YOUR PACK', 20, 40);
+  c.font = "22px 'Special Elite', monospace";
+  const sv = Survival.state();
+  const lines = [];
+  lines.push(['🔦', 'Flashlight ' + (player.lightOn ? 'ON' : 'off') + ' — ' + Math.round(player.battery) + '%', '#8aff9e']);
+  lines.push(['🔋', 'Spare batteries: ' + sv.batteries + '/' + sv.maxBatteries, '#9aa7b0']);
+  if (player.inv.cross) lines.push(['✝', 'Warding Cross — faith ' + Math.round(player.faith) + '%', '#e8cf7a']);
+  if (player.inv.weapon) lines.push(['⚒', 'Crowbar — ' + (swingCd > 0 ? 'recovering…' : 'ready'), '#b8c2cc']);
+  if (player.inv.emf) lines.push(['📶', 'EMF reader', '#7ad0ff']);
+  if (player.inv.spiritbox) lines.push(['📻', 'Spirit box (hold left grip)', '#c99cff']);
+  lines.push(['🍶', 'Quiet Draughts: ' + sv.draughts + '/' + sv.maxDraughts, '#9ae0c8']);
+  lines.push(['⚕', 'Medkits: ' + sv.medkits, '#ff8a8a']);
+  if (sv.lantern) lines.push(['🏮', 'Storm lantern', '#ffc04a']);
+  lines.push(['🎒', sv.backpack ? 'Backpack (bigger pockets)' : 'No backpack yet — basement storage', '#b08a5a']);
+  lines.push(['🧸', 'Teddies: ' + sv.teddies.length + '/7', '#d8a06a']);
+  const heldKeys = Object.keys(player.keys);
+  lines.push(['🗝', heldKeys.length ? heldKeys.map((id) => KEY_SHORT[id] || '?').join(' · ') : 'No keys yet', '#ffd24a']);
+  if (data.rite && player.rite) {
+    const carried = data.rite.anchors.filter((a) => player.rite[a.key]).length;
+    const seated = (ritual && ritual.nodes) ? ritual.nodes.filter((n) => n.filled).length : 0;
+    lines.push(['⚱', 'Rite: ' + seated + '/4 seated' + (carried ? ' · ' + carried + ' carried' : '') + (player.rite.censer ? ' · censer ✓' : ''), '#d8b24a']);
+  }
+  let y = 84;
+  for (const [ic, txt, col] of lines) {
+    c.fillStyle = '#8a95a0'; c.fillText(ic, 20, y);
+    c.fillStyle = col; c.fillText(txt.slice(0, 34), 62, y);
+    y += 36;
+  }
+  c.fillStyle = '#c9a24a'; c.font = "20px 'Special Elite', monospace";
+  const next = data.objectives.find((o) => !o.done);
+  c.fillText('▶ ' + (next ? next.title.slice(0, 36) : 'Reach the front doors'), 20, 530);
+  c.fillStyle = '#6a7580'; c.font = "17px 'Special Elite', monospace";
+  c.fillText('Y closes · options on the start screen', 20, 552);
+  wristMenuTex.needsUpdate = true;
+}
+
 function drawWrist(done) {
   if (!wristCtx) return;
   const c = wristCtx; c.clearRect(0, 0, 320, 200);
@@ -3895,6 +4030,7 @@ function drawWrist(done) {
   const next = data.objectives.find((o) => !o.done);
   c.fillText(next ? next.title.slice(0, 30) : 'Reach the front doors', 14, hasFaith ? 192 : 184);
   wristTex.needsUpdate = true;
+  if (wristMenu && (wristMenuT = (wristMenuT + 1) % 24) === 0) drawWristMenu();   // keep the pack fresh while open
 }
 function bar(c, x, y, label, v, col) {
   c.fillStyle = '#8a95a0'; c.font = "16px 'Special Elite', monospace"; c.textAlign = 'left';
