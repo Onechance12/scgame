@@ -53,6 +53,8 @@ let docPanelTimer = 0;
 let ritual = null;             // ritual room state
 let ritMats = null;
 let childrenFreed = false;     // ritual outcome
+let spiritsFreed = false;      // the Unbinding Rite completed (true ending)
+let riteClimax = false;        // during the unbind sequence — the house can't take you now
 let xrSupported = false;
 let autosaveT = 8;
 let wakeLock = null;
@@ -187,13 +189,13 @@ function saveState() {
       v: 2, realMode, startEpoch,
       floor: player.floor, x: player.x, y: player.y,
       fear: player.fear, battery: player.battery, hasLight: player.hasLight,
-      inv: player.inv, keys: player.keys,
+      inv: player.inv, keys: player.keys, rite: player.rite,
       itemsTaken: data.items.filter((i) => i.taken).map((i) => i.id),
       objectives: data.objectives.map((o) => o.done),
       docs: documents.filter((d) => d.found).map((d) => d.id),
-      ritualLit: ritual ? ritual.nodes.filter((n) => n.lit).length : 0,
+      ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
       ritualDone: !!(ritual && ritual.done),
-      childrenFreed,
+      childrenFreed, spiritsFreed,
       survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
       finished: state === 'WIN' || state === 'DEAD',
     }));
@@ -444,8 +446,8 @@ function newGame(saved) {
   ents = Entities.spawnAll(data, { extra: (HAUNT[OPTS.haunt] || HAUNT.restless).extra });
   documents = data.documents || [];
   ritual = data.ritual ? { floor: data.ritual.floor, cx: data.ritual.cx, cy: data.ritual.cy, done: false,
-    nodes: data.ritual.nodes.map((n) => ({ dx: n.dx, dy: n.dy, lit: false })) } : null;
-  childrenFreed = false;
+    nodes: data.ritual.nodes.map((n) => ({ dx: n.dx, dy: n.dy, anchor: n.anchor, name: n.name, filled: false })) } : null;
+  childrenFreed = false; spiritsFreed = false;
   Survival.init({
     player: () => player, ents: () => ents, data: () => data, docs: () => documents,
     subtitle: showSubtitle, audio: Audio2, powerSurge: () => powerSurge(), save: () => saveState(),
@@ -455,7 +457,7 @@ function newGame(saved) {
   player = {
     floor: sp.floor, x: sp.x + 0.5, y: sp.y + 0.5,
     aim: 0, fear: 12, stamina: 100, battery: 100,
-    hasLight: false, lightOn: false, hidden: false, inv: {}, keys: {},
+    hasLight: false, lightOn: false, hidden: false, inv: {}, keys: {}, rite: {},
   };
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false;
   deathBy = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
@@ -482,15 +484,16 @@ function restoreFrom(s) {
   player.floor = s.floor; player.x = s.x; player.y = s.y;
   player.fear = s.fear || 12; player.battery = s.battery == null ? 100 : s.battery;
   player.hasLight = !!s.hasLight; player.lightOn = false;
-  player.inv = s.inv || {}; player.keys = s.keys || {};
+  player.inv = s.inv || {}; player.keys = s.keys || {}; player.rite = s.rite || {};
   (s.itemsTaken || []).forEach((id) => { const it = data.items.find((i) => i.id === id); if (it) it.taken = true; });
   (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
-  childrenFreed = !!s.childrenFreed;
+  childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
   if (s.survival) Survival.restore(s.survival);
   if (ritual) {
     ritual.done = !!s.ritualDone;
-    for (let i = 0; i < (s.ritualLit || 0) && i < ritual.nodes.length; i++) ritual.nodes[i].lit = true;
+    const filled = s.ritualFilled || [];
+    ritual.nodes.forEach((n) => { if (filled.includes(n.anchor)) n.filled = true; });
   }
 }
 
@@ -805,12 +808,27 @@ function toggleJournal() {
   html += '<li><b>The Grey Nurse</b> (Ada Coyle) — died in the ER after a crash on her way to work. Still walks her rounds.</li>';
   html += '<li><b>Mose Blackburn</b> — 1962; went out a third-floor window. Swears he did not jump.</li>';
   html += '<li><b>The Children</b> — the basement ward; bound here by the night staff so the beds stayed full.</li>';
-  html += '<li><b>The Ash</b> — what the incinerator kept, and what the ritual could set loose.</li>';
-  html += '</ul><h3>Side Quests</h3><ul>';
+  html += '<li><b>The Ash</b> — what the incinerator kept, and what the Rite could set loose.</li>';
+  html += '</ul><h3>The Unbinding Rite</h3>';
+  if (ritual && data.rite) {
+    const rc = player.rite || {};
+    html += '<p class="hint">Gather each soul’s anchor (each unlocked by its truth), carry them to the basement circle, seat all four, then swing the Matron’s Censer at the altar to set every spirit free.</p><ul>';
+    data.rite.anchors.forEach((a) => {
+      const node = ritual.nodes.find((n) => n.anchor === a.key);
+      const seated = node && node.filled;
+      const held = rc[a.key];
+      const cls = seated ? 'done' : '';
+      const st = seated ? '✔ seated' : held ? '▲ carried — take it to the circle' : (riteGateMet(a.gate) ? '○ ready to collect' : '🔒 ' + a.gateHint);
+      html += `<li class="${cls}"><b>${a.name}</b> — <span class="hint">${st}</span></li>`;
+    });
+    html += `<li class="${player.rite.censer ? 'done' : ''}"><b>The Matron’s Censer</b> — <span class="hint">${player.rite.censer ? '✔ in hand' : '○ the Matron’s room, 4th floor'}</span></li>`;
+    html += `<li class="${(ritual && ritual.done) ? 'done' : ''}"><b>Perform the Rite</b> — <span class="hint">${ritual.done ? '✔ the house is empty' : 'all four seated + censer, at the altar'}</span></li>`;
+    html += '</ul>';
+  }
+  html += '<h3>Side Quests</h3><ul>';
   const sv = Survival.state();
-  html += `<li class="${sv.teddies.length >= 7 ? 'done' : ''}">${sv.teddies.length >= 7 ? '✔' : '○'} <b>The Seven Teddies</b> — ${sv.teddies.length}/7 found. All seven earn the children's blessing.</li>`;
+  html += `<li class="${sv.teddies.length >= 7 ? 'done' : ''}">${sv.teddies.length >= 7 ? '✔' : '○'} <b>The Seven Teddies</b> — ${sv.teddies.length}/7 found. All seven earn the children's blessing (and their anchor).</li>`;
   html += `<li class="${sv.safeOpened ? 'done' : ''}">${sv.safeOpened ? '✔' : '○'} <b>The Matron's Safe</b> — three dates from the Case File open it (4th floor).</li>`;
-  html += `<li class="${(ritual && ritual.done) ? 'done' : ''}">${(ritual && ritual.done) ? '✔' : '○'} <b>The Binding Ritual</b> — five candles and a voice, in the basement.</li>`;
   html += `<li class="${sv.lantern ? 'done' : ''}">${sv.lantern ? '✔' : '○'} <b>The Chapel Lantern</b> — a backup light hangs in the chapel.</li>`;
   html += `<li>○ <b>Gear</b> — 🔋${sv.batteries}/${sv.maxBatteries} spares · 🍶${sv.draughts}/${sv.maxDraughts} · ⚕${sv.medkits} · ${sv.backpack ? '🎒 backpack' : 'no backpack yet'}</li>`;
   html += '</ul><h3>Documents</h3>';
@@ -1133,13 +1151,21 @@ function addLocker(wx, wz) {
   floorGroup.add(m);
 }
 
-const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a };
+const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060 };
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
-  const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0),
-    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.1, roughness: .3 }));
+  const isRite = it.type === 'anchor' || it.type === 'censer';
+  // Rite relics read as a larger, slowly-turning octahedron in a cold gold — set apart from loot.
+  const mesh = new THREE.Mesh(
+    isRite ? new THREE.OctahedronGeometry(0.2, 0) : new THREE.IcosahedronGeometry(0.16, 0),
+    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: isRite ? 0.8 : 1.1, roughness: .3 }));
   g.add(mesh);   // emissive glow only — no per-item PointLight (Quest perf)
+  if (isRite) {  // a faint halo ring so relics feel special and findable
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.015, 6, 20),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, fog: false }));
+    halo.rotation.x = Math.PI / 2; g.add(halo);
+  }
   g.position.set((it.x + 0.5) * TILE_M, 1.1, (it.y + 0.5) * TILE_M);
   g.userData.spin = mesh;
   floorGroup.add(g);
@@ -1170,6 +1196,7 @@ function ritualMats() {
   };
   return ritMats;
 }
+const ANCHOR_TINT = { ada: 0xcfe0f0, mose: 0x9a3a2a, child: 0xe0c060, ash: 0xff6a1e };
 function buildRitual() {
   const m = ritualMats();
   ritual.altarTileX = ritual.cx + 0.5; ritual.altarTileY = ritual.cy + 0.5;
@@ -1181,17 +1208,26 @@ function buildRitual() {
   const ring = new THREE.Mesh(new THREE.RingGeometry(1.4 * TILE_M / 2.7, 1.55 * TILE_M / 2.7, 24), m.sigil);
   ring.rotation.x = -Math.PI / 2; ring.position.set(ritual.altarTileX * TILE_M, 0.03, ritual.altarTileY * TILE_M);
   floorGroup.add(ring);
-  // candles
+  // four anchor pedestals — an empty stone cradle each, until its relic is seated
   ritual.nodes.forEach((n) => {
     const tx = ritual.cx + n.dx, ty = ritual.cy + n.dy;
     n.tileX = tx + 0.5; n.tileY = ty + 0.5;
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 8), m.wax));
-    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), m.flame);
-    flame.position.y = 0.3; flame.visible = n.lit; g.add(flame);
-    const light = new THREE.PointLight(0xffb060, n.lit ? 0.9 : 0, 3.2, 2); light.position.y = 0.45; g.add(light);
-    g.position.set(n.tileX * TILE_M, 0.21, n.tileY * TILE_M);
-    n.mesh = g; n.flame = flame; n.light = light;
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.62, 8), m.wax));   // the plinth
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.08, 8),
+      new THREE.MeshStandardMaterial({ color: 0x1a1418, roughness: .8 }));
+    bowl.position.y = 0.35; g.add(bowl);
+    // the seated relic token (hidden until filled) + its glow
+    const tint = ANCHOR_TINT[n.anchor] || 0xffcf7a;
+    const token = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0),
+      new THREE.MeshStandardMaterial({ color: tint, emissive: tint, emissiveIntensity: 1.0, roughness: .3 }));
+    token.position.y = 0.5; token.visible = n.filled; g.add(token);
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6),
+      new THREE.MeshBasicMaterial({ color: tint, fog: false }));
+    flame.position.y = 0.6; flame.visible = n.filled; g.add(flame);
+    const light = new THREE.PointLight(tint, n.filled ? 0.9 : 0, 3.2, 2); light.position.y = 0.6; g.add(light);
+    g.position.set(n.tileX * TILE_M, 0.31, n.tileY * TILE_M);
+    n.mesh = g; n.token = token; n.flame = flame; n.light = light;
     floorGroup.add(g);
   });
 }
@@ -1590,7 +1626,25 @@ function interact() {
   showSubtitle('Nothing here.', 1.2);
 }
 
+function riteGateMet(gate) {
+  if (!gate) return true;
+  if (gate.obj) { const o = data.objectives.find((x) => x.id === gate.obj); if (!o || !o.done) return false; }
+  if (gate.blessed && !Survival.state().blessed) return false;
+  return true;
+}
 function pickupItem(it) {
+  // --- Unbinding Rite: gated anchors + the censer ---
+  if (it.type === 'anchor' || it.type === 'censer') {
+    const anc = it.type === 'anchor' ? data.rite.anchors.find((a) => a.key === it.anchor) : null;
+    if (it.type === 'anchor' && !riteGateMet(it.gate)) { showSubtitle(anc ? anc.gateHint : 'It won’t come loose yet.', 4); return; }
+    it.taken = true; Audio2.pickup(); Audio2.whisper(0.5);
+    const mesh0 = itemMeshes.get(it.id); if (mesh0) { floorGroup.remove(mesh0); itemMeshes.delete(it.id); }
+    if (it.type === 'anchor') { player.rite[it.anchor] = true; showSubtitle((anc ? anc.took + ' ' : '') + 'A Spirit Anchor — carry it to the circle in the basement.', 5); }
+    else { player.rite.censer = true; showSubtitle('The Matron’s Censer. Swing it over the altar once the four anchors are seated.', 5); }
+    player.fear = Math.min(100, player.fear + 4);
+    saveState();
+    return;
+  }
   if (['draught', 'backpack', 'medkit', 'teddy', 'battery', 'lantern'].includes(it.type)) {
     if (Survival.onPickup(it)) {
       it.taken = true;
@@ -1666,34 +1720,46 @@ function showDocPanel(doc) {
   bigTex.needsUpdate = true;
 }
 
-// returns true if a ritual candle/altar was interacted with
+// returns true if a ritual pedestal/altar was interacted with
 function ritualInteract() {
-  const n = ritual.nodes.find((nn) => !nn.lit && Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
-  if (n) { lightRitualCandle(n); return true; }
-  if (!ritual.done && Math.hypot(ritual.altarTileX - player.x, ritual.altarTileY - player.y) < 1.5) {
-    if (!ritual.nodes.every((nn) => nn.lit)) { showSubtitle('Five candles must burn before the circle will open.', 3); return true; }
-    if (!player.inv.spiritbox) { showSubtitle('The altar wants a voice. You need the spirit box.', 3); return true; }
-    performRitual(); return true;
+  // seat a carried anchor onto its matching pedestal
+  const near = ritual.nodes.find((nn) => Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
+  if (near) {
+    if (near.filled) { showSubtitle('This anchor is already seated.', 2); return true; }
+    if (player.rite[near.anchor]) { seatAnchor(near); return true; }
+    // player is at a pedestal but doesn't hold the matching relic
+    showSubtitle('An empty pedestal — it wants ' + near.name + '.', 3); return true;
+  }
+  if (!ritual.done && Math.hypot(ritual.altarTileX - player.x, ritual.altarTileY - player.y) < 1.6) {
+    const seated = ritual.nodes.filter((nn) => nn.filled).length;
+    if (seated < ritual.nodes.length) { showSubtitle('The circle is not whole. ' + seated + ' of ' + ritual.nodes.length + ' anchors seated.', 3); return true; }
+    if (!player.rite.censer) { showSubtitle('The altar waits. You need the Matron’s Censer to let them go.', 3.5); return true; }
+    performUnbinding(); return true;
   }
   return false;
 }
-function lightRitualCandle(n) {
-  n.lit = true; if (n.flame) n.flame.visible = true; if (n.light) n.light.intensity = 0.9;
-  Audio2.pickup(); Audio2.whisper(0.5);
-  const c = ritual.nodes.filter((x) => x.lit).length;
-  showSubtitle('A candle catches. (' + c + '/5)  The air drops a degree.', 2.6);
-  player.fear = Math.min(100, player.fear + 2);
+function seatAnchor(n) {
+  n.filled = true; player.rite[n.anchor] = false;
+  if (n.token) n.token.visible = true;
+  if (n.flame) n.flame.visible = true;
+  if (n.light) n.light.intensity = 0.9;
+  Audio2.pickup(); Audio2.whisper(0.6); Audio2.stinger(false);
+  const c = ritual.nodes.filter((x) => x.filled).length;
+  showSubtitle(n.name + ' settles onto the pedestal. (' + c + '/' + ritual.nodes.length + ')  The circle warms.', 3.4);
+  player.fear = Math.min(100, player.fear + 3);
   saveState();
 }
-function performRitual() {
-  ritual.done = true; Audio2.stinger(true); player.fear = Math.min(100, player.fear + 15);
-  playLore('ritual', () => {
-    childrenFreed = true;
-    const child = ents.find((e) => e.kind === 'child');
-    if (child) { child.state = Entities.S.DORMANT; child.wakeHour = 999; }
-    const ash = ents.find((e) => e.kind === 'ash'); if (ash) ash.awake();
-    showSubtitle('The children go quiet. But the circle is open now — and it is not empty.', 4.5);
+function performUnbinding() {
+  ritual.done = true; riteClimax = true; Audio2.stinger(true);
+  player.fear = Math.min(player.fear, 25);   // the circle steadies you for the working
+  // Freeze every soul the instant the censer swings — nothing can take you now.
+  spiritsFreed = true; childrenFreed = true;
+  ents.forEach((e) => { e.state = Entities.S.DORMANT; e.wakeHour = 999; e.target = null; e.lastSeen = null; e.path = null; if (e.den) e.den = []; });
+  // the censer swings — free them one after another, then the true dawn
+  playLore('unbinding', () => {
+    showSubtitle('One by one, the circle lets them go. The building exhales. It is finally empty.', 5);
     saveState();
+    setTimeout(() => { if (state !== 'DEAD' && state !== 'WIN') trueEnding(); }, 6000);
   });
 }
 
@@ -1793,7 +1859,12 @@ function spinItems(dt) {
   candleLights.forEach((c) => { c.light.intensity = c.base * (0.75 + Math.random() * 0.35); });
   docMeshes.forEach((g) => { g.rotation.y += dt * 0.6; g.position.y = 1.0 + Math.sin(performance.now() / 500) * 0.06; });
   if (ritual && player && player.floor === ritual.floor) {
-    ritual.nodes.forEach((n) => { if (n.lit && n.light) n.light.intensity = 0.9 * (0.7 + Math.random() * 0.4); });
+    ritual.nodes.forEach((n) => {
+      if (n.filled) {
+        if (n.light) n.light.intensity = 0.9 * (0.7 + Math.random() * 0.4);
+        if (n.token) { n.token.rotation.y += dt * 1.2; n.token.position.y = 0.5 + Math.sin(performance.now() / 500) * 0.04; }
+      }
+    });
   }
 }
 
@@ -2144,7 +2215,8 @@ function update(dt) {
   nurseryUpdate(dt);
   updatePeekers(dt);
   Survival.update(dt, hour, realMode);
-  if (player.fear >= 96) Survival.useMedkit();   // last-second mercy, if you carry one
+  if (riteClimax) player.fear = Math.min(player.fear, 40);   // the Rite holds the dread at bay
+  if (player.fear >= 96 && !riteClimax) Survival.useMedkit();   // last-second mercy, if you carry one
 
   // scripted horrors
   updateCarter(dt);
@@ -2189,7 +2261,7 @@ function update(dt) {
   hudTick -= dt;
   if (hudTick <= 0) { hudTick = 0.15; updateHUD(); }
 
-  if (player.fear >= 100 && state === 'PLAY') { deathBy = deathBy || 'Your heart gave out.'; die(); }
+  if (player.fear >= 100 && state === 'PLAY' && !riteClimax) { deathBy = deathBy || 'Your heart gave out.'; die(); }
   if (realMode && hour >= 24 && state === 'PLAY') win();   // survived the full 24 hours
 }
 
@@ -2270,13 +2342,17 @@ function findInteract() {
   if (t === TILE.HIDE) return player.hidden ? 'Trigger — leave hiding' : 'Trigger — hide here';
   if (t === TILE.EXIT) return 'Trigger — the chained front doors';
   const it = data.items.find((i) => !i.taken && i.floor === player.floor && Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
-  if (it) return 'Trigger — take the ' + itemName(it.type);
+  if (it) return 'Trigger — take the ' + itemDisplay(it);
   const doc = documents.find((d) => !d.found && d.floor === player.floor && Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);
   if (doc) return 'Trigger — read the ' + doc.type + ' (' + doc.title + ')';
   if (ritual && player.floor === ritual.floor) {
-    const n = ritual.nodes.find((nn) => !nn.lit && Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
-    if (n) return 'Trigger — light the ritual candle';
-    if (!ritual.done && Math.hypot(ritual.altarTileX - player.x, ritual.altarTileY - player.y) < 1.5) return 'Trigger — the altar' + (ritual.nodes.every((nn) => nn.lit) ? ' (speak into the spirit box)' : ' (light all five candles first)');
+    const n = ritual.nodes.find((nn) => Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
+    if (n) return n.filled ? 'The ' + n.name + ' rests here' : (player.rite[n.anchor] ? 'Trigger — seat ' + n.name : 'Pedestal — needs ' + n.name);
+    if (!ritual.done && Math.hypot(ritual.altarTileX - player.x, ritual.altarTileY - player.y) < 1.6) {
+      const seated = ritual.nodes.filter((nn) => nn.filled).length;
+      if (seated < ritual.nodes.length) return 'The altar — ' + seated + '/' + ritual.nodes.length + ' anchors seated';
+      return player.rite.censer ? 'Trigger — perform the Unbinding Rite' : 'The altar — you need the Matron’s Censer';
+    }
   }
   const o = objectiveHere();
   if (o && o.type === 'document') return 'Trigger — read';
@@ -2286,7 +2362,8 @@ function findInteract() {
   if (sp) return sp;
   return null;
 }
-function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear' })[t] || t; }
+function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer' })[t] || t; }
+function itemDisplay(it) { if (it.type === 'anchor') { const a = data.rite.anchors.find((x) => x.key === it.anchor); return a ? a.name : 'Spirit Anchor'; } return itemName(it.type); }
 
 // ============================================================ HUD
 function updateHUD() {
@@ -2302,6 +2379,13 @@ function updateHUD() {
     if (player.inv.emf) bits.push('📶 EMF');
     if (player.inv.spiritbox) bits.push(spiritActive ? '📻 …' : '📻');
     Object.keys(player.keys).forEach(() => bits.push('🗝'));
+    // Unbinding Rite progress: seated/total, carried anchors, censer
+    if (ritual && data.rite) {
+      const rc = player.rite || {};
+      const carried = data.rite.anchors.filter((a) => rc[a.key]).length;
+      const seated = ritual.nodes.filter((n) => n.filled).length;
+      if (seated || carried || rc.censer) bits.push('⚱ Rite ' + seated + '/' + ritual.nodes.length + (carried ? ' (+' + carried + ' held)' : '') + (rc.censer ? ' 🕯' : ''));
+    }
     const st = Survival.hudText(); if (st) bits.push(st);
     inv.textContent = bits.join('   ');
   }
@@ -2394,6 +2478,22 @@ function win() {
     document.getElementById('winscreen').classList.add('show');
   }
   setTimeout(() => Audio2.suspend(), 6000);
+}
+// The true ending — reached by completing the Unbinding Rite (not just surviving).
+function trueEnding() {
+  if (state === 'WIN') return;
+  riteClimax = false;
+  state = 'WIN'; stopSpirit(); clearSave();
+  const title = 'THE HOUSE IS EMPTY';
+  if (isVR) showBigPanel(title, data.LORE.ending_true, '#bfeecf');
+  else {
+    const ws = document.getElementById('winscreen');
+    const h2 = ws && ws.querySelector('h2'); if (h2) h2.textContent = title;
+    const reason = ws && ws.querySelector('.reason'); if (reason) reason.textContent = 'You performed the Unbinding Rite and set every soul free.';
+    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_true.map((l) => `<p>${l}</p>`).join('');
+    ws.classList.add('show');
+  }
+  setTimeout(() => Audio2.suspend(), 8000);
 }
 function restartFromPanel() { newGame(); }
 function hideAllScreens() {

@@ -226,6 +226,23 @@ const World = (() => {
       "The children stop crying. For the first time in decades, they are free.",
       "Something older, though, was caged in here with them. It is not.",
     ],
+    unbinding: [
+      "You swing the censer. Smoke coils out into the cold circle.",
+      "ADA: … my rounds are over … oh, thank God, my rounds are over …",
+      "MOSE: … somebody finally heard me … I did not jump … I can go …",
+      "THE CHILDREN: … we can go home now? … we can really go home …",
+      "THE ASH: what the fire took, the fire returns. it lets go last.",
+      "The Binding breaks. Every soul the hospital caged comes loose at once.",
+    ],
+    ending_true: [
+      "There is no dawn to wait for. You did not just survive the night —",
+      "you emptied the Old Hospital on College Hill. Truly emptied it.",
+      "Ada finishes her round and sets down her cap. Mose opens the window",
+      "and simply steps through it into the dark, and is gone. The children",
+      "carry their music box up the stairs, laughing, and do not come back.",
+      "The chain on the front doors falls on its own. The building lets you",
+      "leave — lighter than it has been in a hundred years. And so are you.",
+    ],
     ending_good: [
       "6:00 AM. Grey light in the windows. The chain on the front doors falls.",
       "The Nurse stands aside. Her rounds are done. So are yours.",
@@ -377,9 +394,12 @@ const World = (() => {
       'to BIND them here, so the beds are never truly empty and the ward survives.',
       'God forgive us. We caged them. And we caged something else with them.',
     ]);
-    addDoc(0, 'ritual', 'doc_ritual', 'diary', 'The Binding — Instructions', [
-      'Five candles at the points. Light them widdershins, then speak into the box.',
-      'To BIND: recite the litany. To UNBIND: say the last line backward and let go.',
+    addDoc(0, 'ritual', 'doc_ritual', 'diary', 'The Unbinding — Instructions', [
+      'The Binding took an anchor from each soul we caged, and sealed them here.',
+      'To UNDO it, carry each anchor back to its pedestal in the circle:',
+      '  — the Nurse’s cap, the man’s window-latch, the children’s music box,',
+      '    and the urn of the unclaimed. Four pedestals. Four anchors.',
+      'Then swing the Matron’s censer over the altar and let them all go at once.',
       'Warning: the circle holds more than the children. Something older waits under.',
     ]);
     addDoc(2, 'maternity', 'doc_crayon', 'letter', 'Crayon Drawing', [
@@ -393,14 +413,44 @@ const World = (() => {
       'Some doors are locked from the inside for a reason. — Administrator',
     ]);
 
+    // ---------- THE UNBINDING RITE (multi-step end-game build) ----------
+    // Four Spirit Anchors, each hidden with one of the dead and GATED behind that
+    // spirit's truth (so you must investigate first). Gather all four + the
+    // Matron's Censer, carry them to the basement altar, seat each anchor on its
+    // pedestal, then perform the Rite to set every spirit free — the true ending.
+    const RITE = {
+      anchors: [
+        { key: 'ada',   item: 'anchor_ada',   floor: 1, room: 'er',      name: 'Ada’s Blood-Stained Cap',
+          gate: { obj: 'nurse' },    gateHint: 'Walk the Nurse’s last round first — she won’t give it up until she’s heard.',
+          took: 'Ada’s nurse cap, stiff and brown. She stops mid-round to watch you take it.' },
+        { key: 'mose',  item: 'anchor_mose',  floor: 3, room: 'mose',    name: 'Mose’s Window Latch',
+          gate: { obj: 'mose' },     gateHint: 'Let Mose set the record straight first — the latch won’t turn until he’s believed.',
+          took: 'The latch from the window he swore he never jumped out of. It is bent from the inside.' },
+        { key: 'child', item: 'anchor_child', floor: 0, room: 'nursery', name: 'The Ward’s Music Box',
+          gate: { blessed: true },   gateHint: 'The children won’t part with it. Find all seven teddy bears — earn their blessing first.',
+          took: 'The children’s music box. Seven small voices hum along as it comes loose in your hands.' },
+        { key: 'ash',   item: 'anchor_ash',   floor: 0, room: 'boiler',  name: 'The Unclaimed Urn',
+          gate: { obj: 'basement' }, gateHint: 'Read what the basement burned first — the urn is fused to the grate until then.',
+          took: 'An urn of ash the incinerator would never finish. It is still warm.' },
+      ],
+      censer: { item: 'censer', floor: 4, room: 'matron', name: 'The Matron’s Censer' },
+    };
+    // place the anchor items + the censer in the world (gated at pickup)
+    RITE.anchors.forEach((a) => {
+      const r = findRoom(a.floor, a.room);
+      if (r) items.push({ floor: a.floor, x: r.cx, y: r.cy - 1, type: 'anchor', id: a.item, anchor: a.key, rite: true, gate: a.gate, taken: false });
+    });
+    (() => { const r = findRoom(RITE.censer.floor, RITE.censer.room);
+      if (r) items.push({ floor: RITE.censer.floor, x: r.cx + 1, y: r.cy, type: 'censer', id: RITE.censer.item, rite: true, taken: false }); })();
+
     // ---------- RITUAL config (basement Ritual Chamber) ----------
+    // Four pedestals in a ring — one per Spirit Anchor — around the central altar.
     const rr = findRoom(0, 'ritual');
     const ritual = rr ? {
-      floor: 0, cx: rr.cx, cy: rr.cy,
-      // 5 candle points on a small circle + a central altar
-      nodes: [0, 1, 2, 3, 4].map((i) => {
-        const a = -Math.PI / 2 + (i / 5) * Math.PI * 2;
-        return { dx: Math.cos(a) * 2.0, dy: Math.sin(a) * 1.6, lit: false };
+      floor: 0, cx: rr.cx, cy: rr.cy, done: false,
+      nodes: RITE.anchors.map((a, i) => {
+        const ang = -Math.PI / 2 + (i / RITE.anchors.length) * Math.PI * 2;
+        return { dx: Math.cos(ang) * 2.0, dy: Math.sin(ang) * 1.5, anchor: a.key, name: a.name, filled: false };
       }),
     } : null;
 
@@ -427,7 +477,7 @@ const World = (() => {
       if (r) floors[1].grid[r.y + 1][r.cx] = TILE.EXIT;
     })();
 
-    return { floors, items, objectives, documents, ritual, LORE, TILE, W, H, CORR_TOP, CORR_BOT };
+    return { floors, items, objectives, documents, ritual, rite: RITE, LORE, TILE, W, H, CORR_TOP, CORR_BOT };
   }
 
   // Spawn point: 1st floor lobby
