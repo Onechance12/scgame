@@ -200,7 +200,7 @@ function init() {
 
 // ---- persistence (so a 24-hour night survives the headset sleeping) ----
 function saveState() {
-  if (!data || !player || state === 'MENU') return;
+  if (!data || !player || state === 'MENU' || state === 'INTRO') return;
   const s = {
     v: 2, realMode, startEpoch,
     floor: player.floor, x: player.x, y: player.y,
@@ -494,13 +494,12 @@ function updateHands(dt) {
 }
 
 function skipCine() {
-  // don't let an accidental early trigger (finger on the button as the session
-  // starts) nuke the whole walk-up — only allow a skip after a couple of seconds
-  if (cine && cine.t < 3) { cine.skipHinted = true; return; }
+  // let returning players skip the walk-up — but never on a stray first-frame input
+  if (!cine || (cine.intro && cine.intro.t < 1.5)) return;
   endCinematic();
 }
 function onTrigger(c) {
-  if (state === 'CINE') { skipCine(); return; }   // skip the approach (after it's begun)
+  if (state === 'INTRO') { introInteract(); return; }   // pick up / read / step through the doors
   if (state === 'DEAD' || state === 'WIN' || state === 'MENU') { restartFromPanel(); return; }
   if (state !== 'PLAY') return;
   if (c === sources.left && !interactTarget) { Survival.drink(); return; }  // left trigger: drink
@@ -1091,132 +1090,392 @@ const CINE_CARDS = [
   [9, '1928 — 1988', ['Four floors. A basement below them.', 'Never emptied.']],
   [17, 'THEY KNOW YOU ARE COMING', ['The chain on the doors will hold until dawn.']],
 ];
+// ============================================================================
+// The approach is now an INTERACTIVE onboarding walk. You climb College Hill
+// yourself and, one prompt at a time, learn every control that keeps you alive:
+//   0 WATCH      raise your wrist / open the pack   (Y  · Tab)
+//   1 FLASHLIGHT thumb your light on in the dark    (B  · F)
+//   2 LANTERN    walk to the gatepost, take it      (walk + Trigger/E)
+//   3 NEWSPAPER  read the story of this place        (Trigger/E, then read)
+//   4 LOG        vault the storm-felled oak          (stick-click · Space)
+//   5 DOORS      climb the steps, go inside          (walk to the threshold)
+// The runner circles the grounds and slams the wall mid-climb; the dead inside
+// wake the instant the doors boom shut behind you.
+const INTRO_CLIPPING = {
+  title: 'THE WILLIAMSON DAILY — Oct. 1988',
+  type: 'clipping',
+  body: [
+    'COLLEGE HILL HOSPITAL TO CLOSE AFTER SIXTY YEARS',
+    'The county has ordered the doors of the Old Hospital chained by month’s end,',
+    'ending six decades on the hill above town. Built in 1928 for the miners and',
+    'their families, it saw the fever wards, the long tuberculosis winters — and,',
+    'in its final years, the children’s wing on the fourth floor that staff would',
+    'not speak of. “Some of them never went home,” a retiring nurse told this paper.',
+    '“We kept the lamps lit on four. You learned not to ask who for.” Records for',
+    'the west wing were never recovered. The building is to be sealed — not emptied.',
+    '',
+    '— and across the margin, in pencil, hard enough to tear the paper:',
+    'THEY ARE STILL ON THE FOURTH FLOOR.  DON’T LET YOUR LIGHT GO OUT.',
+  ],
+};
 function startCinematic() {
   cine = buildExterior();
-  state = 'CINE';
+  addIntroProps(cine);
+  cine.intro = {
+    step: 0, stepT: 0, t: 0, reprompt: 0, skipT: 0,
+    inst: null, action: '',
+    lanternTaken: false, noteReady: false, noteRead: false, loggedOver: false,
+    runnerCue: 'wait', heldLantern: null, banner: null, climb: 0, panelT: 0,
+  };
+  state = 'INTRO';
+  // you start with the light OFF — the very first lesson is finding its switch
+  player.hasLight = true; player.lightOn = false; flashlight.visible = false;
+  jumpY = 0; jumpVel = 0; crouched = false;
   // night air, not corridor air — outside you can see the building loom.
-  // The interior fog comes back the moment the doors take you.
   fog.density = 0.02;
   Audio2.gust(0.2);
-  dolly.rotation.set(0, 0, 0);
+  // face the hospital: it sits at +z from the foot of the hill, so orient the
+  // player toward it (VR turns the rig; desktop points the look-yaw up the path)
+  if (isVR) { dolly.rotation.set(0, Math.PI, 0); desk.yaw = 0; }
+  else { dolly.rotation.set(0, 0, 0); desk.yaw = Math.PI; }
+  desk.pitch = 0;
   dolly.position.set(cine.doorX - camera.position.x, 0, -46 - camera.position.z);
   comfortBlink(1);
 }
-function cineUpdate(dt) {
+
+// ---- the props you meet on the way up: a lantern, a newspaper, a fallen oak ----
+function buildHeldLantern() {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2a2622, metalness: 0.6, roughness: 0.6 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x1a1e16, emissive: 0x140c05, emissiveIntensity: 0.4, transparent: true, opacity: 0.55 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.062, 0.03, 10), metal);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.11, 10), glass); body.position.y = 0.07;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.045, 0.03, 10), metal); cap.position.y = 0.135;
+  const bail = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.006, 6, 12), metal); bail.position.y = 0.162; bail.rotation.x = Math.PI / 2;
+  g.add(base, body, cap, bail);
+  for (let i = 0; i < 4; i++) { const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.11, 5), metal); bar.position.set(Math.cos(i * 1.57) * 0.048, 0.07, Math.sin(i * 1.57) * 0.048); g.add(bar); }
+  return g;
+}
+function addIntroProps(c) {
+  const doorX = c.doorX, g = c.g;
+  const metal = new THREE.MeshStandardMaterial({ color: 0x24201c, metalness: 0.5, roughness: 0.7 });
+  // gatepost with a hanging storm lantern, glowing faintly to draw the eye
+  const lx = doorX - 1.85, lz = -33;
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.0, 0.18), new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.95 }));
+  post.position.set(lx, 1.0, lz); post.rotation.z = 0.05; g.add(post);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.06), metal); arm.position.set(lx + 0.29, 1.85, lz); g.add(arm);
+  const lant = buildHeldLantern(); lant.scale.setScalar(1.7); lant.position.set(lx + 0.55, 1.42, lz); g.add(lant);
+  const lg = new THREE.PointLight(0xffb85a, 0.55, 4.5, 2); lg.position.set(lx + 0.55, 1.56, lz); g.add(lg);
+  const lhalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,180,90,0.75)'), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+  lhalo.scale.set(1.5, 1.5, 1); lhalo.position.copy(lg.position); g.add(lhalo);
+  c._lantern = { wx: lx + 0.55, wz: lz, mesh: lant, light: lg, halo: lhalo };
+  // a newspaper snagged against a rock, half-buried in leaves
+  const nx = doorX + 1.1, nz = -23;
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0x3a3d3a, roughness: 1 }));
+  rock.position.set(nx + 0.32, 0.2, nz); rock.scale.y = 0.6; g.add(rock);
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.66), new THREE.MeshStandardMaterial({ color: 0xb8b09a, roughness: 1, side: THREE.DoubleSide, emissive: 0x2a2820, emissiveIntensity: 0.25 }));
+  paper.position.set(nx, 0.42, nz); paper.rotation.set(-0.7, 0.4, 0.15); g.add(paper);
+  const nhalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(205,214,230,0.55)'), transparent: true, opacity: 0.26, depthWrite: false, blending: THREE.AdditiveBlending }));
+  nhalo.scale.set(1.15, 1.15, 1); nhalo.position.set(nx, 0.5, nz); g.add(nhalo);
+  c._note = { wx: nx, wz: nz, mesh: paper, halo: nhalo };
+  // a storm-felled oak lying across the path — you jump this
+  const logZ = -14;
+  const log = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 11, 12), new THREE.MeshStandardMaterial({ map: TEX.doorD, color: 0x4a3a28, roughness: 1 }));
+  log.rotation.z = Math.PI / 2; log.rotation.y = 0.04; log.position.set(doorX, 0.42, logZ); g.add(log);
+  const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.12, 1.5, 8), new THREE.MeshStandardMaterial({ color: 0x3a2e20, roughness: 1 }));
+  branch.position.set(doorX - 2.3, 0.55, logZ + 0.5); branch.rotation.set(0.4, 0, 1.2); g.add(branch);
+  c._log = { z: logZ, mesh: log };
+}
+
+// ---- a cross-platform prompt banner floating low in front of you (VR + desktop) ----
+function introWrap(ctx, text, maxW) {
+  const words = String(text).split(' '); const lines = []; let line = '';
+  for (const w of words) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
+  if (line) lines.push(line); return lines;
+}
+function introBanner(inst, action) {
   const c = cine; if (!c) return;
-  c.t += dt;
-  // slow walk toward the doors with a breath of sway
-  const speed = 2.0;
-  dolly.position.z += speed * dt;
-  dolly.position.x = (c.doorX - camera.position.x) + Math.sin(c.t * 0.7) * 0.35;
-  vignette.material.opacity = Math.max(vignette.material.opacity, 0.35);
-  // flickering upstairs window
+  if (!c.intro.banner) {
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
+    const ctx = cv.getContext('2d'); const tex = new THREE.CanvasTexture(cv);
+    if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.23), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, opacity: 0.98 }));
+    mesh.position.set(0, -0.42, -1.15); mesh.renderOrder = 1200; camera.add(mesh);
+    c.intro.banner = { mesh, ctx, tex };
+  }
+  const b = c.intro.banner, ctx = b.ctx;
+  ctx.clearRect(0, 0, 1024, 256);
+  ctx.fillStyle = 'rgba(6,8,12,0.82)'; ctx.fillRect(0, 0, 1024, 256);
+  ctx.strokeStyle = 'rgba(201,162,74,0.5)'; ctx.lineWidth = 4; ctx.strokeRect(6, 6, 1012, 244);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = "40px 'Special Elite', monospace"; ctx.fillStyle = '#e7edf2';
+  const lines = introWrap(ctx, inst, 940).slice(0, 2);
+  const startY = action ? 66 : (lines.length > 1 ? 98 : 128);
+  lines.forEach((l, i) => ctx.fillText(l, 512, startY + i * 46));
+  if (action) { ctx.fillStyle = '#ffcf6a'; ctx.font = "44px 'Special Elite', monospace"; ctx.fillText(action, 512, 198); }
+  b.tex.needsUpdate = true; b.mesh.visible = true;
+}
+function setPrompt(inst, action) {
+  const I = cine.intro; action = action || '';
+  if (inst === I.inst && action === I.action) return;
+  I.inst = inst; I.action = action; introBanner(inst, action);
+}
+
+function introUpdate(dt) {
+  const c = cine; if (!c) return;
+  const I = c.intro; c.t += dt; I.t += dt;
+  // desktop look rides the mouse; VR look is the headset itself
+  if (!isVR) { camera.rotation.order = 'YXZ'; camera.rotation.y = desk.yaw; camera.rotation.x = desk.pitch; camera.position.set(0, EYE, 0); }
+  introLocomotion(dt);
+  // jump arc (shared with the interior)
+  if (jumpY > 0) { jumpY += jumpVel * dt; jumpVel -= 9.6 * dt; if (jumpY <= 0) { jumpY = 0; jumpVel = 0; Audio2.thud(0.12); } }
+  // climb the front steps near the doors
+  camera.getWorldPosition(tmpV);
+  I.climb = (I.step >= 5 && tmpV.z > -0.4) ? Math.min(0.55, (tmpV.z + 0.4) * 0.5) : Math.max(0, I.climb - dt);
+  dolly.position.y = jumpY + I.climb;
+  introAmbient(dt);
+  introRunner(dt);
+  introSteps(dt);
+  // story panels (opening card, the newspaper in VR) fade themselves out
+  if (I.panelT > 0) { I.panelT -= dt; if (I.panelT <= 0) hideBigPanel(); }
+  vignette.material.opacity *= 0.985;
+}
+
+function introAmbient(dt) {
+  const c = cine;
   if (c.flickWin) c.flickWin.material.emissiveIntensity = Math.random() < 0.06 ? 0.05 : 0.5 + Math.random() * 0.5;
-  // the dead playground stirs — swings sway, the carousel creeps around
   if (c.mixers) c.mixers.forEach((m) => m.update(dt));
-  // the stars breathe, barely
   if (c.stars) c.stars.material.opacity = 0.82 + Math.sin(c.t * 0.7) * 0.08 + Math.sin(c.t * 2.3) * 0.04;
-  // the last lamppost sputters on the building's dying current
   if (c.liveLamp) {
-    const on = Math.random() < 0.94;
-    const k = on ? (0.6 + Math.random() * 0.6) : 0.04;
+    const on = Math.random() < 0.94, k = on ? (0.6 + Math.random() * 0.6) : 0.04;
     c.liveLamp.light.intensity = c.liveLamp.base * k;
     c.liveLamp.mats.forEach((m2) => { m2.emissiveIntensity = on ? 0.7 + Math.random() * 0.5 : 0.03; });
   }
-  // ---- the runner on the grounds ----
-  const R = c.runner;
-  if (R) {
-    R.mixer.update(dt);
-    const moveTo = (p) => { R.obj.position.set(p[0], 0, p[1]); };
-    const startMove = (from, to, dur) => { R.from = from; R.to = to; R.dur = dur; R.pt = 0; };
-    const stepMove = () => {
+  if (c._lantern && !c.intro.lanternTaken) { c._lantern.light.intensity = 0.45 + Math.sin(c.t * 3) * 0.12; c._lantern.mesh.rotation.z = Math.sin(c.t * 0.9) * 0.05; }
+  c.mist.position.x = Math.sin(c.t * 0.15) * 2;
+  c.gustT -= dt;
+  if (c.gustT <= 0) { c.gustT = 4 + Math.random() * 4; Audio2.gust(0.1 + Math.random() * 0.12); if (Math.random() < 0.3) Audio2.creak(); }
+  if (c.shakeT > 0) { c.shakeT -= dt; const a = Math.max(0, c.shakeT / 0.55) * 0.05; dolly.position.x += (Math.random() - 0.5) * a; }
+}
+
+function introLocomotion(dt) {
+  const c = cine;
+  if (isVR) updateHands(dt);
+  camera.getWorldDirection(tmpV);
+  const yaw = Math.atan2(tmpV.x, tmpV.z);
+  let fwd = 0, str = 0;
+  if (isVR) { const [lx, ly] = readAxes(OPTS.swapHands ? sources.right : sources.left); fwd = -ly; str = lx; }
+  else { if (keys['w'] || keys['arrowup']) fwd += 1; if (keys['s'] || keys['arrowdown']) fwd -= 1; if (keys['a'] || keys['arrowleft']) str -= 1; if (keys['d'] || keys['arrowright']) str += 1; }
+  let moved = false;
+  if (fwd || str) {
+    const speed = 3.2;
+    const dz = Math.cos(yaw) * fwd + Math.cos(yaw - Math.PI / 2) * str;
+    const dx = Math.sin(yaw) * fwd + Math.sin(yaw - Math.PI / 2) * str;
+    const len = Math.hypot(dx, dz) || 1;
+    introWalk((dx / len) * speed * dt, (dz / len) * speed * dt); moved = true;
+  }
+  // VR hold-to-walk (X on the move hand)
+  if (isVR && OPTS.walkLook) {
+    const ms = OPTS.swapHands ? sources.right : sources.left;
+    const gp = ms && ms.userData.inputSource && ms.userData.inputSource.gamepad;
+    if (gp && gp.buttons && gp.buttons[4] && gp.buttons[4].pressed) {
+      camera.getWorldDirection(tmpV); const l = Math.hypot(tmpV.x, tmpV.z) || 1;
+      introWalk((tmpV.x / l) * 3.0 * dt, (tmpV.z / l) * 3.0 * dt); moved = true;
+    }
+  }
+  if (isVR) {   // snap-turn so they can orient on the hill
+    const ts = OPTS.swapHands ? sources.left : sources.right;
+    const [rx] = readAxes(ts); snapCooldown -= dt;
+    if (Math.abs(rx) > 0.7 && snapCooldown <= 0) { snapTurn(rx > 0 ? -Math.PI / 6 : Math.PI / 6); snapCooldown = 0.3; }
+    // deliberate skip: hold BOTH grips for a second (never a stray tap)
+    const lg = sources.left && sources.left.userData.inputSource && sources.left.userData.inputSource.gamepad;
+    const rg = sources.right && sources.right.userData.inputSource && sources.right.userData.inputSource.gamepad;
+    const bothSq = lg && rg && lg.buttons[1] && rg.buttons[1] && lg.buttons[1].pressed && rg.buttons[1].pressed;
+    c.intro.skipT = bothSq ? c.intro.skipT + dt : 0;
+    if (c.intro.skipT > 1.0) skipCine();
+    // the same buttons the interior uses, so the lessons transfer: Y watch, B light, stick-click jump
+    const moveHand = OPTS.swapHands ? sources.right : sources.left;
+    const gM = moveHand && moveHand.userData.inputSource && moveHand.userData.inputSource.gamepad;   // move hand
+    const gT = ts && ts.userData.inputSource && ts.userData.inputSource.gamepad;   // turn hand
+    const yNow = !!(gM && gM.buttons && gM.buttons[5] && gM.buttons[5].pressed);
+    if (yNow && !prevYBtn) toggleWristMenu();
+    prevYBtn = yNow;
+    const bNow = !!(gT && gT.buttons && gT.buttons[5] && gT.buttons[5].pressed);
+    if (bNow && !prevBBtn) toggleFlash();
+    prevBBtn = bNow;
+    const stNow = !!(gT && gT.buttons && gT.buttons[3] && gT.buttons[3].pressed);
+    if (stNow && !prevStickTurn && jumpY <= 0) { jumpVel = 2.4; jumpY = 0.001; }
+    prevStickTurn = stNow;
+  }
+  player.moving = moved;
+  if (moved) { stepT -= dt; if (stepT <= 0) { stepT = 0.5; Audio2.footstep(0.03); } } else stepT = 0.15;
+}
+function introWalk(dxW, dzW) {
+  const c = cine, doorX = c.doorX;
+  camera.getWorldPosition(tmpV);
+  const px = tmpV.x, pz = tmpV.z;
+  let nx = Math.max(doorX - 7, Math.min(doorX + 7, px + dxW));
+  let nz = Math.max(-48, Math.min(1.15, pz + dzW));
+  // the fallen oak blocks the path unless you're airborne over it
+  const L = c._log;
+  if (L && jumpY < 0.34) { const band = 0.55; if (pz <= L.z - band && nz > L.z - band) nz = L.z - band; }
+  dolly.position.x += (nx - px);
+  dolly.position.z += (nz - pz);
+}
+
+function introSteps(dt) {
+  const c = cine, I = c.intro;
+  camera.getWorldPosition(tmpV);
+  const px = tmpV.x, pz = tmpV.z, doorX = c.doorX;
+  const A_TRIG = isVR ? '▶ Trigger' : 'E';
+  switch (I.step) {
+    case 0:   // WATCH
+      if (I.stepT === 0) { I.stepT = 1; showBigPanel(CINE_CARDS[0][1], CINE_CARDS[0][2], '#cfd6de'); I.panelT = 4.5;
+        setPrompt(isVR ? 'Turn your left wrist up and check your watch' : 'Check your watch — the hour, and everything in your pack',
+          isVR ? '▶ Press Y' : 'Press TAB'); }
+      if ((isVR && wristMenu) || (!isVR && journalOpen)) { hideBigPanel(); introSetStep(1); }
+      break;
+    case 1:   // FLASHLIGHT
+      if (I.stepT === 0) { I.stepT = 1; setPrompt(isVR ? 'Pitch dark on the hill. Thumb your flashlight ON' : 'It is pitch dark. Switch your flashlight ON', isVR ? '▶ Press B' : 'Press F'); }
+      if (player.lightOn && player.battery > 0) { Audio2.buzz(0.04); introSetStep(2); }
+      break;
+    case 2:   // WALK to the lantern
+      if (I.stepT === 0) { I.stepT = 1; c.intro.runnerCue = 'distant';
+        setPrompt('A storm lantern hangs on the gatepost ahead. Walk to it', isVR ? 'Left stick to move' : 'W / arrow keys'); }
+      if (!I.lanternTaken && Math.hypot(px - c._lantern.wx, pz - c._lantern.wz) < 2.6)
+        setPrompt('A storm lantern hangs on the gatepost ahead. Walk to it', A_TRIG + ' — take the lantern');
+      if (I.lanternTaken) introSetStep(3);
+      break;
+    case 3:   // NEWSPAPER
+      if (I.stepT === 0) { I.stepT = 1; I.noteReady = true;
+        setPrompt('No matches — you’ll light it inside. Keep climbing. Something pale is snagged on the rocks', 'Keep going'); }
+      if (!I.noteRead && Math.hypot(px - c._note.wx, pz - c._note.wz) < 2.6)
+        setPrompt('A newspaper, caught against a stone', A_TRIG + ' — pick it up and read');
+      if (I.noteRead) introSetStep(4);
+      break;
+    case 4:   // JUMP the log
+      if (I.stepT === 0) { I.stepT = 1; c.intro.runnerCue = 'charge';
+        setPrompt('A storm-felled oak lies across the path. JUMP it', isVR ? 'Click the right stick' : 'Press SPACE'); }
+      if (pz > c._log.z + 0.35) { I.loggedOver = true; introSetStep(5); }
+      break;
+    case 5:   // DOORS
+      if (I.stepT === 0) { I.stepT = 1; c.intro.runnerCue = 'flee'; setPrompt('The doors wait at the top of the steps. Go inside', ''); }
+      if (pz > -1.5 && Math.abs(px - doorX) < 2.3) setPrompt('The doors wait at the top of the steps', A_TRIG + ' — push through');
+      if (pz > 0.35 && Math.abs(px - doorX) < 2.5) endCinematic();
+      break;
+  }
+}
+function introSetStep(n) { const I = cine.intro; I.step = n; I.stepT = 0; I.inst = null; I.action = ''; }
+
+function introInteract() {
+  const c = cine, I = c.intro; if (!c) return;
+  camera.getWorldPosition(tmpV); const px = tmpV.x, pz = tmpV.z;
+  if (!I.lanternTaken && c._lantern && Math.hypot(px - c._lantern.wx, pz - c._lantern.wz) < 2.8) {
+    I.lanternTaken = true; Audio2.pickup(); Audio2.whisper(0.3);
+    [c._lantern.mesh, c._lantern.light, c._lantern.halo].forEach((o) => { if (o && o.parent) o.parent.remove(o); });
+    mountHeldLantern();
+    setPrompt('A dented storm lantern — bone dry, no matches. Find some inside', '');
+    return;
+  }
+  if (I.noteReady && !I.noteRead && c._note && Math.hypot(px - c._note.wx, pz - c._note.wz) < 2.8) {
+    I.noteRead = true; Audio2.pickup();
+    [c._note.mesh, c._note.halo].forEach((o) => { if (o && o.parent) o.parent.remove(o); });
+    if (isVR) { showDocPanel(INTRO_CLIPPING); I.panelT = 12; } else showDocDom(INTRO_CLIPPING);
+    return;
+  }
+  if (I.step >= 5 && pz > -1.6 && Math.abs(px - c.doorX) < 2.5) endCinematic();
+}
+function mountHeldLantern() {
+  const c = cine; if (c.intro.heldLantern) return;
+  const g = buildHeldLantern();
+  const off = isVR ? (OPTS.swapHands ? sources.rightGrip : sources.leftGrip) : camera;
+  if (off) { off.add(g); if (isVR) { g.position.set(0, -0.02, -0.04); g.rotation.set(0, 0, 0); } else { g.position.set(0.28, -0.28, -0.5); g.scale.setScalar(0.9); } }
+  c.intro.heldLantern = g;
+}
+
+function introRunner(dt) {
+  const c = cine, R = c.runner; if (!R) return;
+  R.mixer.update(dt);
+  const doorX = c.doorX, cue = c.intro.runnerCue;
+  const moveLerp = () => {
+    R.pt += dt; const k = Math.min(1, R.pt / R.dur);
+    const x = R.from[0] + (R.to[0] - R.from[0]) * k, z = R.from[1] + (R.to[1] - R.from[1]) * k;
+    R.obj.position.set(x, 0, z);
+    R.obj.rotation.y = Math.atan2(R.to[0] - R.from[0], R.to[1] - R.from[1]);
+    R.stepT -= dt; if (R.stepT <= 0) { R.stepT = 0.16; Audio2.footstepPan(Math.max(-1, Math.min(1, (x - doorX) / 24)), 0.16); }
+    return k >= 1;
+  };
+  switch (R.phase) {
+    case 'wait':
+      if (cue === 'distant') { R.phase = 'distant'; R.pt = 0; Audio2.growlPan(0.8, 0.14); }
+      break;
+    case 'distant':
       R.pt += dt;
-      const k = Math.min(1, R.pt / R.dur);
-      const x = R.from[0] + (R.to[0] - R.from[0]) * k, z = R.from[1] + (R.to[1] - R.from[1]) * k;
-      moveTo([x, z]);
-      R.obj.rotation.y = Math.atan2(R.to[0] - R.from[0], R.to[1] - R.from[1]);
-      // frantic footfalls, panned to where it is
-      R.stepT -= dt;
-      if (R.stepT <= 0) { R.stepT = 0.16; const pan = Math.max(-1, Math.min(1, (x - c.doorX) / 24)); Audio2.footstepPan(pan, 0.16); }
-      return k >= 1;
-    };
-    if (R.phase === 'wait' && c.t >= 4.3) {
-      R.phase = 'distant';
-      Audio2.growlPan(0.8, 0.14);   // something big, off in the dark to your right
-      showSubtitle('Something is moving out there. Fast.', 3);
-    } else if (R.phase === 'distant' && c.t >= 6.1) {
-      R.phase = 'approach';
-      R.obj.visible = true;
-      if (R.acts.run) { R.acts.run.reset().setLoop(THREE.LoopRepeat, Infinity).play(); R.acts.run.timeScale = 1.6; }
-      startMove([c.doorX + 36, -30], [c.doorX + 8.5, -2.4], 1.9);
-    } else if (R.phase === 'approach') {
-      if (stepMove()) {
+      if (cue === 'charge' && R.pt > 0.3) {
+        R.phase = 'charge'; R.obj.visible = true;
+        if (R.acts.run) { R.acts.run.reset().setLoop(THREE.LoopRepeat, Infinity).play(); R.acts.run.timeScale = 1.6; }
+        R.from = [doorX + 38, -30]; R.to = [doorX + 8.5, -2.4]; R.dur = 1.9; R.pt = 0;
+      }
+      break;
+    case 'charge':
+      if (moveLerp()) {
         R.phase = 'slam';
         if (R.acts.run) R.acts.run.fadeOut(0.08);
         if (R.acts.slam) { R.acts.slam.reset().setLoop(THREE.LoopOnce, 1).fadeIn(0.05).play(); R.acts.slam.clampWhenFinished = true; }
-        R.obj.rotation.y = Math.PI;   // face the wall it just hit
+        R.obj.rotation.y = Math.PI;
         Audio2.crash(0.7); Audio2.thud(0.9); Audio2.screechPan(0.5, 0.16);
-        comfortBlink(0.9); haptic(0.9, 140);
-        c.shakeT = 0.55;
+        comfortBlink(0.9); haptic(0.9, 140); c.shakeT = 0.55; R.pt = 0;
         showSubtitle('IT HIT THE BUILDING.', 2.5);
-        R.pt = 0;
       }
-    } else if (R.phase === 'slam') {
+      break;
+    case 'slam':
       R.pt += dt;
-      if (R.pt > 1.15) {
-        R.phase = 'rage';
-        if (R.acts.rage) { R.acts.rage.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play(); }
-        if (R.acts.slam) R.acts.slam.fadeOut(0.3);
-      }
-    } else if (R.phase === 'rage') {
-      // it heaves against the wall, facing nothing — until you get near the doors
+      if (R.pt > 1.1) { R.phase = 'rage'; if (R.acts.rage) R.acts.rage.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play(); if (R.acts.slam) R.acts.slam.fadeOut(0.3); }
+      break;
+    case 'rage':
       if (Math.random() < dt * 0.7) Audio2.breathPan(0.35, 0.12);
-      if (dolly.position.z > -9.5) {
+      if (cue === 'flee') {
         R.phase = 'flee';
         if (R.acts.rage) R.acts.rage.fadeOut(0.1);
         if (R.acts.run) { R.acts.run.reset().fadeIn(0.05).play(); R.acts.run.timeScale = 1.9; }
         Audio2.screechPan(0.6, 0.22);
-        startMove([c.doorX + 8.5, -2.4], [c.doorX + 52, -24], 1.7);
+        R.from = [doorX + 8.5, -2.4]; R.to = [doorX + 52, -24]; R.dur = 1.7; R.pt = 0;
         showSubtitle('It looked at you. And it RAN.', 3);
       }
-    } else if (R.phase === 'flee') {
-      if (stepMove()) { R.obj.visible = false; R.phase = 'gone'; }
-    }
+      break;
+    case 'flee':
+      if (moveLerp()) { R.obj.visible = false; R.phase = 'gone'; }
+      break;
   }
-  // wall-slam shake — a hard jolt that dies fast (kept small for VR comfort)
-  if (c.shakeT > 0) {
-    c.shakeT -= dt;
-    const a = Math.max(0, c.shakeT / 0.55) * 0.05;
-    dolly.position.x += (Math.random() - 0.5) * a;
-  }
-  // mist drift + wind
-  c.mist.position.x = Math.sin(c.t * 0.15) * 2;
-  c.gustT -= dt;
-  if (c.gustT <= 0) { c.gustT = 4 + Math.random() * 4; Audio2.gust(0.1 + Math.random() * 0.12); if (Math.random() < 0.35) Audio2.creak(); }
-  // title cards
-  const card = CINE_CARDS[c.cardI];
-  if (card && c.t >= card[0]) { showBigPanel(card[1], card[2], '#cfd6de'); c.cardI++; }
-  if (c.t > 6 && c.cardI === 1 && Math.random() < dt * 0.2) Audio2.whisper(0.4);
-  // let the player know this is the approach, and that it can be skipped
-  if (!c.skipShown && (c.t > 3 || c.skipHinted)) { c.skipShown = true; showSubtitle(isVR ? 'Walking up College Hill…  (trigger to skip)' : 'Walking up College Hill…  (Enter to skip)', 4); }
-  // arrive at the steps
-  const camZ = dolly.position.z + camera.position.z;
-  if (camZ >= -3.2) endCinematic();
 }
+// You cross the threshold — the doors boom shut, and the dead wake to the sound.
 function endCinematic() {
   if (!cine) return;
+  const c = cine;
+  // strip the tutorial rig off the hand/camera before we tear the scene down
+  if (c.intro) {
+    if (c.intro.heldLantern && c.intro.heldLantern.parent) c.intro.heldLantern.parent.remove(c.intro.heldLantern);
+    if (c.intro.banner && c.intro.banner.mesh.parent) c.intro.banner.mesh.parent.remove(c.intro.banner.mesh);
+  }
   hideBigPanel();
   fog.density = 0.055;   // the building's air closes back in
   Audio2.creak(); Audio2.slam();
   comfortBlink(1);
-  disposeGroup(cine.g); cine = null;
+  disposeGroup(c.g); cine = null;
   const sp = World.spawn(data);
   placeDollyAtTile(sp.x + 0.5, sp.y + 0.5);
-  dolly.rotation.set(0, 0, 0);
+  dolly.position.y = 0; dolly.rotation.set(0, 0, 0);
+  jumpY = 0; jumpVel = 0; crouched = false;
+  // the clock — and the 24-hour night — begins the instant you're inside
+  startEpoch = Date.now(); elapsed = 0; hour = 0;
+  graceUntil = 14;   // a breath to find your feet, then the house comes alive
+  onboardStep = 0; onboardT = 4.5;
   state = 'PLAY';
   clock.getDelta();
-  showSubtitle('The doors close behind you. The chain rattles down outside.', 4);
-  // the opening tutorial (updateOnboarding) takes it from here
+  Audio2.stinger(false);
+  showSubtitle('The doors boom shut behind you. The chain rattles down the outside. You’re inside now.', 5);
+  // and the house answers, from the floor above
+  setTimeout(() => { if (state === 'PLAY') { Audio2.whisper(0.6); Audio2.creak(); showSubtitle('Something on the floor above shifts its weight. It heard the door open.', 4.5); } }, 3400);
   saveState();
 }
 
@@ -3287,17 +3546,17 @@ function bindDesktopInput() {
     const k = e.key.toLowerCase(); keys[k] = true;
     if (state === 'MENU') return;
     if (k === 'f') toggleFlash();
-    if (k === 'e' && state === 'PLAY') interact();
+    if (k === 'e') { if (state === 'PLAY') interact(); else if (state === 'INTRO') introInteract(); }
     if (k === 'q' && state === 'PLAY') startSpirit();
     if (k === 'p' || k === 'escape') { if (state === 'PLAY') pause(); else if (state === 'PAUSE') resumeGame(); }
     if (k === 'tab') { e.preventDefault(); toggleJournal(); }
     if (k === 'c' && state === 'PLAY') Survival.drink();
     if (k === 'v' && state === 'PLAY') Survival.useMedkit();
     if (k === 'l' && state === 'PLAY') Survival.toggleLantern();
-    if (k === ' ' && state === 'PLAY' && jumpY <= 0 && !crouched) { jumpVel = 2.7; jumpY = 0.001; }
+    if (k === ' ' && (state === 'PLAY' || state === 'INTRO') && jumpY <= 0 && !crouched) { jumpVel = 2.7; jumpY = 0.001; }
     if (k === 'z' && state === 'PLAY') crouched = !crouched;
     if ((k === 'enter' || k === ' ') && (state === 'DEAD' || state === 'WIN')) newGame();
-    if ((k === 'enter' || k === ' ' || k === 'e') && state === 'CINE') skipCine();
+    if ((k === 'enter' || k === 'escape') && state === 'INTRO') skipCine();
   });
   window.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase(); keys[k] = false;
@@ -3312,7 +3571,7 @@ function bindDesktopInput() {
   });
   window.addEventListener('mouseup', () => desk.dragging = false);
   window.addEventListener('mousemove', (e) => {
-    if (isVR || state !== 'PLAY') return;
+    if (isVR || (state !== 'PLAY' && state !== 'INTRO')) return;
     if (document.pointerLockElement === cv) {
       desk.yaw -= e.movementX * 0.0025;
       desk.pitch -= e.movementY * 0.0025;
@@ -3640,7 +3899,7 @@ function tryUnlockAhead() {
 function render() {
   const dt = Math.min(clock.getDelta(), 0.1);   // tolerate frame dips without eating movement
   if (state === 'PLAY') update(dt);
-  else if (state === 'CINE') { cineUpdate(dt); tickSubtitle(dt); vignette.material.opacity *= 0.995; }
+  else if (state === 'INTRO') { introUpdate(dt); tickSubtitle(dt); }
   else if (state === 'MENU') { camera.position.set(0, EYE, 0); }
   netTick(dt);
   spinItems(dt);
@@ -4140,12 +4399,9 @@ function updateFear(dt, grace) {
 }
 // ---- the opening tutorial: a few clear lines while the night holds its breath ----
 const ONBOARD = [
-  'You’re inside. The flashlight is already in your hand — its beam is lit.',
-  'Move with the left stick (WASD on desktop). Look with your head (mouse).',
-  'Trigger / E picks things up and reads documents. Tab opens your Case File.',
-  'Follow the pale wisp — it drifts toward whatever you must do next.',
-  'Keep your light on — but know the dead can see its beam. Dark hides you; it also feeds fear.',
-  'The dead still keep to their dens. In a minute the night turns. Follow the wisp. Survive till dawn.',
+  'Follow the pale wisp — it drifts toward whatever the house wants you to find next.',
+  'Keep your light on. The dead can see its beam — but the dark feeds fear and hides what’s coming.',
+  'Four truths are buried in these walls. Uncover them and survive till dawn, and the doors open. Fail, and you stay.',
 ];
 function updateOnboarding(dt) {
   if (onboardStep < 0 || onboardStep >= ONBOARD.length) return;
