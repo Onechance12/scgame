@@ -754,6 +754,12 @@ function loadTextures() {
     new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x847b76, roughness: .96 }), // 4 dim, dust-warm
   ];
   TEX.wallMatBase = new THREE.MeshStandardMaterial({ map: wGrey, color: 0x64696a, roughness: .97 });    // 0 cold damp concrete-grey
+  // retexture maps for prop models that shipped a flat/plain baseColor (own instances)
+  TEX.propTex = {
+    wood: load('wood_floor_worn_diff.jpg', 1.6, 1.1),
+    metal: load('rusty_metal_04_diff.jpg', 1.5, 1.5),
+    conc: load('worn_concrete_floor_diff.jpg', 1.4, 1.4),
+  };
   // blood / drip / grime decals (RGBA, alpha baked from luminance) — no tiling
   const loadDecal = (file) => { const t = L.load('assets/textures/' + file, undefined, undefined, () => {}); if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
   TEX.blood = ['blood1', 'blood2', 'blood3'].map((n) => loadDecal('horror/decals/' + n + '.png'));
@@ -1517,7 +1523,7 @@ const HPROP_CFG = {
   wheelchair:  { by: 'h',    size: 1.10, tint: 0x60666e, tintAmt: 0.30 },
   rewheelchair:{ by: 'h',    size: 1.10, tint: 0x60666e, tintAmt: 0.30 },
   clock:       { by: 'h',    size: 2.10, tint: 0x3a2a1a, tintAmt: 0.35 },
-  caftable:    { by: 'long', size: 1.70, tint: 0x556070, tintAmt: 0.25 },
+  caftable:    { by: 'long', size: 1.70, tint: 0x6a5238, tintAmt: 0.30, retex: 'wood' },   // model ships a flat-grey map — give it real worn wood
   bin:         { by: 'h',    size: 1.00, tint: 0x2c3a2c, tintAmt: 0.30 },
   // batch 2 — hospital dressing. mount: floor (default, collides) / flat / ceiling / wall (no collision)
   examtable:   { by: 'long', size: 2.00, tint: 0x9098a0, tintAmt: 0.20 },
@@ -1557,7 +1563,8 @@ function makeHProp(key, wx, wz, yaw) {
   if (mount === 'ceiling') obj.position.y -= box.max.y;        // top flush with the ceiling, hangs down
   else if (mount === 'wall') obj.position.y -= ctr.y;          // centred on the wall
   else obj.position.y -= box.min.y;                            // floor / flat: sit on the ground
-  obj.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.2); o.frustumCulled = true; } });
+  const retexMap = (cfg.retex && TEX.propTex) ? TEX.propTex[cfg.retex] : null;
+  obj.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (retexMap) { o.material.map = retexMap; if (o.material.metalness != null) o.material.metalness = 0.1; o.material.needsUpdate = true; } if (o.material.color) o.material.color.lerp(new THREE.Color(cfg.tint), cfg.tintAmt); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.2); o.frustumCulled = true; } });
   const grp = new THREE.Group();
   grp.add(obj); grp.rotation.y = yaw;
   const gy = mount === 'ceiling' ? WALL_H - 0.04 : mount === 'wall' ? 1.45 : 0;
