@@ -180,7 +180,7 @@ h2.win{color:#b9d8b0;text-shadow:0 0 34px rgba(140,220,160,.45)}
 .lore p{margin:7px 0}
 
 /* mode select */
-#mode-select{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:4px 0 18px}
+.mode-select{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:4px 0 18px}
 .mode{pointer-events:auto;cursor:pointer;font-family:var(--type);color:var(--ash);
   background:linear-gradient(170deg,rgba(30,26,20,.6),rgba(14,12,10,.6));
   border:1px solid rgba(216,211,196,.16);border-radius:3px;padding:13px 20px;font-size:14px;

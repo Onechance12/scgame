@@ -17,7 +17,13 @@
     #xr-note{margin-top:16px;font-size:12px;color:#8a95a0;line-height:1.6;max-width:520px}
     .badge{display:inline-block;padding:3px 9px;border:1px solid var(--blood);border-radius:20px;
       font-size:11px;letter-spacing:2px;color:#e7a0a0;margin-bottom:14px}
-    #mode-select{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px}
+    .mode-select{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px}
+    /* staged-loading screen */
+    #loadscreen{z-index:30}
+    .loading-inner{max-width:420px}
+    .load-track{width:100%;height:10px;border:1px solid rgba(255,255,255,.25);border-radius:6px;margin:14px 0 8px;overflow:hidden}
+    #load-fill{height:100%;width:0%;background:linear-gradient(90deg,#5a0000,#c41f1f);transition:width .3s}
+    #load-count{color:#9aa7b0;font-size:13px}
     .mode{pointer-events:auto;cursor:pointer;font-family:inherit;color:#9aa7b0;background:rgba(255,255,255,.04);
       border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:10px 16px;font-size:14px;letter-spacing:1px;
       display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .15s;min-width:150px}
@@ -141,11 +147,11 @@
         <table id="pf-table"><tbody></tbody></table>
         <button id="pf-close" class="btn ghost" style="margin-top:10px">CLOSE</button>
       </div>
-      <div id="mode-select">
+      <div class="mode-select">
         <button id="mode-night" class="mode selected">🌙 ONE NIGHT<span>~20 min</span></button>
         <button id="mode-24" class="mode">⏳ 24-HOUR REAL SURVIVAL<span>the clock is real — last until 6 PM tomorrow</span></button>
       </div>
-      <div id="mode-select" style="margin-top:0">
+      <div class="mode-select" style="margin-top:0">
         <button id="opt-haunt" class="mode small">💀 Haunt: RESTLESS</button>
         <button id="opt-bright" class="mode small">💡 Lights: DIM</button>
         <button id="opt-swap" class="mode small">🕹 Move stick: LEFT</button>
@@ -154,7 +160,7 @@
         <button id="opt-skip" class="mode small">🚶 Walk-up: FULL</button>
       </div>
       <!-- multiplayer: solo, or share the night with up to 3 friends (peer-to-peer) -->
-      <div id="mode-select" style="margin-top:0">
+      <div class="mode-select" style="margin-top:0">
         <button id="mp-solo" class="mode small selected">🕯 SOLO</button>
         <button id="mp-host" class="mode small">🌐 HOST A NIGHT</button>
         <button id="mp-join" class="mode small">🔑 JOIN A NIGHT</button>
@@ -176,6 +182,16 @@
       <p id="xr-note"></p>
       <p class="warn">🎧 Headphones. Room-scale, standing, cleared play space. All sound is live.</p>
       <p class="disclaimer">Fan tribute to Sam &amp; Colby's <i>“Our Unexplainable Night at Haunted Asylum.”</i> Not affiliated. Based on the real history of the location. · <a href="flat.html" style="color:#8a95a0">2D version</a></p>
+    </div>
+  </div>
+
+  <!-- staged asset loading (desktop; VR mirrors onto the in-headset panel) -->
+  <div id="loadscreen" class="screen" role="status" aria-live="polite">
+    <div class="screen-inner loading-inner">
+      <h2>OPENING THE HOSPITAL</h2>
+      <p class="blurb">The house is waking…</p>
+      <div class="load-track" aria-hidden="true"><div id="load-fill"></div></div>
+      <p id="load-count">0%</p>
     </div>
   </div>
 

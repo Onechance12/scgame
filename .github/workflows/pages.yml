@@ -2,6 +2,8 @@ name: Deploy to GitHub Pages
 
 # Publishes the game to a live HTTPS URL so it can be opened in the
 # Meta Quest browser (WebXR requires a secure context).
+# The quality job gates the deploy: broken JS or a broken asset tree
+# can no longer ship to players.
 
 on:
   push:
@@ -20,7 +22,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax-check all first-party JavaScript
+        run: |
+          set -e
+          for f in js/*.js scripts/*.mjs; do
+            node --check "$f"
+            echo "ok: $f"
+          done
+      - name: Validate asset tree (referenced paths + glTF dependencies)
+        run: node scripts/validate-assets.mjs
+
   deploy:
+    needs: quality
     runs-on: ubuntu-latest
     environment:
       name: github-pages

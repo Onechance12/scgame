@@ -59,7 +59,6 @@ let xrSupported = false;
 let autosaveT = 8;
 let wakeLock = null;
 let moodLights = [];           // per-room coloured lights
-let heroReady = Promise.resolve();
 let dust = null, dustBase = null;
 let stepT = 0, lastTileType = -1, lowBatWarned = false;
 // player options (persisted): swapHands = move on right stick; walkLook = hold A/X to glide; bright = dim-lights mode
@@ -199,11 +198,8 @@ function init() {
 
   clock = new THREE.Clock();
 
-  loadTextures();
-  heroReady = loadHeroModels();      // real furniture, preloads during the menu
-  heroReady.then(() => {             // grips may have connected before the hands loaded
-    dressGrip(sources.leftGrip, 'left'); dressGrip(sources.rightGrip, 'right');
-  });
+  // NOTE: no asset loading here. The menu opens instantly; models and textures
+  // load in staged groups when the player actually starts a night (prepareGame).
   flashlight.map = makeBeamCookie(); // textured beam — dappled, real
   makeDust();
   setupControllers();
@@ -791,18 +787,79 @@ function setMode(v) {
   if (t) t.classList.toggle('selected', v);
 }
 
+// ============================================================ staged boot
+// prepareGame gates the start of a night on 'core' (+ 'intro' when the walk-up
+// will play); 'cast' and 'props' stream in behind it and refresh the scene
+// when they land. Called once per page — restarts reuse everything.
+let prepPromise = null, texturesLoaded = false;
+function prepareGame(saved) {
+  if (prepPromise) return prepPromise;
+  if (!texturesLoaded) { texturesLoaded = true; loadTextures(); }
+  const introNeeded = !saved && !OPTS.skipIntro;
+  const blocking = introNeeded ? ['core', 'intro'] : ['core'];
+  Assets.onProgress(loadingTick);
+  prepPromise = Assets.loadGroups(blocking).then(() => {
+    // hands may have connected before the models arrived
+    dressGrip(sources.leftGrip, 'left'); dressGrip(sources.rightGrip, 'right');
+    // the rest of the hospital streams in while you climb the hill
+    Assets.loadGroups(['cast']).then(castArrived);
+    Assets.loadGroups(['props']).then(propsArrived);
+  });
+  return prepPromise;
+}
+// props landed mid-night: rebuild the current floor once so real furniture
+// replaces the sparse first build (masked with a comfort blink)
+function propsArrived() {
+  if (state !== 'PLAY' || !data) return;
+  comfortBlink(0.8);
+  buildFloor(player.floor);
+  placeDollyAtTile(player.x, player.y);
+}
+// cast landed: drop any procedural fallback shrouds so the real apparitions
+// take over on their next visible frame
+function castArrived() {
+  if (!ents) return;
+  entityMeshes.forEach((rec, e) => {
+    if (!rec.hasModel) { if (rec.group.parent) rec.group.parent.remove(rec.group); entityMeshes.delete(e); }
+  });
+}
+// ---- loading screen (DOM on desktop; mirrored onto the big panel in VR) ----
+let loadTickT = 0;
+function showLoading() {
+  const el = document.getElementById('loadscreen'); if (el) el.classList.add('show');
+  loadingTick(0, 1);
+}
+function hideLoading() { const el = document.getElementById('loadscreen'); if (el) el.classList.remove('show'); }
+function loadingTick(done, wanted) {
+  const now = performance.now();
+  if (now - loadTickT < 200) return; loadTickT = now;
+  const p = Assets.progress();
+  const pct = p.wanted ? Math.round((p.done / p.wanted) * 100) : 0;
+  const fill = document.getElementById('load-fill'); if (fill) fill.style.width = pct + '%';
+  const count = document.getElementById('load-count'); if (count) count.textContent = pct + '%';
+  if (isVR && state === 'MENU') showBigPanel('OPENING THE HOSPITAL', ['The house is waking… ' + pct + '%'], '#cfd6de');
+}
+
 function enterVR(saved) {
   if (!navigator.xr) { startDesktop(saved); return; }
   Audio2.init(); Audio2.resume();
   const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] };
+  // the session request stays FIRST after the click — the user gesture must not
+  // be spent waiting on downloads (WebXR would reject it)
   navigator.xr.requestSession('immersive-vr', sessionInit).then((session) => {
     isVR = true;
     renderer.xr.setReferenceSpaceType('local-floor');
     renderer.xr.setSession(session);
-    session.addEventListener('end', () => { isVR = false; });
+    let sessionEnded = false;
+    session.addEventListener('end', () => { isVR = false; sessionEnded = true; });
     wristPanel.visible = true;
     document.getElementById('vr-crosshair').style.display = 'none';
-    heroReady.then(() => newGame(saved));
+    showBigPanel('OPENING THE HOSPITAL', ['The house is waking…'], '#cfd6de');
+    prepareGame(saved).then(() => {
+      // taking the headset off mid-load aborts the start — never begin a night
+      // behind a dead session
+      if (!sessionEnded) newGame(saved);
+    });
   }).catch((err) => {
     console.warn('VR session failed:', err);
     startDesktop(saved);
@@ -818,7 +875,8 @@ function startDesktop(saved) {
     'WASD move · Shift run · mouse look · Space jump · Z crouch · F flashlight · E interact · X cycle held item · hold LMB/R raise CROSS · LMB/G swing WEAPON · Q spirit box · C drink · V medkit · Tab case file · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
-  heroReady.then(() => newGame(saved));
+  showLoading();
+  prepareGame(saved).then(() => { hideLoading(); newGame(saved); });
 }
 
 function newGame(saved) {
@@ -2082,109 +2140,133 @@ function updatePeekers(dt) {
 }
 
 // ---- real furniture (Poly Haven glTF, CC0) ----
-function loadHeroModels() {
-  const L = new GLTFLoader();
-  const defs = { bed: 'GothicBed_01', rocker: 'Rockingchair_01', chair: 'WoodenChair_01',
-    table: 'WoodenTable_01', cabinet: 'drawer_cabinet', boiler: 'barrel_stove', candles: 'brass_candleholders' };
-  const MODELS = {};
-  const loads = Object.entries(defs).map(([k, id]) =>
-    L.loadAsync('assets/models/' + id + '/' + id + '_1k.gltf')
-      .then((g) => { MODELS[k] = g.scene; })
-      .catch((e) => console.warn('hero model failed:', id)));
-  // apparition models WITH animation clips.
-  // Primary cast: Sketchfab "The Heilwald Loophole" nurses + creatures (CC-BY-4.0, credited in CREDITS.txt).
-  // Fallback cast: Kenney/Quaternius/KayKit (CC0) — kept loaded for set-pieces.
-  const MOB = {};
-  const monsters = [
-    // real horror cast (gltf dirs)
-    ['helene', 'sketchfab/helene/scene.gltf'],
-    ['anne', 'sketchfab/anne/scene.gltf'],
-    ['wolfram', 'sketchfab/wolfram/scene.gltf'],
-    ['horrorkid', 'horror/horrorkid/scene.gltf'],   // the Child — a bound nursery child
-    ['crawler2', 'horror/crawler2/scene.gltf'],   // the crawling mutated human
-    ['ghoul', 'horror/ghoul/scene.gltf'],         // the Ghoul — basement corpse-eater
-    ['closer', 'horror/closer/scene.gltf'],       // the Closer — the Ash's new body
-    ['undead', 'horror/undead/scene.gltf'],        // the Risen — a dead patient walking the top floor
-    ['nightmare1', 'horror/nightmare1/scene.gltf'],// the Nightmare — deep-night hunter of the surgical wing
-    ['wraith', 'horror/wraith/scene.gltf'],        // the Wraith — a drifting horror in the attic dark
-    // legacy CC0 (set-pieces + fallback)
-    ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
-    // exterior set-pieces (animated — the carousel turns on its own)
-    ['playgroundG', 'horror/playground/scene.gltf'], ['carouselG', 'horror/carousel/scene.gltf'],
-    // the Matron herself — a hooded apparition, frozen mid-reach (set-piece, not a hunter)
-    ['matronW', 'horror/matron/scene.gltf'],
-    // the thing that lives on the grounds — the walk-up runner (cinematic scare)
-    ['runner096', 'horror/scp096/scene.gltf'],
-    // ritual FX (animated): pedestal flames + the chaos glyph arch over the circle
-    ['flamefx', 'horror/flametest/scene.gltf'],
-    ['glyphfx', 'horror/glypharch/scene.gltf'],
-  ];
-  monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
-  // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms
-  const HPROPS = { hospbed: 'hospbed', horrorbed: 'horrorbed', gurney: 'gurney', wheelchair: 'wheelchair',
-    rewheelchair: 'rewheelchair', clock: 'clock', caftable: 'caftable', bin: 'bin',
-    // batch 2 — a full hospital's dressing
-    examtable: 'examtable', locker: 'locker', metalcab: 'metalcab', deadbody: 'deadbody', deadcovered: 'deadcovered',
-    coffin: 'coffin', bloodybath: 'bloodybath', bathcab: 'bathcab', oldtv: 'oldtv', payphone: 'payphone',
-    vending: 'vending', bookshelf: 'bookshelf', candle: 'candle', cross: 'cross', ceilinglights: 'ceilinglights',
-    gasstove: 'gasstove', voodoohang: 'voodoohang', shovel: 'shovel', bloodytarp: 'bloodytarp', wallblood: 'wallblood',
-    // batch 3 — clutter & set-pieces (CC-BY, credited)
-    evidenceboard: 'evidenceboard', cannedgoods: 'cannedgoods', toolset: 'toolset', kitchenware: 'kitchenware',
-    // batch 4 — stairwell, piano, boards (CC-BY, credited)
-    staircase: 'staircase', piano: 'piano', planks: 'planks',
-    // real first-person hands for the VR grips
-    vrhands: 'vrhands',
-    // the children's bear — ceramic, googly-eyed, and wrong in the dark
-    scarebear: 'scarebear',
-    // dead oaks for the hillside, and the hospital's rusted transformer
-    oaktrees: 'oaktrees', elecbox: 'elecbox',
-    // the 1928 grounds lamps — two dead, one still trying
-    streetlamp: 'streetlamp',
-    // the hill is taking the grounds back: wild grass, lichened stone, moss
-    wildgrass: 'wildgrass', mossrock: 'mossrock', mosspatch: 'mosspatch',
-    // dead ventilation grilles for the ceilings — things skitter behind them
-    ventvalve: 'ventvalve',
-    // 1928 interior dressing: the séance circle, era phones, heat, mirrors, the lounge
-    ouija: 'ouija', wallphone: 'wallphone', radiator: 'radiator', mirrorh: 'mirrorh',
-    bathcounter: 'bathcounter', bloodysofa: 'bloodysofa', smartwatch: 'smartwatch',
-    // the kitchen matchbox — the flame the tutorial's dry lantern is waiting for
-    matches: 'matches',
-    // flammable barrels for the basement rooms, real candles, the altar fire sheet
-    barrel: 'barrel', candlemodel: 'candle', firesheet: 'flames' };
-  Object.entries(HPROPS).forEach(([k, d]) => loads.push(
-    L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
-  // packs we pull single items out of (one download, several props)
-  const PACKS = { clockpack: 'clockpack', cobwebpack: 'cobwebpack', weapons: 'weapons' };
-  const PACKSCENES = {};
-  Object.entries(PACKS).forEach(([k, d]) => loads.push(
-    L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { PACKSCENES[k] = g.scene; }).catch((e) => console.warn('pack load failed:', d))));
-  // items to extract: key -> {pack, match substring of a node name}
+// ============================================================ staged assets
+// The old loader fired ~480 requests in one Promise.all the moment the page
+// opened. Now assets load in GROUPS through a bounded queue (4 roots at a
+// time): 'core' + 'intro' gate the start of a night; 'cast' and 'props'
+// stream in behind the walk-up (the tutorial climb IS the loading screen).
+// Every consumer already fail-softs on a missing model, so streaming is safe.
+const Assets = (() => {
+  const MODELS = {}, MOB = {}, PACKSCENES = {};
+  window.HeroModels = MODELS; window.MobModels = MOB;   // live objects, filled as loads land
+  const DEFS = [];
+  const hero = (group, key, url) => DEFS.push({ group, key, url, kind: 'hero' });
+  const mob = (group, key, url) => DEFS.push({ group, key, url, kind: 'mob' });
+  const pk = (group, key, url) => DEFS.push({ group, key, url, kind: 'pack' });
+
+  // ---- core: hands, watch, weapons, the matchbox — needed the moment play starts
+  hero('core', 'vrhands', 'assets/models/horror/vrhands/scene.gltf');
+  hero('core', 'smartwatch', 'assets/models/horror/smartwatch/scene.gltf');
+  hero('core', 'matches', 'assets/models/horror/matches/scene.gltf');
+  pk('core', 'weapons', 'assets/models/horror/weapons/scene.gltf');
+  // ---- intro: everything the walk-up cinematic shows
+  hero('intro', 'oaktrees', 'assets/models/horror/oaktrees/scene.gltf');
+  hero('intro', 'elecbox', 'assets/models/horror/elecbox/scene.gltf');
+  hero('intro', 'streetlamp', 'assets/models/horror/streetlamp/scene.gltf');
+  hero('intro', 'wildgrass', 'assets/models/horror/wildgrass/scene.gltf');
+  hero('intro', 'mossrock', 'assets/models/horror/mossrock/scene.gltf');
+  hero('intro', 'mosspatch', 'assets/models/horror/mosspatch/scene.gltf');
+  mob('intro', 'playgroundG', 'assets/models/horror/playground/scene.gltf');
+  mob('intro', 'carouselG', 'assets/models/horror/carousel/scene.gltf');
+  mob('intro', 'runner096', 'assets/models/horror/scp096/scene.gltf');
+  // ---- cast: every apparition (they roam between floors — never floor-scoped)
+  mob('cast', 'helene', 'assets/models/sketchfab/helene/scene.gltf');
+  mob('cast', 'anne', 'assets/models/sketchfab/anne/scene.gltf');
+  mob('cast', 'wolfram', 'assets/models/sketchfab/wolfram/scene.gltf');
+  mob('cast', 'horrorkid', 'assets/models/horror/horrorkid/scene.gltf');
+  mob('cast', 'crawler2', 'assets/models/horror/crawler2/scene.gltf');
+  mob('cast', 'ghoul', 'assets/models/horror/ghoul/scene.gltf');
+  mob('cast', 'closer', 'assets/models/horror/closer/scene.gltf');
+  mob('cast', 'undead', 'assets/models/horror/undead/scene.gltf');
+  mob('cast', 'nightmare1', 'assets/models/horror/nightmare1/scene.gltf');
+  mob('cast', 'wraith', 'assets/models/horror/wraith/scene.gltf');
+  mob('cast', 'ghost', 'assets/models/monsters/ghost.glb');
+  mob('cast', 'skel', 'assets/models/monsters/skeleton.glb');
+  mob('cast', 'kaykit', 'assets/models/monsters/skeleton_warrior.glb');
+  mob('cast', 'matronW', 'assets/models/horror/matron/scene.gltf');
+  mob('cast', 'flamefx', 'assets/models/horror/flametest/scene.gltf');
+  mob('cast', 'glyphfx', 'assets/models/horror/glypharch/scene.gltf');
+  // ---- props: the furniture and dressing of the whole hospital
+  hero('props', 'bed', 'assets/models/GothicBed_01/GothicBed_01_1k.gltf');
+  hero('props', 'rocker', 'assets/models/Rockingchair_01/Rockingchair_01_1k.gltf');
+  hero('props', 'chair', 'assets/models/WoodenChair_01/WoodenChair_01_1k.gltf');
+  hero('props', 'table', 'assets/models/WoodenTable_01/WoodenTable_01_1k.gltf');
+  hero('props', 'cabinet', 'assets/models/drawer_cabinet/drawer_cabinet_1k.gltf');
+  hero('props', 'boiler', 'assets/models/barrel_stove/barrel_stove_1k.gltf');
+  hero('props', 'candles', 'assets/models/brass_candleholders/brass_candleholders_1k.gltf');
+  [['hospbed', 'hospbed'], ['horrorbed', 'horrorbed'], ['gurney', 'gurney'], ['wheelchair', 'wheelchair'],
+    ['rewheelchair', 'rewheelchair'], ['clock', 'clock'], ['caftable', 'caftable'], ['bin', 'bin'],
+    ['examtable', 'examtable'], ['locker', 'locker'], ['metalcab', 'metalcab'], ['deadbody', 'deadbody'],
+    ['deadcovered', 'deadcovered'], ['coffin', 'coffin'], ['bloodybath', 'bloodybath'], ['bathcab', 'bathcab'],
+    ['oldtv', 'oldtv'], ['payphone', 'payphone'], ['vending', 'vending'], ['bookshelf', 'bookshelf'],
+    ['candle', 'candle'], ['cross', 'cross'], ['ceilinglights', 'ceilinglights'], ['gasstove', 'gasstove'],
+    ['voodoohang', 'voodoohang'], ['shovel', 'shovel'], ['bloodytarp', 'bloodytarp'], ['wallblood', 'wallblood'],
+    ['evidenceboard', 'evidenceboard'], ['cannedgoods', 'cannedgoods'], ['toolset', 'toolset'], ['kitchenware', 'kitchenware'],
+    ['staircase', 'staircase'], ['piano', 'piano'], ['planks', 'planks'], ['scarebear', 'scarebear'],
+    ['ventvalve', 'ventvalve'], ['ouija', 'ouija'], ['wallphone', 'wallphone'], ['radiator', 'radiator'],
+    ['mirrorh', 'mirrorh'], ['bathcounter', 'bathcounter'], ['bloodysofa', 'bloodysofa'],
+    ['barrel', 'barrel'], ['candlemodel', 'candle'], ['firesheet', 'flames'],
+  ].forEach(([k, d]) => hero('props', k, 'assets/models/horror/' + d + '/scene.gltf'));
+  pk('props', 'clockpack', 'assets/models/horror/clockpack/scene.gltf');
+  pk('props', 'cobwebpack', 'assets/models/horror/cobwebpack/scene.gltf');
+
   const PACKITEMS = {
     brokenclock: ['clockpack', 'clock007'], brokenclock2: ['clockpack', 'clock010'],
     cobwebA: ['cobwebpack', 'cobweb002'], cobwebB: ['cobwebpack', 'cobweb004'], cobwebC: ['cobwebpack', 'cobweb006'],
-    // the arsenal — a hospital's worth of things to swing at the dead
     crowbar: ['weapons', 'crowbarobj'], w_bat: ['weapons', 'baseballbatobj'], w_machete: ['weapons', 'macheteobj'],
     w_cleaver: ['weapons', 'cleaverobj'], w_axe: ['weapons', 'axeobj'], w_pipe: ['weapons', 'metalpipeobj'],
     w_sledge: ['weapons', 'sledgehammerobj'],
   };
-  return Promise.all(loads).then(() => {
-    // extract named sub-objects from packs into standalone, upright, centred models
+  function extractPack(packKey) {
+    const sc = PACKSCENES[packKey]; if (!sc) return;
     const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    Object.entries(PACKITEMS).forEach(([key, [pk, want]]) => {
-      const sc = PACKSCENES[pk]; if (!sc) return;
+    Object.entries(PACKITEMS).forEach(([key, [pkKey, want]]) => {
+      if (pkKey !== packKey || MODELS[key]) return;
       let node = null; sc.traverse((o) => { if (!node && o.isMesh && norm(o.name).includes(want)) node = o; });
       if (!node) { console.warn('pack item not found:', key, want); return; }
       node.updateWorldMatrix(true, false);
       const clone = node.clone(true);
-      node.matrixWorld.decompose(clone.position, clone.quaternion, clone.scale);  // bake world transform (keeps up-axis)
+      node.matrixWorld.decompose(clone.position, clone.quaternion, clone.scale);
       const holder = new THREE.Group(); holder.add(clone);
       MODELS[key] = holder;
     });
-    window.HeroModels = MODELS; window.MobModels = MOB;
-    if (MOB.ghost) MODELS.ghostGLB = MOB.ghost.scene;   // keep chapel/altar set-pieces working
-    if (MOB.skel) MODELS.skelGLB = MOB.skel.scene;
-  });
-}
+  }
+
+  // bounded queue: at most 4 root loads in flight; per-key dedupe; fail-soft
+  const L = new GLTFLoader();
+  const started = new Map();   // key -> promise
+  const waiting = [];
+  let active = 0, doneCount = 0, wantedCount = 0;
+  const progressCbs = [];
+  function pump() {
+    while (active < 4 && waiting.length) {
+      const job = waiting.shift(); active++;
+      L.loadAsync(job.url)
+        .then((g) => {
+          if (job.kind === 'mob') { MOB[job.key] = g; if (job.key === 'ghost') MODELS.ghostGLB = g.scene; if (job.key === 'skel') MODELS.skelGLB = g.scene; }
+          else if (job.kind === 'pack') { PACKSCENES[job.key] = g.scene; extractPack(job.key); }
+          else MODELS[job.key] = g.scene;
+        })
+        .catch(() => console.warn('asset load failed (fallback stays):', job.key))
+        .finally(() => { active--; doneCount++; progressCbs.forEach((cb) => { try { cb(doneCount, wantedCount); } catch (e) { } }); job.done(); pump(); });
+    }
+  }
+  function loadKey(def) {
+    if (started.has(def.key + '|' + def.group)) return started.get(def.key + '|' + def.group);
+    wantedCount++;
+    const p = new Promise((res) => { waiting.push({ ...def, done: res }); });
+    started.set(def.key + '|' + def.group, p);
+    pump();
+    return p;
+  }
+  // resolves when every asset in the groups has settled (loaded or failed-soft)
+  function loadGroups(names) {
+    const defs = DEFS.filter((d) => names.includes(d.group));
+    return Promise.all(defs.map(loadKey)).then(() => { });
+  }
+  function progress() { return { done: doneCount, wanted: wantedCount }; }
+  return { loadGroups, progress, onProgress: (cb) => progressCbs.push(cb) };
+})();
 
 // ---- atmosphere: dappled flashlight cookie + dust motes in the beam ----
 function makeBeamCookie() {
