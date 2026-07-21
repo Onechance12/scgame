@@ -77,6 +77,17 @@ const HAUNT = {
   infested: { speedMul: 1.2, senseMul: 1.22, extra: true, label: 'INFESTED' },
 };
 const HAUNT_ORDER = ['faint', 'restless', 'infested'];
+// the arsenal — declared up top because save validation runs at boot, before play
+const WEAPONS = {
+  crowbar: { name: 'Crowbar', model: 'crowbar', scale: 0.52, reach: 2.6, cone: 1.15, cd: 0.9, scare: 1.7, knock: 0.6, heavy: false },
+  pipe: { name: 'Lead Pipe', model: 'w_pipe', scale: 0.6, reach: 2.7, cone: 1.1, cd: 0.9, scare: 1.7, knock: 0.7, heavy: false },
+  bat: { name: 'Baseball Bat', model: 'w_bat', scale: 0.66, reach: 2.8, cone: 1.2, cd: 0.85, scare: 1.9, knock: 0.8, heavy: false },
+  machete: { name: 'Machete', model: 'w_machete', scale: 0.5, reach: 2.4, cone: 1.0, cd: 0.7, scare: 1.3, knock: 0.4, heavy: false },
+  cleaver: { name: 'Bone Cleaver', model: 'w_cleaver', scale: 0.34, reach: 2.2, cone: 0.95, cd: 0.65, scare: 1.2, knock: 0.35, heavy: false },
+  axe: { name: 'Fire Axe', model: 'w_axe', scale: 0.62, reach: 2.7, cone: 1.1, cd: 1.05, scare: 2.4, knock: 1.0, heavy: true },
+  sledge: { name: 'Sledgehammer', model: 'w_sledge', scale: 0.72, reach: 2.9, cone: 1.15, cd: 1.35, scare: 3.0, knock: 1.4, heavy: true },
+};
+const WEAPON_ORDER = ['crowbar', 'pipe', 'bat', 'machete', 'cleaver', 'axe', 'sledge'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
 const FOV_STEPS = [72, 85, 100, 110, 120];
 function fovNow() { return Math.min(120, Math.max(60, OPTS.fov | 0 || 72)); }
@@ -223,6 +234,7 @@ function saveState() {
     itemsTaken: data.items.filter((i) => i.taken && !i.dropped).map((i) => i.id),
     drops: data.items.filter((i) => i.dropped && !i.taken).map((i) => ({ floor: i.floor, x: i.x, y: i.y, type: i.type, id: i.id, kind: i.kind, lit: !!i.lit })),
     objectives: data.objectives.map((o) => o.done),
+    objIds: data.objectives.map((o) => o.id),   // ids beside positions, so content edits can't silently remap truths
     docs: documents.filter((d) => d.found).map((d) => d.id),
     ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
     ritualDone: !!(ritual && ritual.done),
@@ -235,8 +247,43 @@ function saveState() {
   else { try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) { } }
 }
 function loadSave() {
-  if (window.Accounts && Accounts.current()) return Accounts.loadGame();
-  try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; }
+  let s = null;
+  if (window.Accounts && Accounts.current()) s = Accounts.loadGame();
+  else { try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } }
+  return validateSave(s);
+}
+// ---- the save boundary: never feed untrusted localStorage straight into the game ----
+// A save that fails hard checks is QUARANTINED (kept under another key for
+// recovery), not silently deleted — and never restored.
+function validateSave(s) {
+  const quarantine = () => {
+    try { localStorage.setItem(SAVE_KEY + '_quarantine', JSON.stringify(s)); } catch (e) { }
+    console.warn('save failed validation — quarantined');
+    return null;
+  };
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+  if (typeof s.v === 'number' && s.v > 2) return quarantine();          // future schema — don't guess
+  const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+  const fin = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
+  if (!int(s.floor, 0, 4)) return quarantine();
+  if (!fin(s.x, 0, World.W) || !fin(s.y, 0, World.H)) return quarantine();
+  // soft fields: clamp / default rather than reject
+  const num = (v, d, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  s.fear = num(s.fear, 12, 0, 100); s.battery = num(s.battery, 100, 0, 100); s.faith = num(s.faith, 100, 0, 100);
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  s.inv = obj(s.inv); s.keys = obj(s.keys); s.rite = obj(s.rite);
+  const wIn = obj(s.weapons); s.weapons = {}; WEAPON_ORDER.forEach((k) => { if (wIn[k]) s.weapons[k] = true; });
+  s.tool = (s.tool === 'cross' || s.weapons[s.tool]) ? s.tool : 'bare';
+  const strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.length <= 64) : [];
+  s.itemsTaken = strs(s.itemsTaken); s.docs = strs(s.docs); s.ritualFilled = strs(s.ritualFilled);
+  s.objectives = Array.isArray(s.objectives) ? s.objectives.map((b) => !!b) : [];
+  const DROP_TYPES = { weapon: 1, ward: 1, flashlight: 1 };
+  s.drops = (Array.isArray(s.drops) ? s.drops : []).filter((d) =>
+    d && typeof d === 'object' && DROP_TYPES[d.type] && int(d.floor, 0, 4) &&
+    fin(d.x, -1, World.W) && fin(d.y, -1, World.H) && typeof d.id === 'string' && d.id.length <= 48 &&
+    (d.kind == null || WEAPONS[d.kind]));
+  if (!Number.isFinite(s.startEpoch) || s.startEpoch > Date.now() + 60e3) s.startEpoch = Date.now();
+  return s;
 }
 function clearSave() {
   if (window.Accounts && Accounts.current()) { Accounts.clearGame(); return; }
@@ -853,7 +900,10 @@ function restoreFrom(s) {
     if (it.type === 'flashlight') droppedLight = it;
     dropSeq++;   // keep new drop ids unique past the restored ones
   });
-  (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
+  if (Array.isArray(s.objIds) && s.objIds.length === (s.objectives || []).length) {
+    // restore by stable id — immune to objective reordering between versions
+    s.objIds.forEach((id, i) => { const o = data.objectives.find((x) => x.id === id); if (o) o.done = !!s.objectives[i]; });
+  } else (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
   // stairwell-key compatibility: a save from before the lockdown update (or any
@@ -3423,16 +3473,6 @@ function mountHeld(g, kind) {
 // (X on desktop). The dominant grip USES whatever's in it: hold to brandish the
 // cross, squeeze to swing a weapon. Weapons can't kill the dead, but a solid hit
 // knocks them back and sends them recoiling — room to run.
-const WEAPONS = {
-  crowbar: { name: 'Crowbar', model: 'crowbar', scale: 0.52, reach: 2.6, cone: 1.15, cd: 0.9, scare: 1.7, knock: 0.6, heavy: false },
-  pipe: { name: 'Lead Pipe', model: 'w_pipe', scale: 0.6, reach: 2.7, cone: 1.1, cd: 0.9, scare: 1.7, knock: 0.7, heavy: false },
-  bat: { name: 'Baseball Bat', model: 'w_bat', scale: 0.66, reach: 2.8, cone: 1.2, cd: 0.85, scare: 1.9, knock: 0.8, heavy: false },
-  machete: { name: 'Machete', model: 'w_machete', scale: 0.5, reach: 2.4, cone: 1.0, cd: 0.7, scare: 1.3, knock: 0.4, heavy: false },
-  cleaver: { name: 'Bone Cleaver', model: 'w_cleaver', scale: 0.34, reach: 2.2, cone: 0.95, cd: 0.65, scare: 1.2, knock: 0.35, heavy: false },
-  axe: { name: 'Fire Axe', model: 'w_axe', scale: 0.62, reach: 2.7, cone: 1.1, cd: 1.05, scare: 2.4, knock: 1.0, heavy: true },
-  sledge: { name: 'Sledgehammer', model: 'w_sledge', scale: 0.72, reach: 2.9, cone: 1.15, cd: 1.35, scare: 3.0, knock: 1.4, heavy: true },
-};
-const WEAPON_ORDER = ['crowbar', 'pipe', 'bat', 'machete', 'cleaver', 'axe', 'sledge'];
 const weaponMeshes = {};
 let prevABtn = false;
 function currentWeapon() { return (player && player.tool && WEAPONS[player.tool]) ? WEAPONS[player.tool] : null; }

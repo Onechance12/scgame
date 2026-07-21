@@ -293,7 +293,7 @@ const Survival = (() => {
       batteries: S.batteries, maxBatteries: S.maxBatteries, lantern: S.lantern, lanternOn: S.lanternOn, lanternFuel: S.lanternFuel, matches: S.matches,
       teddies: S.teddies, blessed: S.blessed, safeOpened: S.safeOpened,
       peaceUntil: S.peaceUntil, peaceKind: S.peaceKind, sanctumReadyAt: S.sanctumReadyAt,
-      lastAlmanacHour: S.lastAlmanacHour };
+      lastAlmanacHour: S.lastAlmanacHour, boostUntil: S.boostUntil };
   }
   function restore(o) { if (o) Object.assign(S, o); }
   function reset() {
