@@ -47,7 +47,7 @@ const Entities = (() => {
         color: cfg.color, wakeHour: cfg.wakeHour, den: cfg.den || [],
         state: S.DORMANT, target: null, lastSeen: null, cooldown: 0, stepTimer: 0,
         path: null, pathTimer: 0, gaitPhase: Math.random() * 6.28, pause: 0,
-        idleTimer: 3 + Math.random() * 4, staring: false, alpha: 0,
+        idleTimer: 3 + Math.random() * 4, staring: false, alpha: 0, slow: 0,
         moving: false, fast: false, facing: 0, px: cfg.x + 0.5, py: cfg.y + 0.5,
       });
     }
@@ -137,9 +137,8 @@ const Entities = (() => {
             this.pathTimer = 0.4;
             this.path = findPath(grid, this.x, this.y, player.x, player.y);
           }
-          const spd = this.huntSpeed * diff.speedMul * dt;
-          this.stepTimer -= dt;
-          if (this.stepTimer <= 0) { this.stepTimer = 0.28; if (this.kind !== 'ash') Audio2.footstep(0.06); }
+          if (this.slow > 0) this.slow -= dt;   // the flashlight beam staggers a hunter
+          const spd = this.huntSpeed * diff.speedMul * (this.slow > 0 ? 0.42 : 1) * dt;
           if (!this.followPath(grid, spd)) this.moveDirect(grid, player.x, player.y, spd);
           this.lastSeen = { x: player.x, y: player.y };
           if (Math.hypot(player.x - this.x, player.y - this.y) < 0.8 && !player.hidden && !ctx.peace) ctx.onCatch(this);

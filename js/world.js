@@ -288,6 +288,12 @@ const World = (() => {
     addItem(2, 'room207', 'key', 'key_incinerator');   // basement incinerator
     addItem(1, 'records', 'key', 'key_mose', 1, 1);    // Mose's room (3-East)
     addItem(4, 'chapel', 'key', 'key_roof');           // roof access (final)
+    // Stairwell keys — the hospital was locked down ward by ward when it closed.
+    // Each floor's stairwell needs its key, found one floor below it (a chain).
+    addItem(1, 'kitchen', 'key', 'key_stairs0', 0, 1);   // basement — the cook held it
+    addItem(1, 'records', 'key', 'key_stairs2', -1, 0);  // 2nd floor — filed in Records
+    addItem(2, 'station', 'key', 'key_stairs3', 1, 0);   // 3rd floor — the nurses' station ring
+    addItem(3, 'recovery', 'key', 'key_stairs4', 1, 0);  // 4th floor — left in Recovery
 
     // ---------- survival economy (see js/survival.js) ----------
     // Quiet Draughts — 5 real minutes of peace each

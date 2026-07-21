@@ -699,6 +699,148 @@ const Audio2 = (() => {
     s.start(t); s.stop(t + 3.7);
   }
 
+  // ---- the voices of the dead — every one directional (pan -1..1) ---------
+
+  // Low guttural growl — Mose. Slow saw with a wobble, heavily lowpassed.
+  function growlPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.1;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(78, t);
+    o.frequency.linearRampToValueAtTime(58, t + 1.1);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 11;
+    const lg = ctx.createGain(); lg.gain.value = 14;
+    lfo.connect(lg); lg.connect(o.frequency);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(v, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+    o.connect(lp); lp.connect(g); g.connect(out);
+    o.start(t); o.stop(t + 1.35); lfo.start(t); lfo.stop(t + 1.35);
+  }
+
+  // A dead man's moan — the Risen. Sine gliding down with a shiver.
+  function moanPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.08;
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(196, t);
+    o.frequency.linearRampToValueAtTime(122, t + 1.6);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 6.5;
+    const lg = ctx.createGain(); lg.gain.value = 7; lfo.connect(lg); lg.connect(o.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(v, t + 0.4);
+    g.gain.linearRampToValueAtTime(v * 0.6, t + 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.85);
+  }
+
+  // Wet hiss — the Crawler / a beam-struck spirit. Highpassed noise swell.
+  function hissPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.08;
+    const s = noiseSource();
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2600;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(v, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    s.connect(hp); hp.connect(g); g.connect(out); s.start(t); s.stop(t + 0.75);
+  }
+
+  // Slow ragged breathing right beside you. Two bandpassed noise breaths.
+  function breathPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.05;
+    [0, 1.05].forEach((dt) => {
+      const s = noiseSource();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 460 + rnd() * 120; bp.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + dt);
+      g.gain.linearRampToValueAtTime(v, t + dt + 0.32);
+      g.gain.linearRampToValueAtTime(0.0001, t + dt + 0.85);
+      s.connect(bp); bp.connect(g); g.connect(out); s.start(t + dt); s.stop(t + dt + 0.9);
+    });
+  }
+
+  // The hunt-scream: a rising shriek + noise burst from a direction. The jump scare.
+  function screechPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol == null ? 0.3 : vol;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(300, t);
+    o.frequency.exponentialRampToValueAtTime(1650, t + 0.28);
+    o.frequency.exponentialRampToValueAtTime(700, t + 0.62);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1200; bp.Q.value = 1.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+    o.connect(bp); bp.connect(g); g.connect(out); o.start(t); o.stop(t + 0.8);
+    const s = noiseSource();
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400;
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(v * 0.6, t + 0.04);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    s.connect(hp); hp.connect(g2); g2.connect(out); s.start(t); s.stop(t + 0.55);
+  }
+
+  // A nurse humming her round, from a direction — same tune as the ward.
+  function humPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.035;
+    const notes = [392, 440, 392, 330, 294, 330, 392];
+    notes.forEach((f, i) => {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const g = ctx.createGain(); const st = t + i * 0.42;
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.linearRampToValueAtTime(v, st + 0.1);
+      g.gain.linearRampToValueAtTime(0.0001, st + 0.4);
+      o.connect(g); g.connect(out); o.start(st); o.stop(st + 0.45);
+    });
+  }
+
+  // Wet gnawing + bone clicks — the Ghoul at its work.
+  function gnawPan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.06;
+    let tt = t;
+    for (let i = 0; i < 6; i++) {
+      const s = noiseSource();
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 300 + rnd() * 500; bp.Q.value = 3;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, tt);
+      g.gain.exponentialRampToValueAtTime(v, tt + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.12);
+      s.connect(bp); bp.connect(g); g.connect(out); s.start(tt); s.stop(tt + 0.14);
+      if (rnd() < 0.4) { // a bone click
+        const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 2000 + rnd() * 1500;
+        const og = ctx.createGain(); og.gain.setValueAtTime(v * 0.5, tt + 0.05); og.gain.exponentialRampToValueAtTime(0.0001, tt + 0.1);
+        o.connect(og); og.connect(out); o.start(tt + 0.05); o.stop(tt + 0.11);
+      }
+      tt += 0.16 + rnd() * 0.2;
+    }
+  }
+
+  // Ember crackle — the Ash passing. Sparse hot pops.
+  function cracklePan(pan, vol) {
+    if (!started) return;
+    const t = now(); const out = panOut(pan); const v = vol || 0.05;
+    let tt = t;
+    for (let i = 0; i < 8; i++) {
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 1400 + rnd() * 2600;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, tt);
+      g.gain.exponentialRampToValueAtTime(v * (0.4 + rnd() * 0.6), tt + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.05);
+      o.connect(g); g.connect(out); o.start(tt); o.stop(tt + 0.06);
+      tt += 0.06 + rnd() * 0.22;
+    }
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -711,6 +853,7 @@ const Audio2 = (() => {
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
     footstepPan, laughPan, chains, crash, thud, gust,
+    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;

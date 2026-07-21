@@ -850,6 +850,8 @@ function toggleJournal() {
   html += `<li class="${sv.safeOpened ? 'done' : ''}">${sv.safeOpened ? '✔' : '○'} <b>The Matron's Safe</b> — three dates from the Case File open it (4th floor).</li>`;
   html += `<li class="${sv.lantern ? 'done' : ''}">${sv.lantern ? '✔' : '○'} <b>The Chapel Lantern</b> — a backup light hangs in the chapel.</li>`;
   html += `<li>○ <b>Gear</b> — 🔋${sv.batteries}/${sv.maxBatteries} spares · 🍶${sv.draughts}/${sv.maxDraughts} · ⚕${sv.medkits} · ${sv.backpack ? '🎒 backpack' : 'no backpack yet'}</li>`;
+  const heldKeys = Object.keys(player.keys);
+  html += `<li>○ <b>Keys</b> — ${heldKeys.length ? heldKeys.map((id) => '🗝 ' + keyLabel(id)).join(' · ') : 'none yet. The stairwells were locked ward by ward in ’88 — find the keys to climb.'}</li>`;
   html += '</ul><h3>Documents</h3>';
   const found = documents.filter((d) => d.found);
   if (!found.length) html += '<p class="hint">Nothing filed yet. Search the rooms — letters, patient files, newspaper clippings, a diary.</p>';
@@ -1244,6 +1246,21 @@ function placeDecals(fi) {
       grp.add(pl);
     }
   });
+  // the corridors carry old traffic: drag-marks, drips and grime down the halls
+  [data.CORR_TOP, data.CORR_BOT].forEach((cy) => {
+    if (cy == null) return;
+    for (let x = 4; x < World.W - 4; x += 3 + Math.floor(rnd() * 4)) {
+      if (rnd() > 0.55 || !g[cy] || g[cy][x] !== TILE.FLOOR) continue;
+      const size = 0.8 + rnd() * 1.0;
+      const tex = rnd() < 0.25 ? TEX.blood[Math.floor(rnd() * TEX.blood.length)] : (rnd() < 0.5 ? TEX.drip[Math.floor(rnd() * TEX.drip.length)] : TEX.grime[0]);
+      const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity: 0.55 + rnd() * 0.3,
+        roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+      pl.rotation.x = -Math.PI / 2; pl.rotation.z = rnd() * 6.28;
+      pl.position.set((x + 0.5) * TILE_M, 0.02, (cy + 0.5) * TILE_M);
+      grp.add(pl);
+    }
+  });
   floorGroup.add(grp);
 }
 // ---- real horror furniture (CC-BY hospital props) ----
@@ -1376,6 +1393,14 @@ function placeHorrorProps(fi) {
     // a second bed in the big wards
     if (list.some((p) => p[0] === 'bed') && r.w * r.h > 34 && rnd() < 0.6) { const [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4()); }
   });
+  // corridor dressing: dead pendant lights hang down the halls (no collision),
+  // and the odd abandoned wheelchair sits against the corridor ends
+  [data.CORR_TOP, data.CORR_BOT].forEach((cy) => {
+    if (cy == null) return;
+    for (let x = 5; x < World.W - 5; x += 7 + Math.floor(rnd() * 3)) {
+      if (isFloor(x, cy)) place('ceilinglights', x, cy, 0);
+    }
+  });
   floorGroup.add(grp);
 }
 // ---- ritual chamber ----
@@ -1471,7 +1496,8 @@ function buildEmbers(rec, grp) {
 function ensureEntityMesh(e) {
   if (entityMeshes.has(e)) return entityMeshes.get(e);
   const grp = new THREE.Group();
-  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null, mixer: null, clips: null, cur: null, action: null, yaw: 0, hasModel: false };
+  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null, mixer: null, clips: null, cur: null, action: null, yaw: 0, hasModel: false,
+    stepT: 0, voiceT: 4 + Math.random() * 6, breathT: 0, lastState: 0, beamCd: 0 };
   const MOB = window.MobModels || {};
   const map = MOBMAP[e.kind];
   // --- real animated model path ---
@@ -1618,6 +1644,90 @@ function animateGhost(rec, e, dt) {
   rec.gown.forEach((m2, i) => { m2.rotation.y = Math.sin(t * 0.8 + i) * 0.15; m2.rotation.z = Math.sin(t * 1.1 + i * 2) * 0.05; });
   if (rec.aura) rec.aura.material.opacity = (hunt ? 0.6 : 0.35) + Math.sin(t * 5) * 0.12;
   if (rec.embers) rec.embers.rotation.y += dt * (hunt ? 3.5 : 1.2);
+}
+
+// ============================================================ entity audio
+// Every one of the dead is HEARD in surround: cadenced footsteps panned to where
+// it walks, its own voice when it idles nearby, ragged breathing when it is
+// almost on top of you, and a directional shriek the instant a hunt begins.
+const HUNT_LINES = {
+  nurse: 'The Grey Nurse snaps her head toward you. Her round just changed.',
+  nurse2: 'Down the ward, the Night Nurse goes very still — then starts toward you.',
+  mose: 'A roar from Mose — heavy footsteps, faster than a man that size should be.',
+  child: 'The Child stops singing. The skittering turns your way.',
+  crawler: 'A wet hiss — the Crawler has your scent.',
+  ash: 'The embers flare. The Ash begins to drift toward you, crackling.',
+  ghoul: 'The gnawing stops. The Ghoul is done with the dead — it wants something fresher.',
+  undead: 'The Risen lets out a broken moan and lurches into a run.',
+};
+// footstep cadence + weight per kind (interval seconds, volume multiplier)
+const STEP_STYLE = {
+  nurse: [0.52, 0.9], nurse2: [0.5, 0.9], mose: [0.62, 1.7], child: [0.3, 0.55],
+  crawler: [0.17, 0.45], ghoul: [0.42, 1.1], undead: [0.48, 1.3], ash: [0, 0],   // the Ash doesn't step — it crackles
+};
+function panTo(e) {
+  camera.getWorldDirection(tmpV2);
+  const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
+  return Math.max(-1, Math.min(1, Math.sin(normAng(Math.atan2(e.x - player.x, e.y - player.y) - fYaw))));
+}
+let lightStaggerTaught = false;
+function entitySounds(rec, e, dt, d) {
+  if (d > 17) { rec.lastState = e.state; return; }
+  const pan = panTo(e);
+  const near = Math.max(0, 1 - d / 16);
+  const hunt = e.state === Entities.S.HUNT;
+
+  // --- the jump scare: the moment a hunt begins, it SCREAMS from its direction ---
+  if (hunt && rec.lastState !== Entities.S.HUNT) {
+    Audio2.screechPan(pan, 0.12 + near * 0.3);
+    if (d < 8) {
+      Audio2.stinger(false); haptic(0.9, 160);
+      player.fear = Math.min(100, player.fear + 7 + near * 6);
+      if (scareCooldown <= 0) { showSubtitle(HUNT_LINES[e.kind] || 'It has seen you. RUN.', 3); scareCooldown = 6; }
+    }
+  }
+  rec.lastState = e.state;
+
+  // --- cadenced footsteps, panned to where it walks ---
+  const st = STEP_STYLE[e.kind] || [0.5, 1];
+  if (e.moving && st[0] > 0) {
+    rec.stepT -= dt * (hunt ? 1.8 : 1) * (e.kind === 'child' ? (e.fast ? 1.6 : 1) : 1);
+    if (rec.stepT <= 0) {
+      rec.stepT = st[0];
+      Audio2.footstepPan(pan, (0.02 + near * 0.075) * st[1] * (hunt ? 1.35 : 1));
+    }
+  }
+
+  // --- its voice, every few seconds, from its direction ---
+  rec.voiceT -= dt * (hunt ? 1.7 : 1);
+  if (rec.voiceT <= 0 && d < 14) {
+    rec.voiceT = hunt ? 2.5 + Math.random() * 2 : 6 + Math.random() * 7;
+    const v = 0.03 + near * 0.09;
+    switch (e.kind) {
+      case 'nurse': case 'nurse2': hunt ? Audio2.hissPan(pan, v) : Audio2.humPan(pan, v * 0.6); break;
+      case 'child': Audio2.laughPan(pan, v); break;
+      case 'mose': Audio2.growlPan(pan, v * 1.3); break;
+      case 'crawler': Audio2.hissPan(pan, v); break;
+      case 'ghoul': hunt ? Audio2.hissPan(pan, v) : Audio2.gnawPan(pan, v); break;
+      case 'undead': Audio2.moanPan(pan, v * 1.2); break;
+      case 'ash': Audio2.cracklePan(pan, v); break;
+    }
+  }
+
+  // --- ragged breathing when it is almost on top of you ---
+  if (d < 3.6 && !hunt) {
+    rec.breathT -= dt;
+    if (rec.breathT <= 0) { rec.breathT = 2.4 + Math.random() * 1.2; Audio2.breathPan(pan, 0.04 + (1 - d / 3.6) * 0.05); }
+  }
+
+  // --- the flashlight beam staggers a hunter (it hates the light) ---
+  if (rec.beamCd > 0) rec.beamCd -= dt;
+  if (hunt && player.lightOn && player.battery > 0 && rec.beamCd <= 0 && beamHits(e.x, e.y)) {
+    rec.beamCd = 3.2;
+    e.slow = 1.1;
+    Audio2.hissPan(pan, 0.14 + near * 0.14);
+    if (!lightStaggerTaught) { lightStaggerTaught = true; showSubtitle('The beam catches it — it flinches from the light. It won’t stop it for long.', 3.5); }
+  }
 }
 
 // ============================================================ locomotion
@@ -1865,7 +1975,12 @@ function pickupItem(it) {
     case 'key': player.keys[it.id] = true; showSubtitle('A key: ' + keyLabel(it.id), 3); break;
   }
 }
-function keyLabel(id) { return ({ key_mose: 'Room 3-East', key_incinerator: 'the Incinerator', key_roof: 'Roof Access' })[id] || id; }
+function keyLabel(id) {
+  return ({ key_mose: 'Room 3-East', key_incinerator: 'the Incinerator', key_roof: 'Roof Access',
+    key_stairs0: 'the Basement Stairwell', key_stairs2: 'the 2nd-Floor Stairwell',
+    key_stairs3: 'the Surgical Wing (3rd floor)', key_stairs4: 'the Attic Stair (4th floor)' })[id] || id;
+}
+const KEY_SHORT = { key_mose: '3E', key_incinerator: 'Incin', key_roof: 'Roof', key_stairs0: 'Bsmt', key_stairs2: 'Ward', key_stairs3: 'Surg', key_stairs4: 'Attic' };
 
 function readDocument(doc) {
   doc.found = true; Audio2.pickup();
@@ -1960,9 +2075,23 @@ function performUnbinding() {
   });
 }
 
+// the hospital was locked down ward by ward in '88 — each stairwell needs its key
+const STAIR_KEYS = { 0: 'key_stairs0', 2: 'key_stairs2', 3: 'key_stairs3', 4: 'key_stairs4' };
+const STAIR_HINTS = {
+  0: 'The kitchen staff kept the basement key.',
+  2: 'The ward keys were filed away in Records.',
+  3: 'The surgical-wing key hung at the 2nd-floor nurses’ station.',
+  4: 'The attic-stair key was left up in Recovery, 3rd floor.',
+};
 function changeFloor(dir) {
   const nf = Math.max(0, Math.min(4, player.floor + dir));
   if (nf === player.floor) return;
+  const need = STAIR_KEYS[nf];
+  if (need && !player.keys[need]) {
+    Audio2.rattle(); Audio2.creak();
+    showSubtitle('The stairwell door to ' + data.floors[nf].name.toLowerCase() + ' is locked. ' + STAIR_HINTS[nf], 4);
+    return;
+  }
   player.floor = nf;
   Audio2.creak();
   comfortBlink(1);   // black-blink the stair transition
@@ -2361,6 +2490,7 @@ function update(dt) {
       if (e.kind === 'ash' && rec.group.userData.ember) rec.group.userData.ember.intensity = 0.5 + Math.random();
       animateGhost(rec, e, eDt);
       const d = Math.hypot(e.x - player.x, e.y - player.y);
+      entitySounds(rec, e, dt, d);
       nearest = Math.min(nearest, d);
       if (e.state === Entities.S.HUNT) hunting = true;
     } else if (entityMeshes.has(e)) {
@@ -2369,6 +2499,11 @@ function update(dt) {
   });
   if (hunting && Math.random() < dt * 3) { Audio2.chase(true); haptic(0.5, 80); }
   if (nearest < 5) player.fear = Math.min(100, player.fear + (5 - nearest) * dt * 2.4);
+  // one of the dead nearby makes the flashlight stutter — your own light warns you
+  if (player.lightOn && player.battery > 0 && nearest < 4.5) {
+    flashlight.intensity = 30 * flashFlicker * (0.35 + Math.random() * 0.65);
+    if (Math.random() < dt * 1.6) Audio2.buzz(0.03);
+  }
   if (player.inv.emf && nearest < 9 && Math.random() < dt * (2 + (5 - nearest / 9 * 5))) Audio2.emf(Math.max(1, Math.round(5 - nearest / 9 * 5)));
 
   updateSpiritObjective(dt);
@@ -2537,8 +2672,12 @@ function ambientEvent() {
 }
 function findInteract() {
   const t = tileAt(player.floor, player.x, player.y);
-  if (t === TILE.UP) return 'Trigger — climb the stairs up';
-  if (t === TILE.DOWN) return 'Trigger — descend the stairs';
+  if (t === TILE.UP || t === TILE.DOWN) {
+    const nf = Math.max(0, Math.min(4, player.floor + (t === TILE.UP ? 1 : -1)));
+    const need = STAIR_KEYS[nf];
+    if (need && !player.keys[need]) return 'Locked stairwell — needs the key to ' + keyLabel(need);
+    return t === TILE.UP ? 'Trigger — climb the stairs up' : 'Trigger — descend the stairs';
+  }
   if (t === TILE.HIDE) return player.hidden ? 'Trigger — leave hiding' : 'Trigger — hide here';
   if (t === TILE.EXIT) return 'Trigger — the chained front doors';
   const it = data.items.find((i) => !i.taken && i.floor === player.floor && Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
@@ -2578,7 +2717,7 @@ function updateHUD() {
     if (player.hasLight) bits.push(player.lightOn ? '🔦 ON' : '🔦 off');
     if (player.inv.emf) bits.push('📶 EMF');
     if (player.inv.spiritbox) bits.push(spiritActive ? '📻 …' : '📻');
-    Object.keys(player.keys).forEach(() => bits.push('🗝'));
+    Object.keys(player.keys).forEach((id) => bits.push('🗝' + (KEY_SHORT[id] || '')));
     // Unbinding Rite progress: seated/total, carried anchors, censer
     if (ritual && data.rite) {
       const rc = player.rite || {};
