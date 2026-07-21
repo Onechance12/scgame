@@ -58,6 +58,7 @@ let wakeLock = null;
 let moodLights = [];           // per-room coloured lights
 let heroReady = Promise.resolve();
 let dust = null, dustBase = null;
+let stepT = 0, lastTileType = -1, lowBatWarned = false;
 let carter = null, carterTimer = 50;   // the chain-dragging apparition
 let fallingDebris = [], debrisKept = [], dropCooldown = 25;
 let morgueScared = false, sceneAnims = [];
@@ -1103,7 +1104,11 @@ function vrLocomotion(dt) {
 }
 function keysSprint() { return false; } // VR: no sprint stick button by default
 
+function comfortBlink(strength) {   // brief vignette pulse to ease VR discomfort
+  if (vignette) vignette.material.opacity = Math.max(vignette.material.opacity, strength);
+}
 function snapTurn(rad) {
+  comfortBlink(0.75);
   // rotate the dolly around the player's current head position
   camera.getWorldPosition(tmpV);
   dolly.position.sub(tmpV);
@@ -1323,6 +1328,7 @@ function changeFloor(dir) {
   if (nf === player.floor) return;
   player.floor = nf;
   Audio2.creak();
+  comfortBlink(1);   // black-blink the stair transition
   buildFloor(nf);
   const landX = Math.max(4, Math.min(World.W - 5, Math.round(player.x)));
   placeDollyAtTile(landX + 0.5, 15.5);
@@ -1594,7 +1600,16 @@ function updateSceneAnims(dt) {
   for (let i = sceneAnims.length - 1; i >= 0; i--) if (!sceneAnims[i](dt)) sceneAnims.splice(i, 1);
 }
 
+function haptic(intensity, ms) {   // rumble both hands (VR only, fail-soft)
+  [sources.left, sources.right].forEach((c) => {
+    try {
+      const g = c && c.userData.inputSource && c.userData.inputSource.gamepad;
+      if (g && g.hapticActuators && g.hapticActuators[0]) g.hapticActuators[0].pulse(intensity, ms);
+    } catch (e) { }
+  });
+}
 function powerSurge() {
+  haptic(1, 220);
   blackoutUntil = performance.now() + 1400;
   Audio2.slam(); Audio2.stinger(true);
   player.fear = Math.min(100, player.fear + 12);
@@ -1709,11 +1724,25 @@ function update(dt) {
       entityMeshes.get(e).group.visible = false;
     }
   });
-  if (hunting && Math.random() < dt * 3) Audio2.chase(true);
+  if (hunting && Math.random() < dt * 3) { Audio2.chase(true); haptic(0.5, 80); }
   if (nearest < 5) player.fear = Math.min(100, player.fear + (5 - nearest) * dt * 2.4);
   if (player.inv.emf && nearest < 9 && Math.random() < dt * (2 + (5 - nearest / 9 * 5))) Audio2.emf(Math.max(1, Math.round(5 - nearest / 9 * 5)));
 
   updateSpiritObjective(dt);
+
+  // your own footsteps — quiet, cadenced with movement (sprint = faster, louder)
+  const isMoving = player.moving || (isVR && (readAxes(sources.left)[0] || readAxes(sources.left)[1]));
+  if (isMoving && !player.hidden) {
+    stepT -= dt;
+    if (stepT <= 0) { stepT = player.sprinting ? 0.34 : 0.52; Audio2.footstep(player.sprinting ? 0.05 : 0.028); }
+  } else stepT = 0.15;
+  // crossing a doorway — the hinge complains
+  const tNow = tileAt(player.floor, player.x, player.y);
+  if (tNow === TILE.DOOR && lastTileType !== TILE.DOOR && Math.random() < 0.5) Audio2.creak();
+  lastTileType = tNow;
+  // dying flashlight panics once
+  if (player.lightOn && player.battery < 20 && !lowBatWarned) { lowBatWarned = true; showSubtitle('The flashlight is dying. Find batteries — or learn the dark.', 3.5); }
+  if (player.battery >= 45) lowBatWarned = false;
 
   updateDust(dt);
   // flickering fixtures + animated toys + the haunted nursery + wall children
@@ -1910,7 +1939,11 @@ function bar(c, x, y, label, v, col) {
   c.strokeStyle = 'rgba(255,255,255,.2)'; c.strokeRect(x + 70, y, 220, 18);
   c.fillStyle = col; c.fillRect(x + 71, y + 1, 218 * Math.max(0, Math.min(1, v / 100)), 16);
 }
-function setBar(id, v) { const el = document.getElementById(id); if (el) el.style.width = Math.max(0, Math.min(100, v)) + '%'; }
+function setBar(id, v) {
+  const el = document.getElementById(id); if (!el) return;
+  el.style.width = Math.max(0, Math.min(100, v)) + '%';
+  if (id === 'battery-fill') el.style.background = v < 20 ? 'linear-gradient(90deg,#5a0000,#c41f1f)' : '';
+}
 function setText(id, t) { const el = document.getElementById(id); if (el) el.textContent = t; }
 function updateDesktopObjective() {
   const el = document.getElementById('objective'); if (!el) return;
