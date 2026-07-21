@@ -831,7 +831,7 @@ function buildExterior() {
   const N = 260, mp = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) { mp[i * 3] = doorX + (Math.random() - 0.5) * 70; mp[i * 3 + 1] = Math.random() * 2.2; mp[i * 3 + 2] = -Math.random() * 55; }
   const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(mp, 3));
-  const mist = new THREE.Points(mg, new THREE.PointsMaterial({ color: 0x8a93a0, size: 0.9, transparent: true, opacity: 0.10, depthWrite: false }));
+  const mist = new THREE.Points(mg, new THREE.PointsMaterial({ map: softDotTex(), color: 0x8a93a0, size: 1.35, transparent: true, opacity: 0.09, depthWrite: false }));
   mist.frustumCulled = false; g.add(mist);
   // the children's playground you pass on the way up — swing set and carousel,
   // rusted still. In the wind, the carousel turns. Slowly. On its own.
@@ -869,7 +869,7 @@ function buildExterior() {
   const sg = new THREE.BufferGeometry();
   sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
   sg.setAttribute('color', new THREE.BufferAttribute(sc2, 3));
-  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.9, fog: false, depthWrite: false, sizeAttenuation: false }));
+  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ map: softDotTex(), size: 1.4, vertexColors: true, transparent: true, opacity: 0.9, fog: false, depthWrite: false, sizeAttenuation: false, blending: THREE.AdditiveBlending }));
   stars.frustumCulled = false; g.add(stars);
   // the moon — a pale disc in a wide sick halo, low over the hill
   const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(190,200,220,0.55)'), transparent: true, opacity: 0.34, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -1525,6 +1525,19 @@ function makeBeamCookie() {
   }
   return new THREE.CanvasTexture(c);
 }
+// Every particle system shares this soft radial dot — untextured THREE.Points
+// render as hard SQUARES (the "floating boxes" from the playtest screenshots).
+// Cache lives ON the function: callers run during init, before top-level lets.
+function softDotTex() {
+  if (softDotTex.t) return softDotTex.t;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 2, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return (softDotTex.t = new THREE.CanvasTexture(c));
+}
+
 function makeDust() {
   const N = 130;
   dustBase = new Float32Array(N * 3);
@@ -1535,7 +1548,7 @@ function makeDust() {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(dustBase.slice(), 3));
-  const m = new THREE.PointsMaterial({ color: 0xc9ba98, size: 0.018, transparent: true,
+  const m = new THREE.PointsMaterial({ map: softDotTex(), color: 0xc9ba98, size: 0.018, transparent: true,
     opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
   dust = new THREE.Points(g, m);
   dust.frustumCulled = false;
@@ -1705,7 +1718,7 @@ function addDrip(wx, wz) {
   const N = 5, pos = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) { pos[i * 3] = wx * TILE_M + (Math.random() - 0.5) * 0.1; pos[i * 3 + 1] = WALL_H - Math.random() * WALL_H; pos[i * 3 + 2] = wz * TILE_M + (Math.random() - 0.5) * 0.1; }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9fb4c4, size: 0.05, transparent: true, opacity: 0.7, depthWrite: false }));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: softDotTex(), color: 0x9fb4c4, size: 0.05, transparent: true, opacity: 0.7, depthWrite: false }));
   floorGroup.add(pts);
   atmoDrips.push({ pts, pos, wx: wx * TILE_M, wz: wz * TILE_M, vy: new Float32Array(N).map(() => 1 + Math.random() * 2) });
   // a small dark puddle where it lands
@@ -2402,7 +2415,7 @@ function buildEmbers(rec, grp) {
   const N = 90, ep = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) { const a = Math.random() * 6.28, r = 0.3 + Math.random() * 0.7; ep[i * 3] = Math.cos(a) * r; ep[i * 3 + 1] = 0.2 + Math.random() * 1.9; ep[i * 3 + 2] = Math.sin(a) * r; }
   const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.BufferAttribute(ep, 3));
-  rec.embers = new THREE.Points(eg, new THREE.PointsMaterial({ color: 0xff6a1e, size: 0.05, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+  rec.embers = new THREE.Points(eg, new THREE.PointsMaterial({ map: softDotTex(), color: 0xff6a1e, size: 0.05, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
   grp.add(rec.embers);
   const glow = new THREE.PointLight(0xff5a1e, 0.8, 4, 2); glow.position.y = 1; grp.add(glow); grp.userData.ember = glow;
 }
@@ -2517,7 +2530,7 @@ function ensureEntityMesh(e) {
       ep[i * 3] = Math.cos(a) * r; ep[i * 3 + 1] = 0.2 + Math.random() * 1.9; ep[i * 3 + 2] = Math.sin(a) * r;
     }
     const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.BufferAttribute(ep, 3));
-    rec.embers = new THREE.Points(eg, new THREE.PointsMaterial({ color: 0xff6a1e, size: 0.045, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    rec.embers = new THREE.Points(eg, new THREE.PointsMaterial({ map: softDotTex(), color: 0xff6a1e, size: 0.045, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
     grp.add(rec.embers);
     const glow = new THREE.PointLight(0xff5a1e, 0.8, 4, 2); glow.position.y = 1; grp.add(glow);
     grp.userData.ember = glow;
