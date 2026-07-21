@@ -1,3 +1,4 @@
 .shot-*.png
 .vr-*.png
 node_modules/
+shots/
