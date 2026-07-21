@@ -170,6 +170,9 @@ function init() {
 
   loadTextures();
   heroReady = loadHeroModels();      // real furniture, preloads during the menu
+  heroReady.then(() => {             // grips may have connected before the hands loaded
+    dressGrip(sources.leftGrip, 'left'); dressGrip(sources.rightGrip, 'right');
+  });
   flashlight.map = makeBeamCookie(); // textured beam — dappled, real
   makeDust();
   setupControllers();
@@ -276,10 +279,12 @@ function setupControllers() {
         // move the wrist HUD onto the actual left hand's grip
         if (wristPanel.parent) wristPanel.parent.remove(wristPanel);
         sources.leftGrip.add(wristPanel);
+        dressGrip(sources.leftGrip, 'left');
       } else if (hand === 'right') {
         sources.right = c;
         sources.rightGrip = (c === controller1) ? grip1 : grip2;
         attachFlashlightTo(c);
+        dressGrip(sources.rightGrip, 'right');
       }
     });
     c.addEventListener('disconnected', () => { c.userData.inputSource = null; });
@@ -299,6 +304,7 @@ function attachFlashlightTo(c) {
 
 function makeHandMesh() {
   const g = new THREE.Group();
+  g.userData.fallbackHand = true;   // replaced by the real hand model once it loads
   const geo = new THREE.CylinderGeometry(0.02, 0.03, 0.10, 8);
   const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x9aa2ab, roughness: .8 }));
   m.rotation.x = -Math.PI / 2;
@@ -310,6 +316,52 @@ function makeHandMesh() {
   body.rotation.x = -Math.PI / 2; body.position.z = -0.06;
   g.add(body);
   return g;
+}
+
+// Real first-person hands on the grips. The source model is one rig holding BOTH
+// arms, so each grip gets a clone with the OTHER arm's bones collapsed to nothing
+// (cheap, no clipping planes, skinning still valid). The wrist bone is anchored
+// to the grip origin and the forearm aimed back along the controller.
+function dressGrip(grip, hand) {
+  const src = (window.HeroModels || {}).vrhands;
+  if (!src || !grip || grip.userData.dressedHand === hand) return;
+  for (let i = grip.children.length - 1; i >= 0; i--) {
+    const ch = grip.children[i];
+    if (ch.userData.fallbackHand || ch.userData.handDress) grip.remove(ch);
+  }
+  try {
+    const m = skeletonClone(src);
+    // NOTE: GLTFLoader sanitises bone names — 'hand.R_010' arrives as 'handR_010'
+    const suff = hand === 'left' ? 'l' : 'r', other = hand === 'left' ? 'r' : 'l';
+    let handBone = null, foreBone = null;
+    m.traverse((o) => {
+      if (!o.isBone) return;
+      const n = o.name.toLowerCase();
+      if (n.includes('clavicle' + other) || n.includes('deltoid' + other) || n.includes('upper_arm' + other)) o.scale.setScalar(0.0001);   // vanish the other arm
+      if (!handBone && n.includes('hand' + suff)) handBone = o;
+      if (!foreBone && n.includes('forearm' + suff) && !n.includes('001') && !n.includes('end')) foreBone = o;
+    });
+    if (!handBone) return;
+    m.updateMatrixWorld(true);
+    // human scale: normalise the forearm (elbow→wrist) to ~26 cm
+    const hp = handBone.getWorldPosition(new THREE.Vector3());
+    const fp = (foreBone || handBone).getWorldPosition(new THREE.Vector3());
+    m.scale.setScalar(0.26 / (hp.distanceTo(fp) || 1));
+    m.updateMatrixWorld(true);
+    // aim: elbow→wrist should run forward and a touch down, like a held-out arm
+    const hp2 = handBone.getWorldPosition(new THREE.Vector3());
+    const fp2 = (foreBone || handBone).getWorldPosition(new THREE.Vector3());
+    const q = new THREE.Quaternion().setFromUnitVectors(
+      hp2.clone().sub(fp2).normalize(), new THREE.Vector3(0, -0.22, -1).normalize());
+    m.quaternion.premultiply(q);
+    m.updateMatrixWorld(true);
+    m.position.sub(handBone.getWorldPosition(new THREE.Vector3()));   // wrist sits at the grip
+    // grade the skin down to something that's been in this building all night
+    m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.lerp(new THREE.Color(0x8a7566), 0.4); if (o.material.roughness != null) o.material.roughness = 0.85; o.frustumCulled = false; } });
+    const holder = new THREE.Group(); holder.userData.handDress = true;
+    holder.add(m); grip.add(holder);
+    grip.userData.dressedHand = hand;
+  } catch (e) { console.warn('hand dress failed:', e); }
 }
 
 function skipCine() {
@@ -586,7 +638,7 @@ function newGame(saved) {
   // their dens and won't hunt, fear can't kill, and the game teaches you.
   graceUntil = saved ? 0 : 100;
   onboardStep = saved ? -1 : 0; onboardT = saved ? 0 : 3;
-  hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false; phoneRang = false;
+  hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false; phoneRang = false; matronGone = false;
   deathBy = ''; lastKiller = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   data.objectives.forEach((o) => (o.done = false));
@@ -980,6 +1032,9 @@ function buildFloor(fi) {
       animatedProps.push({ obj: pivot, kind: 'spin', phase: 0 });
     }
   }
+  // The Matron herself keeps her old room — a hooded shape frozen mid-reach.
+  // Not a hunter: a set-piece scare. Walk too close and she is simply… gone.
+  try { buildMatronApparition(fi); } catch (e) { console.warn('matron failed:', e); }
 
   // real hospital furniture scattered through the wards, halls and rooms
   try { placeHorrorProps(fi); } catch (e) { console.warn('horror props failed:', e); }
@@ -1019,6 +1074,7 @@ function toggleJournal() {
   html += '<li><b>The Risen</b> — a patient who died on the top floor and would not stay dead. It walks the quarters and the chapel still, looking for the way out you found.</li>';
   html += '<li><b>The Nightmare</b> — what the surgical wing dreamed up in sixty years of ether and screaming. It wakes in the deepest hours.</li>';
   html += '<li><b>The Wraith</b> — the cold spot in the attic dark. It does not walk. It does not need to.</li>';
+  html += '<li><b>The Matron</b> — she who bound them all still keeps her room on the fourth floor. Do not walk up to her. She hates being interrupted.</li>';
   html += '</ul><h3>The Unbinding Rite</h3>';
   if (ritual && data.rite) {
     const rc = player.rite || {};
@@ -1053,6 +1109,72 @@ function toggleJournal() {
   }
   el.innerHTML = html + '<p class="tip">TAB TO CLOSE THE FILE</p></div>';
   el.classList.add('show');
+}
+
+// ---- the Matron's apparition (4th floor set-piece) ----
+let matronApp = null, matronGone = false;
+function buildMatronApparition(fi) {
+  matronApp = null;
+  if (fi !== 4 || matronGone) return;
+  const src = (window.MobModels || {}).matronW;
+  const room = data.floors[4].rooms.find((r) => r.tag === 'matron');
+  if (!src || !src.scene || !room) return;
+  const model = skeletonClone(src.scene);
+  // freeze her mid-lunge — the run cycle's ugliest frame, held forever
+  if (src.animations && src.animations.length) {
+    const mx = new THREE.AnimationMixer(model);
+    mx.clipAction(src.animations[0]).play(); mx.update(0.4);
+  }
+  model.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(model, true);
+  const h = (box.max.y - box.min.y) || 1;
+  model.scale.setScalar(1.85 / h);
+  model.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(model, true);
+  model.position.y = -box.min.y + 0.12;   // she does not quite touch the floor
+  model.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    o.frustumCulled = false;
+    o.material = o.material.clone();
+    if (o.material.color) o.material.color.lerp(new THREE.Color(0x2c2733), 0.4);
+    if (o.material.map) o.material.map.anisotropy = 4;
+  });
+  const grp = new THREE.Group();
+  grp.add(model);
+  const wx = (room.cx + 0.5 + (room.w > 5 ? 1 : 0)) * TILE_M, wz = (room.cy + 0.2) * TILE_M;
+  grp.position.set(wx, 0, wz);
+  grp.rotation.y = Math.PI * 0.8;   // half-turned away, reaching for something long gone
+  const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(120,110,160,0.4)'), transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+  aura.scale.set(2.4, 2.4, 1); aura.position.y = 1.1; grp.add(aura);
+  floorGroup.add(grp);
+  matronApp = { grp, tx: wx / TILE_M, ty: wz / TILE_M, seen: false, fading: 0 };
+}
+function matronUpdate(dt) {
+  const m = matronApp;
+  if (!m || player.floor !== 4) return;
+  if (m.fading > 0) {   // dissolving out of the world
+    m.fading -= dt;
+    const op = Math.max(0, m.fading / 0.7);
+    m.grp.traverse((o) => { if (o.isMesh && o.material) { o.material.transparent = true; o.material.opacity = op; } });
+    if (m.fading <= 0) {
+      floorGroup.remove(m.grp); matronApp = null; matronGone = true;
+      showSubtitle('Cold air where she stood. The Matron was never going to leave her ward.', 4.5);
+    }
+    return;
+  }
+  const d = Math.hypot(m.tx - player.x, m.ty - player.y);
+  if (!m.seen && d < 8 && inRoom(4, 'matron')) {
+    m.seen = true;
+    Audio2.whisper(0.8); Audio2.dread();
+    player.fear = Math.min(100, player.fear + 8);
+    showSubtitle('A hooded shape stands in the Matron’s room. It has not moved in fifty years. Probably.', 5);
+  }
+  if (d < 2.3) {   // you walked up to her. she declines the meeting.
+    m.fading = 0.7;
+    Audio2.screechPan(panTo({ x: m.tx, y: m.ty }), 0.14);
+    player.fear = Math.min(100, player.fear + 12);
+    comfortBlink(0.9); haptic(0.6, 90);
+  }
 }
 
 // ---- the children behind the walls ----
@@ -1202,6 +1324,8 @@ function loadHeroModels() {
     ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
     // exterior set-pieces (animated — the carousel turns on its own)
     ['playgroundG', 'horror/playground/scene.gltf'], ['carouselG', 'horror/carousel/scene.gltf'],
+    // the Matron herself — a hooded apparition, frozen mid-reach (set-piece, not a hunter)
+    ['matronW', 'horror/matron/scene.gltf'],
   ];
   monsters.forEach(([k, f]) => loads.push(L.loadAsync('assets/models/' + f).then((g) => { MOB[k] = g; }).catch((e) => console.warn('mob load failed:', f))));
   // real horror furniture (CC-BY, credited) — fills the wards, halls and rooms
@@ -1215,7 +1339,9 @@ function loadHeroModels() {
     // batch 3 — clutter & set-pieces (CC-BY, credited)
     evidenceboard: 'evidenceboard', cannedgoods: 'cannedgoods', toolset: 'toolset', kitchenware: 'kitchenware',
     // batch 4 — stairwell, piano, boards (CC-BY, credited)
-    staircase: 'staircase', piano: 'piano', planks: 'planks' };
+    staircase: 'staircase', piano: 'piano', planks: 'planks',
+    // real first-person hands for the VR grips
+    vrhands: 'vrhands' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -3344,6 +3470,7 @@ function update(dt) {
   updateFixtures(dt);
   animateProps(dt);
   nurseryUpdate(dt);
+  matronUpdate(dt);
   updatePeekers(dt);
   Survival.update(dt, hour, realMode);
   if (riteClimax) player.fear = Math.min(player.fear, 40);   // the Rite holds the dread at bay

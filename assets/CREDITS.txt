@@ -175,6 +175,13 @@ given here). Textures downscaled to 1K for web/headset weight.
     carousel/      "Abandoned carousel"                    by sergeilihandristov
                    https://sketchfab.com/3d-models/abandoned-carousel-f472e10e4ed54bd5a0871da3ec753fcc
 
+VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
+    vrhands/       "First Person Hands - Rigged"           by David Fischer  (the player's VR hands)
+                   https://sketchfab.com/3d-models/first-person-hands-rigged-547a45535f0c4fe787948f7a7a6a88db
+    matron/        "Terrifying Hooded Horror Woman" [The Matron]  by PurplePoint
+                   https://sketchfab.com/3d-models/terrifying-hooded-horror-woman-f59d17be392f4494a5b85d927df48ffd
+                   (texture downscaled to 1K)
+
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.
