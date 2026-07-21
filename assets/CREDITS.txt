@@ -153,6 +153,15 @@ grouped in-engine; big textures downscaled (kitchenware to 1K) for web weight.
     cobwebpack/    "Cobwebs"                        by DJMaesen  (corner-web props)
                    https://sketchfab.com/3d-models/cobwebs-941c92fcf27b44caafbf6d690ba9593f
 
+STAIRWELL, PIANO & BOARDS — assets/models/horror/ (all CC-BY-4.0; attribution
+REQUIRED, given here). Heavy textures downscaled (staircase 56M->5.3M).
+    staircase/     "Staircase"                      by rickmaolly  (concrete stairwell flights)
+                   https://sketchfab.com/3d-models/staircase-f685e733edc545acb527881ea73b4152
+    piano/         "Haunted Piano"                  by local.yany
+                   https://sketchfab.com/3d-models/haunted-piano-d9b87497cfa941cca3507a5d739e18a3
+    planks/        "Wooden Planks"                  by shtran  (boarded-up walls)
+                   https://sketchfab.com/3d-models/wooden-planks-3299d83456eb44e0b07da3f31428330e
+
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.

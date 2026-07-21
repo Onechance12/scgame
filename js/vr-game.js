@@ -1144,7 +1144,9 @@ function loadHeroModels() {
     vending: 'vending', bookshelf: 'bookshelf', candle: 'candle', cross: 'cross', ceilinglights: 'ceilinglights',
     gasstove: 'gasstove', voodoohang: 'voodoohang', shovel: 'shovel', bloodytarp: 'bloodytarp', wallblood: 'wallblood',
     // batch 3 — clutter & set-pieces (CC-BY, credited)
-    evidenceboard: 'evidenceboard', cannedgoods: 'cannedgoods', toolset: 'toolset', kitchenware: 'kitchenware' };
+    evidenceboard: 'evidenceboard', cannedgoods: 'cannedgoods', toolset: 'toolset', kitchenware: 'kitchenware',
+    // batch 4 — stairwell, piano, boards (CC-BY, credited)
+    staircase: 'staircase', piano: 'piano', planks: 'planks' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -1409,10 +1411,33 @@ function lightShaft(wx, wz, color, radius, opacity) {
   floorGroup.add(m);
   return m;
 }
+const STAIR_TUNE = { runM: 5.4, edgeM: 0.7 };
 function addStairs(wx, wz, up) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: .95 });
-  const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.8, 0.5, TILE_M * 0.8), mat);
-  m.position.set(wx, 0.25, wz); floorGroup.add(m);
+  const model = (window.HeroModels || {}).staircase;
+  const tileY = Math.floor(wz / TILE_M);
+  const ct = data.CORR_TOP, cb = data.CORR_BOT;
+  if (model && ct != null && cb != null) {
+    const s = model.clone();
+    let b = new THREE.Box3().setFromObject(s); const sz = b.getSize(new THREE.Vector3());
+    const run = Math.max(sz.x, sz.z) || 1;         // the model's long (run/climb) axis
+    s.scale.setScalar(STAIR_TUNE.runM / run);
+    if (sz.x >= sz.z) s.rotation.y = Math.PI / 2;  // align the run to world Z (corridor depth)
+    b = new THREE.Box3().setFromObject(s); const ctr = b.getCenter(new THREE.Vector3()); const bs = b.getSize(new THREE.Vector3());
+    s.position.x -= ctr.x; s.position.z -= ctr.z; s.position.y -= b.min.y;
+    s.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.82); if (o.material.roughness != null) o.material.roughness = Math.min(1, o.material.roughness + 0.15); o.frustumCulled = true; } });
+    const g = new THREE.Group(); g.add(s);
+    // the flight climbs into the open corridor from its edge; base hugs the outer wall
+    const topEdge = Math.abs(tileY - ct) <= Math.abs(tileY - cb);
+    g.rotation.y = topEdge ? 0 : Math.PI;   // top-edge stair climbs +z into the band, bottom-edge climbs -z
+    const baseZ = topEdge ? (ct * TILE_M + STAIR_TUNE.edgeM + bs.z / 2)
+                          : ((cb + 1) * TILE_M - STAIR_TUNE.edgeM - bs.z / 2);
+    g.position.set(wx, 0, baseZ);
+    floorGroup.add(g);
+  } else {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: .95 });
+    const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.8, 0.5, TILE_M * 0.8), mat);
+    m.position.set(wx, 0.25, wz); floorGroup.add(m);
+  }
   // a small dim EXIT-style sign so you can find the stairwell — not a glowing block
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.28, 4),
     new THREE.MeshStandardMaterial({ color: 0x0a1a0a, emissive: 0x2a6a2a, emissiveIntensity: 0.5 }));
@@ -1580,6 +1605,9 @@ const HPROP_CFG = {
   cobwebA:     { by: 'long', size: 1.10, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
   cobwebB:     { by: 'long', size: 1.30, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
   cobwebC:     { by: 'long', size: 1.15, tint: 0xcfd6de, tintAmt: 0.10, mount: 'ceiling', web: true },
+  // batch 4
+  piano:       { by: 'long', size: 1.55, tint: 0x2a2420, tintAmt: 0.22 },
+  planks:      { by: 'long', size: 1.35, tint: 0x6a5236, tintAmt: 0.20, mount: 'wall' },
 };
 function makeHProp(key, wx, wz, yaw) {
   const src = (window.HeroModels || {})[key];
@@ -1800,12 +1828,13 @@ function placeHorrorProps(fi) {
         wallRow(r, 'N', 'wheelchair', 1.6, 0, 1.7);
         if (r.h >= 5) wallRow(r, 'S', 'wheelchair', 1.6, Math.PI, 1.7);
         if (rnd() < 0.8) wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 3, 1);
-        if (r.tag === 'lobby') { wallMount(r, 'brokenclock'); placeIn(r, 'payphone', 0); placeIn(r, 'oldtv', 0); wallMount(r, 'evidenceboard'); }
+        if (r.tag === 'lobby') { wallMount(r, 'brokenclock'); placeIn(r, 'payphone', 0); placeIn(r, 'oldtv', 0); wallMount(r, 'evidenceboard'); if (rnd() < 0.6) wallRow(r, 'S', 'piano', 1.1, Math.PI, 3, 1); }
         else if (rnd() < 0.5) wallMount(r, 'brokenclock');
         break;
-      case 'chapel':  // cross at the front, a line of candles before it
+      case 'chapel':  // cross at the front, a line of candles before it, an old piano to the side
         centerP(r, 'cross', 0, 0, -(r.h * 0.32));
         wallRow(r, 'N', 'candle', 1.3, 0, 1.5, 4);
+        if (rnd() < 0.8) wallRow(r, 'E', 'piano', 1.1, -Math.PI / 2, 3, 1);
         break;
       case 'bath':    // tubs against one wall, cabinets on the other
         wallRow(r, 'W', 'bloodybath', 1.3, Math.PI / 2, 2.6, 2);
@@ -1826,6 +1855,8 @@ function placeHorrorProps(fi) {
     if (rnd() < 0.6) cornerWeb(r);
     if (rnd() < 0.3) cornerWeb(r);
     if (cat !== 'waiting' && cat !== 'library' && rnd() < 0.22) wallMount(r, rnd() < 0.5 ? 'brokenclock' : 'brokenclock2');
+    // some rooms have been boarded up — planks nailed across a wall
+    if (rnd() < 0.28) wallMount(r, 'planks');
   });
   // corridor dressing: dead pendant lights hang down the halls (no collision),
   // and the odd abandoned wheelchair sits against the corridor ends
