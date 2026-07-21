@@ -1627,20 +1627,103 @@ function placeHorrorProps(fi) {
     }
     return false;
   };
-  rooms.forEach((r) => {
-    const list = ROOM_PROPS[r.tag]; if (!list) return;
-    list.forEach(([prop, chance]) => {
-      if (rnd() > chance) return;
-      const key = prop === 'bed' ? (rnd() < 0.5 ? 'hospbed' : 'horrorbed') : prop;
-      placeIn(r, key, yaw4());
-    });
-    // extra beds fill out the big wards (more stuff!)
-    if (list.some((p) => p[0] === 'bed')) {
-      const extra = r.w * r.h > 40 ? 2 : r.w * r.h > 26 ? 1 : 0;
-      for (let i = 0; i < extra; i++) if (rnd() < 0.75) placeIn(r, rnd() < 0.5 ? 'hospbed' : 'horrorbed', yaw4());
+  // ---- arranged layouts: furniture set up like a real room, only a little disturbed ----
+  // world-space placement (footprint-checked) for smooth, aligned rows
+  const placeW = (key, wx, wz, yaw) => {
+    const cfg = HPROP_CFG[key]; const mount = (cfg && cfg.mount) || 'floor';
+    const tx = Math.floor(wx / TILE_M), ty = Math.floor(wz / TILE_M);
+    if (!isFloor(tx, ty)) return false;
+    const p = makeHProp(key, wx, wz, yaw); if (!p) return false;
+    const b = new THREE.Box3().setFromObject(p.grp);
+    if (!footprintClear(b, mount)) return false;
+    grp.add(p.grp);
+    if (p.solid) propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z });
+    return true;
+  };
+  // mostly-tidy facing, but every so often something's been knocked out of place
+  const askew = (base) => (base || 0) + (rnd() < 0.15 ? (rnd() - 0.5) * 0.85 : (rnd() - 0.5) * 0.13);
+  // a neat row of `key` along a wall of room r. side N/S/E/W. inset = tiles off the wall.
+  const wallRow = (r, side, key, inset, yaw, step, limit) => {
+    step = step || 2.0; let n = 0;
+    if (side === 'N' || side === 'S') {
+      const tz = side === 'N' ? r.y + inset : r.y + r.h - inset;
+      for (let tx = r.x + 1.2; tx <= r.x + r.w - 1.1; tx += step) { if (limit && n >= limit) break; if (placeW(key, tx * TILE_M, tz * TILE_M, askew(yaw))) n++; }
+    } else {
+      const tx = side === 'W' ? r.x + inset : r.x + r.w - inset;
+      for (let tz = r.y + 1.2; tz <= r.y + r.h - 1.1; tz += step) { if (limit && n >= limit) break; if (placeW(key, tx * TILE_M, tz * TILE_M, askew(yaw))) n++; }
     }
-    // a little loose clutter in every furnished room so nothing feels bare
-    if (rnd() < 0.6) placeIn(r, rnd() < 0.5 ? 'bin' : 'wheelchair', yaw4());
+    return n;
+  };
+  const centerP = (r, key, yaw, ox, oz) => placeW(key, (r.cx + 0.5 + (ox || 0)) * TILE_M, (r.cy + 0.5 + (oz || 0)) * TILE_M, askew(yaw));
+  const bed = () => (rnd() < 0.5 ? 'hospbed' : 'horrorbed');
+  const CAT = {
+    ward: 'ward', recovery: 'ward', iso: 'ward', room207: 'ward', maternity: 'ward', mose: 'ward', quarters: 'ward',
+    surgery: 'clinic', autopsy: 'clinic', xray: 'clinic', er: 'clinic', admitting: 'clinic',
+    morgue: 'morgue', pharmacy: 'store', supply: 'store', storage: 'store', linen: 'store', station: 'store',
+    records: 'library', matron: 'library', attic: 'library', cafeteria: 'dining', kitchen: 'dining',
+    lobby: 'waiting', waiting: 'waiting', chapel: 'chapel', sanctum: 'chapel', bath: 'bath',
+    incinerator: 'boiler', boiler: 'boiler', laundry: 'boiler', ritual: 'ritual', nursery: 'nursery',
+  };
+  rooms.forEach((r) => {
+    const cat = CAT[r.tag]; if (!cat) return;
+    switch (cat) {
+      case 'ward':   // beds in tidy rows against the walls, lockers to one side
+        wallRow(r, 'N', bed(), 1.5, 0, 2.2);
+        if (r.h >= 5) wallRow(r, 'S', bed(), 1.5, Math.PI, 2.2);
+        wallRow(r, 'W', 'locker', 0.9, Math.PI / 2, 2.4, 2);
+        if (rnd() < 0.5) placeIn(r, 'wheelchair', yaw4());
+        if (r.tag === 'maternity' && rnd() < 0.6) centerP(r, 'oldtv', 0);
+        break;
+      case 'clinic':  // an operating/exam table centred, cabinets banked on the wall
+        centerP(r, 'examtable', r.w >= r.h ? 0 : Math.PI / 2);
+        wallRow(r, 'N', 'metalcab', 1.0, 0, 2.1, 3);
+        if (r.tag === 'surgery' || r.tag === 'er') placeIn(r, 'gurney', yaw4());
+        if (r.tag === 'er') wallRow(r, 'S', 'locker', 0.9, Math.PI, 2.4, 2);
+        break;
+      case 'morgue':  // coffins lined along a wall, slab centred
+        wallRow(r, 'W', 'coffin', 1.4, Math.PI / 2, 2.4, 3);
+        centerP(r, 'examtable', 0);
+        wallRow(r, 'N', 'metalcab', 1.0, 0, 2.1, 2);
+        placeIn(r, 'deadcovered', yaw4());
+        break;
+      case 'store':   // banks of cabinets and lockers down the walls
+        wallRow(r, 'N', 'metalcab', 1.0, 0, 2.0, 4);
+        wallRow(r, 'S', 'locker', 0.9, Math.PI, 2.2, 3);
+        if (r.tag === 'storage' || r.tag === 'supply') placeIn(r, 'shovel', yaw4());
+        break;
+      case 'library': // shelves lined up along the walls
+        wallRow(r, 'N', 'bookshelf', 1.0, 0, 1.9, 4);
+        if (r.w >= 5) wallRow(r, 'S', 'bookshelf', 1.0, Math.PI, 1.9, 3);
+        if (r.tag === 'matron') { centerP(r, 'oldtv', 0, r.w * 0.18, 0); if (rnd() < 0.6) placeIn(r, 'clock', 0); if (rnd() < 0.6) placeIn(r, 'candle', 0); }
+        break;
+      case 'dining':  // tables in a tidy grid
+        for (let gx = r.x + 2; gx <= r.x + r.w - 1.5; gx += 2.6) for (let gz = r.y + 2; gz <= r.y + r.h - 1.5; gz += 2.4) placeW('caftable', gx * TILE_M, gz * TILE_M, askew(0));
+        if (r.tag === 'kitchen') { wallRow(r, 'N', 'gasstove', 1.0, 0, 2.0, 2); wallRow(r, 'S', 'metalcab', 1.0, Math.PI, 2.2, 3); }
+        else wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 2.5, 1);
+        break;
+      case 'waiting': // a couple of rows of waiting-room seats, machines against a wall
+        wallRow(r, 'N', 'wheelchair', 1.6, 0, 1.7);
+        if (r.h >= 5) wallRow(r, 'S', 'wheelchair', 1.6, Math.PI, 1.7);
+        if (rnd() < 0.8) wallRow(r, 'W', 'vending', 1.0, Math.PI / 2, 3, 1);
+        if (r.tag === 'lobby') { placeIn(r, 'clock', 0); placeIn(r, 'payphone', 0); placeIn(r, 'oldtv', 0); }
+        break;
+      case 'chapel':  // cross at the front, a line of candles before it
+        centerP(r, 'cross', 0, 0, -(r.h * 0.32));
+        wallRow(r, 'N', 'candle', 1.3, 0, 1.5, 4);
+        break;
+      case 'bath':    // tubs against one wall, cabinets on the other
+        wallRow(r, 'W', 'bloodybath', 1.3, Math.PI / 2, 2.6, 2);
+        wallRow(r, 'E', 'bathcab', 0.9, -Math.PI / 2, 2.4, 2);
+        break;
+      case 'boiler':  // industrial banks + a shovel
+        wallRow(r, 'N', 'metalcab', 1.0, 0, 2.2, 3);
+        placeIn(r, 'shovel', yaw4());
+        break;
+      case 'ritual':  centerP(r, 'bloodytarp', 0); wallRow(r, 'N', 'candle', 1.3, 0, 1.6, 4); break;
+      case 'nursery': if (rnd() < 0.7) placeIn(r, 'oldtv', yaw4()); if (rnd() < 0.6) placeIn(r, 'voodoohang', 0); break;
+    }
+    // one small out-of-place touch: a knocked bin or a lone wheelchair
+    if (rnd() < 0.45) placeIn(r, rnd() < 0.6 ? 'bin' : 'wheelchair', yaw4());
   });
   // corridor dressing: dead pendant lights hang down the halls (no collision),
   // and the odd abandoned wheelchair sits against the corridor ends
@@ -1722,7 +1805,7 @@ const MOBMAP = {
   // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
   mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
   // The Crawler — a mutated human dragging itself along the floor (prone, so targetH is its low height)
-  crawler: { key: 'crawler2', targetH: 0.62, translucent: false, opacity: 1, tint: 0x6a5a52, tintAmt: 0.4, emissive: 0x120404, aura: 'rgba(80,10,20,0.5)', auraS: 2.0, yaw: 0 },
+  crawler: { key: 'crawler2', targetH: 0.62, translucent: false, opacity: 1, tint: 0x54514a, tintAmt: 0.72, emissive: 0x0e0604, aura: 'rgba(80,10,20,0.5)', auraS: 2.0, yaw: 0 },
   // The Ash — the Closer's straitjacketed body, charred and wreathed in living embers (the 1926 fire's dead)
   ash: { key: 'closer', targetH: 1.92, translucent: false, opacity: 1, tint: 0x2a1810, tintAmt: 0.6, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: 0 },
   // The Ghoul — a hunched, blood-clawed corpse-eater that haunts the basement

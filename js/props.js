@@ -557,10 +557,11 @@ const Props = (() => {
       if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: Math.random() * 6 });
     };
 
-    // generic clutter pass — rooms get scattered debris so nothing feels bare
+    // light grit pass — the arranged furniture (vr-game.js) carries the room now,
+    // so this just adds a few loose bits of debris, not a pile of random junk
     const areaT = (room.w - 2) * (room.h - 2);
-    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart', 'papers', 'newspaper', 'newspaper', 'chair', 'crates', 'papers', 'tray', 'chair'];
-    const nClutter = Math.min(18, Math.max(2, Math.floor(areaT / 6)));
+    const CLUTTER = ['papers', 'newspaper', 'tray', 'iv', 'papers', 'newspaper'];
+    const nClutter = Math.min(6, Math.max(1, Math.floor(areaT / 14)));
     // wall details: blood smears + 1926 fire scorch marks climbing the walls
     const wallDetail = (kind, count) => {
       for (let i = 0; i < count; i++) {
