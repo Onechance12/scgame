@@ -827,6 +827,7 @@ function toggleJournal() {
   html += '<li><b>The Children</b> — the basement ward; bound here by the night staff so the beds stayed full.</li>';
   html += '<li><b>The Ash</b> — what the incinerator kept, and what the Rite could set loose.</li>';
   html += '<li><b>The Ghoul</b> — it was never a patient. It came up through the basement drains for the unclaimed dead, and stayed.</li>';
+  html += '<li><b>The Risen</b> — a patient who died on the top floor and would not stay dead. It walks the quarters and the chapel still, looking for the way out you found.</li>';
   html += '</ul><h3>The Unbinding Rite</h3>';
   if (ritual && data.rite) {
     const rc = player.rite || {};
@@ -1000,6 +1001,7 @@ function loadHeroModels() {
     ['crawler2', 'horror/crawler2/scene.gltf'],   // the crawling mutated human
     ['ghoul', 'horror/ghoul/scene.gltf'],         // the Ghoul — basement corpse-eater
     ['closer', 'horror/closer/scene.gltf'],       // the Closer — the Ash's new body
+    ['undead', 'horror/undead/scene.gltf'],        // the Risen — a dead patient walking the top floor
     // legacy CC0 (set-pieces + fallback)
     ['ghost', 'monsters/ghost.glb'], ['skel', 'monsters/skeleton.glb'], ['kaykit', 'monsters/skeleton_warrior.glb'],
   ];
@@ -1451,6 +1453,8 @@ const MOBMAP = {
   ash: { key: 'closer', targetH: 1.92, translucent: false, opacity: 1, tint: 0x2a1810, tintAmt: 0.6, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: 0 },
   // The Ghoul — a hunched, blood-clawed corpse-eater that haunts the basement
   ghoul: { key: 'ghoul', targetH: 1.72, translucent: false, opacity: 1, tint: 0x5a5a4a, tintAmt: 0.35, emissive: 0x0a0402, aura: 'rgba(70,30,10,0.5)', auraS: 2.4, yaw: 0 },
+  // The Risen — a blood-caked dead patient stalking the top floor
+  undead: { key: 'undead', targetH: 1.86, translucent: false, opacity: 1, tint: 0x5a3232, tintAmt: 0.28, emissive: 0x140404, aura: 'rgba(120,20,20,0.5)', auraS: 2.5, yaw: 0 },
 };
 function auraSprite(rec, grp, hex, size, y) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex(hex), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -2504,6 +2508,7 @@ function catchLine(e) {
     ash: 'The Ash folds around you. The fire finally has a name for you.',
     crawler: 'The Crawler is on you before you can turn — it was always faster than it looked.',
     ghoul: 'The Ghoul drags you down among the drawers. It has been so hungry, and so patient.',
+    undead: 'The Risen gets its bloodied hands on you. Whatever it used to be, it only knows to pull you down now.',
   })[e.kind] || 'It takes you.';
 }
 function ambientEvent() {

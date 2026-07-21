@@ -227,6 +227,7 @@ const Entities = (() => {
     p = R(1, 'kitchen'); add({ name: 'The Crawler', kind: 'crawler', floor: 1, x: p.x, y: p.y, speed: 2.4, huntSpeed: 4.2, hearing: 9, sight: 7, wakeHour: 4, den: ['kitchen', 'cafeteria', 'pharmacy', 'records'] });
     p = R(2, 'ward');  add({ name: 'Night Nurse', kind: 'nurse2', floor: 2, x: p.x, y: p.y, speed: 1.8, huntSpeed: 3.1, hearing: 6, sight: 8, wakeHour: 2, den: ['ward', 'station', 'room207', 'maternity', 'bath'] });
     p = R(0, 'morgue'); add({ name: 'The Ghoul', kind: 'ghoul', floor: 0, x: p.x, y: p.y, speed: 1.9, huntSpeed: 3.5, hearing: 8, sight: 8, wakeHour: 7, den: ['morgue', 'storage', 'laundry', 'incinerator'] });
+    p = R(4, 'quarters'); add({ name: 'The Risen', kind: 'undead', floor: 4, x: p.x, y: p.y, speed: 1.8, huntSpeed: 3.3, hearing: 7, sight: 8, wakeHour: 5, den: ['quarters', 'matron', 'attic', 'chapel', 'bell'] });
     // Infested: a second Crawler stalks the upper wards
     if (opts.extra) { p = R(2, 'ward'); add({ name: 'The Other', kind: 'crawler', floor: 2, x: p.x, y: p.y, speed: 2.6, huntSpeed: 4.4, hearing: 10, sight: 8, wakeHour: 5, den: ['ward', 'maternity', 'station'] }); }
     return list;

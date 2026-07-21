@@ -81,6 +81,11 @@ license.txt from Sketchfab.
               https://sketchfab.com/3d-models/ghoul-c688fc7aaec74817a9851b799a140b5e
               (DivyeSh PanchAl — CC-BY-4.0)
 
+  The Risen (a dead patient walking the top floor):
+    horror/undead/  "Possessed undead"  by giantSwing
+              https://sketchfab.com/3d-models/possessed-undead-7394bdf26d664810b42b83153411cf74
+              (giantSwing — CC-BY-4.0)
+
   The Ash (its body is the Closer):
     horror/closer/  "Closer - Silent Hill 3"  by ShaxerTakkuY
               https://sketchfab.com/3d-models/closer-silent-hill-3-de9807d714b9486383a1b83fe438dfc4

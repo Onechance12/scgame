@@ -1,0 +1,11 @@
+Model Information:
+* title:	Possessed undead
+* source:	https://sketchfab.com/3d-models/possessed-undead-7394bdf26d664810b42b83153411cf74
+* author:	giantSwing (https://sketchfab.com/giantSwing)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Possessed undead" (https://sketchfab.com/3d-models/possessed-undead-7394bdf26d664810b42b83153411cf74) by giantSwing (https://sketchfab.com/giantSwing) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
