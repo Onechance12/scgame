@@ -199,6 +199,16 @@ VR HANDS & THE MATRON — (all CC-BY-4.0; attribution REQUIRED, given here).
                    (non-commercial; this fan tribute is non-commercial. textures to 512)
     mosspatch/     "Ground moss fores square 2k"    by 3dhdscan  (textures to 512)
                    https://sketchfab.com/3d-models/ground-moss-fores-square-2k-8b5699d30035485c9564035bb4458a91
+    ventvalve/     "Ventilation Valve ceiling/wall" by Mehdi Shahsavan  (textures to 512)
+                   https://sketchfab.com/3d-models/ventilation-valve-ceiling-wall-5mb-fadbec3e20754fea815602d72721baae
+
+TEXTURES HARVESTED FROM CC-BY MATERIAL MODELS (textures/horror/, credited):
+    floor_bloodwood.jpg  from "Bloody and clean wooden floor tiles" by Intee Assets
+                   https://sketchfab.com/3d-models/bloody-and-clean-wooden-floor-tiles-cb6b29abee974b3ea4266e804d1460ae
+                   (baseColor cropped + downscaled to 1K; floors of Room 3-East & the ritual chamber)
+    ground_forest.jpg    from "Forest Floor Material" by SuspiciouslyAwesome
+                   https://sketchfab.com/3d-models/forest-floor-material-73e45cf1a969427c95da4767f87c1896
+                   (baseColor downscaled to 1K; the exterior hillside ground)
 
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'

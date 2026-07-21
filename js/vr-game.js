@@ -805,7 +805,7 @@ function buildExterior() {
   const doorX = (lobbyR ? lobbyR.cx + 0.5 : 12) * TILE_M;
   // ground
   const gnd = new THREE.Mesh(new THREE.PlaneGeometry(160, 160),
-    new THREE.MeshStandardMaterial({ color: 0x131510, roughness: 1 }));
+    new THREE.MeshStandardMaterial({ map: TEX.groundForest, color: 0x3a3d32, roughness: 1 }));
   gnd.rotation.x = -Math.PI / 2; gnd.position.set(doorX, -0.02, -40); g.add(gnd);
   // facade
   const wallM = new THREE.MeshStandardMaterial({ map: TEX.wallD, color: 0x7a7d84, roughness: .95 });
@@ -1072,7 +1072,9 @@ function loadTextures() {
     carpet: load('dirty_carpet_diff.jpg', 4, 3),
     mosaic: load('old_mosaic_floor_diff.jpg', 4, 3),
     metal: load('horror/metal_rust.jpg', 3, 3),
+    bloodwood: load('horror/floor_bloodwood.jpg', 4, 4),   // blood soaked into the boards
   };
+  TEX.groundForest = load('horror/ground_forest.jpg', 26, 26);   // the hill's pine-needle ground
   // one material per skin, shared by every room using it
   TEX.roomMats = {};
   Object.keys(TEX.rooms).forEach((k) => {
@@ -1108,9 +1110,10 @@ const ROOM_FLOOR = {
   lobby: 'mosaic', admitting: 'mosaic', waiting: 'carpet', cafeteria: 'carpet',
   er: 'tile', surgery: 'tile', prep: 'tile', xray: 'tile', autopsy: 'tile', pharmacy: 'tile', bath: 'tile',
   kitchen: 'bigtile', ward: 'lino', room207: 'lino', maternity: 'lino', quarters: 'lino', matron: 'lino',
-  station: 'lino', records: 'lino', linen: 'lino', iso: 'lino', recovery: 'lino', mose: 'lino',
+  station: 'lino', records: 'lino', linen: 'lino', iso: 'lino', recovery: 'lino',
   chapel: 'wood', sanctum: 'wood', attic: 'wood', nursery: 'wood', bell: 'wood',
-  morgue: 'conc', storage: 'conc', laundry: 'conc', ritual: 'conc', supply: 'conc', landing: 'conc',
+  mose: 'bloodwood', ritual: 'bloodwood',   // the two rooms where the worst of it happened
+  morgue: 'conc', storage: 'conc', laundry: 'conc', supply: 'conc', landing: 'conc',
   incinerator: 'metal', boiler: 'metal',
 };
 
@@ -1575,7 +1578,9 @@ function loadHeroModels() {
     // the 1928 grounds lamps — two dead, one still trying
     streetlamp: 'streetlamp',
     // the hill is taking the grounds back: wild grass, lichened stone, moss
-    wildgrass: 'wildgrass', mossrock: 'mossrock', mosspatch: 'mosspatch' };
+    wildgrass: 'wildgrass', mossrock: 'mossrock', mosspatch: 'mosspatch',
+    // dead ventilation grilles for the ceilings — things skitter behind them
+    ventvalve: 'ventvalve' };
   Object.entries(HPROPS).forEach(([k, d]) => loads.push(
     L.loadAsync('assets/models/horror/' + d + '/scene.gltf').then((g) => { MODELS[k] = g.scene; }).catch((e) => console.warn('prop load failed:', d))));
   // packs we pull single items out of (one download, several props)
@@ -2106,6 +2111,7 @@ const HPROP_CFG = {
   crowbar:     { by: 'long', size: 0.60, tint: 0x5a4a42, tintAmt: 0.20, mount: 'flat' },
   scarebear:   { by: 'h',    size: 0.85, tint: 0x8a7a68, tintAmt: 0.30 },   // the big one in the nursery
   elecbox:     { by: 'long', size: 1.75, tint: 0x8a8580, tintAmt: 0.15 },
+  ventvalve:   { by: 'long', size: 0.55, tint: 0x5a5e64, tintAmt: 0.25, mount: 'ceiling' },
   piano:       { by: 'long', size: 1.55, tint: 0x2a2420, tintAmt: 0.22 },
   planks:      { by: 'long', size: 1.35, tint: 0x6a5236, tintAmt: 0.20, mount: 'wall' },
 };
@@ -2386,9 +2392,10 @@ function placeHorrorProps(fi) {
         wallRow(r, 'N', 'candle', 1.3, 0, 1.5, 4);
         if (rnd() < 0.8) wallRow(r, 'E', 'piano', 1.1, -Math.PI / 2, 3, 1);
         break;
-      case 'bath':    // tubs against one wall, cabinets on the other
+      case 'bath':    // tubs against one wall, cabinets on the other, a vent overhead
         wallRow(r, 'W', 'bloodybath', 1.3, Math.PI / 2, 2.6, 2);
         wallRow(r, 'E', 'bathcab', 0.9, -Math.PI / 2, 2.4, 2);
+        if (rnd() < 0.8) placeIn(r, 'ventvalve', yaw4());
         break;
       case 'boiler':  // industrial banks + tools scattered on the floor
         wallRow(r, 'N', 'metalcab', 1.0, 0, 2.2, 3);
@@ -2419,6 +2426,8 @@ function placeHorrorProps(fi) {
     if (cy == null) return;
     for (let x = 5; x < World.W - 5; x += 7 + Math.floor(rnd() * 3)) {
       if (isFloor(x, cy)) place('ceilinglights', x, cy, 0);
+      const vx = x + 3;   // a dead vent grille between the pendants
+      if (rnd() < 0.6 && isFloor(vx, cy + 1)) place('ventvalve', vx, cy + 1, yaw4());
     }
   });
   floorGroup.add(grp);
