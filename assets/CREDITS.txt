@@ -232,3 +232,9 @@ TEXTURES HARVESTED FROM CC-BY MATERIAL MODELS (textures/horror/, credited):
 Materials were converted to metallic-roughness where needed and re-tinted
 in-engine; the underlying meshes/rigs/animations and textures are the authors'
 work, used under CC-BY-4.0. This project is a non-commercial fan tribute.
+
+VENDORED LIBRARIES
+------------------
+  js/vendor/peerjs.min.js — PeerJS 1.5.4 (https://peerjs.com), MIT License.
+                   Copyright (c) the PeerJS contributors. Used for the
+                   peer-to-peer co-op ("Host a Night" / "Join a Night").

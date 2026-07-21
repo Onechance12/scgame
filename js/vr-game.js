@@ -63,7 +63,8 @@ let heroReady = Promise.resolve();
 let dust = null, dustBase = null;
 let stepT = 0, lastTileType = -1, lowBatWarned = false;
 // player options (persisted): swapHands = move on right stick; walkLook = hold A/X to glide; bright = dim-lights mode
-const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true, haunt: 'restless' },
+// fov = desktop field of view in degrees (a VR headset's FOV is fixed by its lenses)
+const OPTS = Object.assign({ swapHands: false, walkLook: true, bright: true, haunt: 'restless', fov: 72 },
   (() => { try { return JSON.parse(localStorage.getItem('collegehill_opts')) || {}; } catch (e) { return {}; } })());
 // difficulty ("Haunt level"): scales the dead's speed, senses, and numbers
 const HAUNT = {
@@ -73,6 +74,9 @@ const HAUNT = {
 };
 const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
+const FOV_STEPS = [72, 85, 100, 110, 120];
+function fovNow() { return Math.min(120, Math.max(60, OPTS.fov | 0 || 72)); }
+function applyFov() { if (!camera) return; camera.fov = fovNow(); camera.updateProjectionMatrix(); }
 let hemi = null, lanternLight = null, stickBtnWas = false;
 let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
 let heldWeapon = null, swingT = 0, swingCd = 0, weaponTaught = false, swingQueued = false;  // the crowbar
@@ -155,7 +159,7 @@ function init() {
   moon.position.set(6, 20, 4);
   scene.add(moon);
 
-  camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 120);
+  camera = new THREE.PerspectiveCamera(fovNow(), window.innerWidth / window.innerHeight, 0.05, 120);
   dolly = new THREE.Group();          // locomotion rig: holds camera + controllers
   dolly.add(camera);
   scene.add(dolly);
@@ -601,6 +605,16 @@ function bindUI() {
     hb.onclick = () => { const i = HAUNT_ORDER.indexOf(OPTS.haunt); OPTS.haunt = HAUNT_ORDER[(i + 1) % 3]; saveOpts(); paintH(); };
     paintH();
   }
+  const fb = document.getElementById('opt-fov');
+  if (fb) {
+    const paintF = () => { fb.textContent = '👁 FOV: ' + fovNow() + '°'; fb.classList.toggle('selected', fovNow() !== 72); };
+    fb.onclick = () => {
+      const i = FOV_STEPS.indexOf(fovNow());
+      OPTS.fov = FOV_STEPS[(i + 1) % FOV_STEPS.length] || 72;
+      saveOpts(); applyFov(); paintF();
+    };
+    paintF();
+  }
   optBtn('opt-bright', 'bright', (o) => '💡 Lights: ' + (o.bright ? 'DIM' : 'PITCH-DARK'));
   optBtn('opt-swap', 'swapHands', (o) => '🕹 Move stick: ' + (o.swapHands ? 'RIGHT' : 'LEFT'));
   optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold X/Y (move hand) to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
@@ -609,6 +623,7 @@ function bindUI() {
     if (xrSupported) enterVR(s); else startDesktop(s);
   });
   bindAccountUI();
+  bindMPUI();
 }
 
 // ---- account bar: sign in with phone + PIN, records, leaderboard ----
@@ -3627,6 +3642,7 @@ function render() {
   if (state === 'PLAY') update(dt);
   else if (state === 'CINE') { cineUpdate(dt); tickSubtitle(dt); vignette.material.opacity *= 0.995; }
   else if (state === 'MENU') { camera.position.set(0, EYE, 0); }
+  netTick(dt);
   spinItems(dt);
   renderer.render(scene, camera);
 }
@@ -4415,6 +4431,148 @@ function tickSubtitle(dt) {
   } else if (el) el.style.opacity = 0;
 }
 
+// ============================================================ multiplayer
+// Up to 4 investigators share the seeded hospital. js/multiplayer.js owns the
+// wire (PeerJS, host-relayed star); this side feeds it your transform and
+// renders your friends as hooded investigators with live flashlights.
+const netAvatars = new Map();   // peer id -> avatar record
+const NET_JACKETS = [0x2c3c55, 0x4a3a26, 0x4e2a32, 0x33422e];   // navy / waxed-tan / oxblood / moss
+const _netV = new THREE.Vector3();
+
+function netMyState() {
+  camera.getWorldDirection(_netV);
+  camera.getWorldPosition(tmpV);
+  return {
+    f: player.floor, x: +player.x.toFixed(2), y: +player.y.toFixed(2), h: +tmpV.y.toFixed(2),
+    ry: +Math.atan2(-_netV.x, -_netV.z).toFixed(2),
+    l: (player.hasLight && player.lightOn && player.battery > 0) ? 1 : 0,
+    hid: player.hidden ? 1 : 0,
+  };
+}
+
+function netNameTag(name) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+  const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(6,8,12,0.7)'; c.fillRect(24, 12, 208, 40);
+  c.font = '24px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#e7edf2'; c.fillText(String(name).slice(0, 14), 128, 33);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+  sp.scale.set(0.85, 0.21, 1);
+  return sp;
+}
+
+function buildNetAvatar(name, idx) {
+  const grp = new THREE.Group();
+  const jacket = new THREE.MeshStandardMaterial({ color: NET_JACKETS[idx % NET_JACKETS.length], roughness: 0.9 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.95 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xb08a70, roughness: 0.7 });
+  const legG = new THREE.CapsuleGeometry(0.055, 0.62, 3, 8);
+  const l1 = new THREE.Mesh(legG, dark); l1.position.set(-0.09, 0.42, 0);
+  const l2 = new THREE.Mesh(legG, dark); l2.position.set(0.09, 0.42, 0);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.42, 4, 12), jacket);
+  torso.position.y = 1.05;
+  const hood = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10), jacket); hood.position.y = 1.52;
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.082, 10, 8), skin); face.position.set(0, 1.51, -0.05);
+  // right-hand flashlight — barrel always in hand, glow group toggles with their light
+  const torch = new THREE.Group();
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.15, 8), dark);
+  barrel.rotation.x = Math.PI / 2;
+  const glow = new THREE.Group();
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.026, 10), new THREE.MeshBasicMaterial({ color: 0xfff2d6 }));
+  lens.position.z = -0.078;
+  const spot = new THREE.SpotLight(0xfff2d6, 9, 13, 0.42, 0.55, 1.5);
+  const tgt = new THREE.Object3D(); tgt.position.set(0, -0.15, -6);
+  glow.add(lens, spot, tgt); spot.target = tgt;
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.4, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xfff2d6, transparent: true, opacity: 0.045, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false }));
+  beam.rotation.x = -Math.PI / 2; beam.position.z = -1.78;
+  glow.add(beam);
+  torch.add(barrel, glow);
+  torch.position.set(0.24, 1.18, -0.12);
+  torch.rotation.x = -0.06;
+  const tag = netNameTag(name); tag.position.y = 1.86;
+  grp.add(l1, l2, torso, hood, face, torch, tag);
+  return { grp, torso, glow, tag, yaw: 0, bobT: 0, torsoY: 1.05 };
+}
+
+function netTick(dt) {
+  const M = window.MP;
+  if (!M || !M.active()) {
+    if (netAvatars.size) { netAvatars.forEach((av) => scene.remove(av.grp)); netAvatars.clear(); }
+    return;
+  }
+  if (state === 'PLAY' && player) M.send(netMyState());
+  const tNow = performance.now();
+  const inPlay = state === 'PLAY' && player;
+  M.peers().forEach((p, id) => {
+    if (!p.st) return;
+    let av = netAvatars.get(id);
+    if (!av) { av = buildNetAvatar(p.name, netAvatars.size); netAvatars.set(id, av); scene.add(av.grp); av.grp.position.set(p.st.x * TILE_M, 0, p.st.y * TILE_M); }
+    const st = p.st;
+    const show = inPlay && st.f === player.floor && !st.hid && (tNow - p.at) < 6000;
+    av.grp.visible = show;
+    if (!show) return;
+    av.glow.visible = !!st.l;
+    const wx = st.x * TILE_M, wz = st.y * TILE_M;
+    const dx = wx - av.grp.position.x, dz = wz - av.grp.position.z;
+    const far = Math.hypot(dx, dz);
+    if (far > 6) av.grp.position.set(wx, 0, wz);   // stairs / respawn — don't glide through the building
+    else { const k = Math.min(1, dt * 10); av.grp.position.x += dx * k; av.grp.position.z += dz * k; }
+    av.yaw += normAng((st.ry || 0) - av.yaw) * Math.min(1, dt * 10);
+    av.grp.rotation.y = av.yaw;
+    // crouch and jump both read straight off their head height (1.65 standing)
+    const sy = Math.min(1.12, Math.max(0.6, (st.h || 1.65) / 1.65));
+    av.grp.scale.y += (sy - av.grp.scale.y) * Math.min(1, dt * 8);
+    const moving = far > 0.03 && far < 6;
+    av.bobT += dt * (moving ? 10 : 0);
+    av.torso.position.y = av.torsoY + (moving ? Math.sin(av.bobT) * 0.018 : 0);
+  });
+  netAvatars.forEach((av, id) => { if (!M.peers().has(id)) { scene.remove(av.grp); netAvatars.delete(id); } });
+}
+
+// ---- start-screen room controls: SOLO / HOST / JOIN ----
+function bindMPUI() {
+  const M = window.MP; if (!M) return;
+  const el = (id) => document.getElementById(id);
+  const panel = el('mp-panel'), statusEl = el('mp-status'), codeRow = el('mp-code-row'),
+    codeEl = el('mp-code'), joinRow = el('mp-join-row'), rosterEl = el('mp-roster'), codeIn = el('mp-code-in');
+  const escName = (s) => String(s).replace(/[<>&]/g, '');
+  const guestName = 'GUEST-' + (10 + ((Math.random() * 90) | 0));
+  const myName = () => (window.Accounts && Accounts.current()) ? Accounts.maskPhone(Accounts.current()) : guestName;
+  let mpMode = 'solo';
+  const paint = () => {
+    [['mp-solo', 'solo'], ['mp-host', 'host'], ['mp-join', 'join']].forEach(([id, m]) => { const b = el(id); if (b) b.classList.toggle('selected', m === mpMode); });
+    if (panel) panel.classList.toggle('show', mpMode !== 'solo');
+    if (codeRow) codeRow.style.display = mpMode === 'host' ? '' : 'none';
+    if (joinRow) joinRow.style.display = (mpMode === 'join' && !M.active()) ? '' : 'none';
+    if (codeEl) codeEl.textContent = M.code();
+  };
+  const refreshRoster = () => {
+    if (rosterEl) rosterEl.innerHTML = M.active()
+      ? 'Investigators (' + M.count() + '/4): ' + M.roster().map((p) => '<b>' + escName(p.name) + (p.me ? ' (you)' : '') + '</b>').join(' · ')
+      : '';
+    paint();
+  };
+  M.onStatus((msg, kind) => { if (statusEl) { statusEl.textContent = msg; statusEl.className = kind || ''; } });
+  M.onEvent((ev) => {
+    refreshRoster();
+    if (ev.kind === 'roster') return;
+    if (state === 'PLAY' || state === 'CINE') {
+      if (ev.kind === 'join') showSubtitle(ev.name + ' has entered the hospital.', 3.5);
+      else if (ev.kind === 'leave') showSubtitle(ev.name + "'s light went out.", 3.5);
+      else if (ev.kind === 'death') showSubtitle(ev.name + ' was taken — ' + (ev.by || 'the dark') + '.', 4.5);
+      else if (ev.kind === 'win') showSubtitle(ev.name + ' made it to dawn.', 4);
+    }
+  });
+  const onBtn = (id, fn) => { const b = el(id); if (b) b.onclick = fn; };
+  onBtn('mp-solo', () => { M.leave(); mpMode = 'solo'; if (statusEl) statusEl.textContent = ''; refreshRoster(); });
+  onBtn('mp-host', () => { mpMode = 'host'; M.setName(myName()); M.host(); refreshRoster(); });
+  onBtn('mp-join', () => { mpMode = 'join'; paint(); if (codeIn) codeIn.focus(); });
+  onBtn('mp-connect', () => { M.setName(myName()); M.join(codeIn ? codeIn.value : ''); });
+  if (codeIn) codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { M.setName(myName()); M.join(codeIn.value); } });
+  onBtn('mp-copy', () => { try { navigator.clipboard.writeText(M.code()); } catch (e) { } });
+}
+
 // ============================================================ state
 function pause() {
   if (state !== 'PLAY') return;
@@ -4433,6 +4591,7 @@ function filedLine() {
 }
 function die() {
   if (state === 'DEAD') return;
+  if (window.MP && MP.active()) MP.event({ kind: 'death', by: lastKiller || 'Fear itself' });
   if (window.Accounts) Accounts.recordDeath(elapsed, lastKiller || 'Fear itself', runMeta());
   state = 'DEAD'; stopSpirit(); Audio2.stinger(true); clearSave();
   setTimeout(() => Audio2.suspend(), 1600);
@@ -4448,6 +4607,7 @@ function die() {
 }
 function win() {
   if (state === 'WIN') return;
+  if (window.MP && MP.active()) MP.event({ kind: 'win' });
   if (window.Accounts) Accounts.recordWin(elapsed, false, runMeta());
   state = 'WIN'; stopSpirit(); clearSave();
   const filedW = filedLine();
@@ -4462,6 +4622,7 @@ function win() {
 // The true ending — reached by completing the Unbinding Rite (not just surviving).
 function trueEnding() {
   if (state === 'WIN') return;
+  if (window.MP && MP.active()) MP.event({ kind: 'win' });
   if (window.Accounts) Accounts.recordWin(elapsed, true, runMeta());
   riteClimax = false;
   state = 'WIN'; stopSpirit(); clearSave();

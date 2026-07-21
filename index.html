@@ -50,6 +50,19 @@
     #profile .when{color:#7a8590;font-size:11px;white-space:nowrap}
     #records-strip{font-size:12px;color:#9aa7b0;margin:2px 0 10px}
     #records-strip b{color:#e7a0a0}
+    /* multiplayer room panel */
+    #mp-panel{max-width:420px;margin:2px auto 12px;padding:10px 14px;border:1px solid rgba(255,255,255,.14);
+      border-radius:6px;background:rgba(0,0,0,.35);display:none;font-size:13px;color:#9aa7b0;pointer-events:auto}
+    #mp-panel.show{display:block}
+    #mp-status{min-height:16px;font-size:12px}
+    #mp-status.err{color:#e78a8a}#mp-status.ok{color:#8fdca6}
+    #mp-code-row{margin:8px 0;font-size:12px;letter-spacing:2px}
+    #mp-code-row b{color:#c9a24a;font-size:24px;letter-spacing:8px;margin:0 6px}
+    #mp-join-row{display:flex;gap:8px;margin:8px 0}
+    #mp-join-row input{flex:1;min-width:0;padding:10px;font-family:inherit;font-size:20px;letter-spacing:8px;
+      text-transform:uppercase;text-align:center;background:#0c0e14;border:1px solid rgba(255,255,255,.2);border-radius:4px;color:#e7edf2}
+    #mp-roster{font-size:12px;margin-top:6px;line-height:1.6}
+    #mp-roster b{color:#e7edf2}
   </style>
 </head>
 <body>
@@ -137,6 +150,22 @@
         <button id="opt-bright" class="mode small">💡 Lights: DIM</button>
         <button id="opt-swap" class="mode small">🕹 Move stick: LEFT</button>
         <button id="opt-walklook" class="mode small">👣 Hold X/Y (move hand) to walk: ON</button>
+        <button id="opt-fov" class="mode small">👁 FOV: 72°</button>
+      </div>
+      <!-- multiplayer: solo, or share the night with up to 3 friends (peer-to-peer) -->
+      <div id="mode-select" style="margin-top:0">
+        <button id="mp-solo" class="mode small selected">🕯 SOLO</button>
+        <button id="mp-host" class="mode small">🌐 HOST A NIGHT</button>
+        <button id="mp-join" class="mode small">🔑 JOIN A NIGHT</button>
+      </div>
+      <div id="mp-panel">
+        <div id="mp-status"></div>
+        <div id="mp-code-row" style="display:none">ROOM CODE<b id="mp-code"></b><span class="acct-link" id="mp-copy">copy</span></div>
+        <div id="mp-join-row" style="display:none">
+          <input id="mp-code-in" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" />
+          <button id="mp-connect" class="btn">CONNECT</button>
+        </div>
+        <div id="mp-roster"></div>
       </div>
       <button id="btn-resume-save" class="btn resume" style="display:none">↺ RESUME SAVED NIGHT</button>
       <div id="enter-buttons">
@@ -171,6 +200,8 @@
 
   <!-- shared data + logic (classic scripts, set window globals) -->
   <script src="js/accounts.js"></script>
+  <script src="js/vendor/peerjs.min.js"></script>
+  <script src="js/multiplayer.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/world.js"></script>
   <script src="js/entities.js"></script>
