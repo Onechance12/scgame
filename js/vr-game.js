@@ -101,6 +101,9 @@ let snapCooldown = 0;
 let data, ents, player;
 let state = 'MENU';   // MENU | PLAY | PAUSE | DEAD | WIN
 let hour = 0, elapsed = 0;
+let graceUntil = 0;            // seconds of elapsed play during which the dead stay dormant
+let onboardStep = -1, onboardT = 0;   // opening tutorial sequence
+let wisp = null;              // the guiding spirit-light that drifts toward your objective
 let messages = [], msgText = '', msgTimer = 0;
 let spiritActive = false, spiritHold = 0;
 let ambientEventTimer = 6, scareCooldown = 0, flashFlicker = 1;
@@ -456,9 +459,14 @@ function newGame(saved) {
   const sp = World.spawn(data);
   player = {
     floor: sp.floor, x: sp.x + 0.5, y: sp.y + 0.5,
-    aim: 0, fear: 12, stamina: 100, battery: 100,
-    hasLight: false, lightOn: false, hidden: false, inv: {}, keys: {}, rite: {},
+    aim: 0, fear: 8, stamina: 100, battery: 100,
+    // you START with the flashlight in your hand and lit — no fumbling in the dark
+    hasLight: true, lightOn: true, hidden: false, inv: {}, keys: {}, rite: {},
   };
+  // A settling-in grace: for the first ~100s of a fresh night the dead stay in
+  // their dens and won't hunt, fear can't kill, and the game teaches you.
+  graceUntil = saved ? 0 : 100;
+  onboardStep = saved ? -1 : 0; onboardT = saved ? 0 : 3;
   hour = 0; elapsed = 0; messages = []; spiritHold = 0; spiritActive = false;
   deathBy = ''; ambientEventTimer = 5; scareCooldown = 0; docPanelTimer = 0;
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
@@ -591,8 +599,8 @@ function endCinematic() {
   dolly.rotation.set(0, 0, 0);
   state = 'PLAY';
   clock.getDelta();
-  showSubtitle('The doors close behind you. The chain rattles down outside.', 4.5);
-  setTimeout(() => showSubtitle('Find the flashlight. It is darker in here than out there.', 4), 4800);
+  showSubtitle('The doors close behind you. The chain rattles down outside.', 4);
+  // the opening tutorial (updateOnboarding) takes it from here
   saveState();
 }
 
@@ -1376,29 +1384,52 @@ function placeHorrorProps(fi) {
   const grp = new THREE.Group();
   const isFloor = (tx, ty) => g[ty] && g[ty][tx] === TILE.FLOOR;
   const used = new Set();
+  // every tile the footprint covers must be floor — no furniture poking through walls
+  const footprintClear = (b, mount) => {
+    if (mount === 'ceiling' || mount === 'wall') return true;
+    const pad = 0.15;
+    for (let ty = Math.floor((b.min.z + pad) / TILE_M); ty <= Math.floor((b.max.z - pad) / TILE_M); ty++)
+      for (let tx = Math.floor((b.min.x + pad) / TILE_M); tx <= Math.floor((b.max.x - pad) / TILE_M); tx++)
+        if (!isFloor(tx, ty)) return false;
+    return true;
+  };
   const place = (key, tx, ty, yaw) => {
     const k = tx + ',' + ty;
     const cfg = HPROP_CFG[key]; const mount = (cfg && cfg.mount) || 'floor';
-    if (!isFloor(tx, ty)) return;
-    if ((mount === 'floor' || mount === 'flat') && used.has(k)) return;   // don't stack furniture on one tile
+    if (!isFloor(tx, ty)) return false;
+    if ((mount === 'floor' || mount === 'flat') && used.has(k)) return false;   // don't stack furniture on one tile
     const p = makeHProp(key, (tx + 0.5) * TILE_M, (ty + 0.5) * TILE_M, yaw);
-    if (!p) return;
+    if (!p) return false;
+    const b = new THREE.Box3().setFromObject(p.grp);
+    if (!footprintClear(b, mount)) { return false; }   // would clip a wall — try elsewhere
     grp.add(p.grp);
-    if (p.solid) { const b = new THREE.Box3().setFromObject(p.grp); propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); used.add(k); }
+    if (p.solid) { propSolids.push({ x0: b.min.x, z0: b.min.z, x1: b.max.x, z1: b.max.z }); used.add(k); }
     else if (mount === 'flat') used.add(k);
+    return true;
   };
-  const corner = (r) => [Math.max(r.x + 1, Math.min(r.x + r.w - 2, r.x + (rnd() < 0.5 ? 1 : r.w - 2))),
-                         Math.max(r.y + 1, Math.min(r.y + r.h - 2, r.y + (rnd() < 0.5 ? 1 : r.h - 2)))];
+  // pick an interior tile, retrying a few spots so a wall-clip doesn't drop the prop
+  const placeIn = (r, key, yaw) => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const tx = r.x + 1 + Math.floor(rnd() * Math.max(1, r.w - 2));
+      const ty = r.y + 1 + Math.floor(rnd() * Math.max(1, r.h - 2));
+      if (place(key, tx, ty, yaw)) return true;
+    }
+    return false;
+  };
   rooms.forEach((r) => {
     const list = ROOM_PROPS[r.tag]; if (!list) return;
     list.forEach(([prop, chance]) => {
       if (rnd() > chance) return;
       const key = prop === 'bed' ? (rnd() < 0.5 ? 'hospbed' : 'horrorbed') : prop;
-      const [x, y] = corner(r);
-      place(key, x, y, yaw4());
+      placeIn(r, key, yaw4());
     });
-    // a second bed in the big wards
-    if (list.some((p) => p[0] === 'bed') && r.w * r.h > 34 && rnd() < 0.6) { const [x, y] = corner(r); place(rnd() < 0.5 ? 'hospbed' : 'horrorbed', x, y, yaw4()); }
+    // extra beds fill out the big wards (more stuff!)
+    if (list.some((p) => p[0] === 'bed')) {
+      const extra = r.w * r.h > 40 ? 2 : r.w * r.h > 26 ? 1 : 0;
+      for (let i = 0; i < extra; i++) if (rnd() < 0.75) placeIn(r, rnd() < 0.5 ? 'hospbed' : 'horrorbed', yaw4());
+    }
+    // a little loose clutter in every furnished room so nothing feels bare
+    if (rnd() < 0.6) placeIn(r, rnd() < 0.5 ? 'bin' : 'wheelchair', yaw4());
   });
   // corridor dressing: dead pendant lights hang down the halls (no collision),
   // and the odd abandoned wheelchair sits against the corridor ends
@@ -2453,7 +2484,7 @@ function update(dt) {
 
   // flashlight battery + aim
   if (player.lightOn && player.battery > 0) {
-    player.battery = Math.max(0, player.battery - dt * (realMode ? 0.05 : 1.6));
+    player.battery = Math.max(0, player.battery - dt * (realMode ? 0.05 : 0.35));
     if (player.battery <= 0) { player.lightOn = false; flashlight.visible = false; showSubtitle('The flashlight dies. Darkness.', 2.5); }
     flashFlicker = player.battery < 20 ? (0.55 + Math.random() * 0.45) : 1;
     flashlight.intensity = 30 * flashFlicker;
@@ -2473,13 +2504,16 @@ function update(dt) {
   if (spiritActive) noise = Math.max(noise, 0.85);
   if (player.hidden) noise = 0;
 
-  updateFear(dt);
+  const grace = elapsed < graceUntil;
+  updateOnboarding(dt);
+  updateFear(dt, grace);
+  updateWisp(dt);
 
   // entities
   const ctx = {
     hour, noise,
     playerLit: isPlayerLit(),
-    peace: Survival.peaceActive(),
+    peace: Survival.peaceActive() || grace,   // the dead keep to their dens during the grace
     diff: HAUNT[OPTS.haunt] || HAUNT.restless,
     beamHits: (ex, ey) => beamHits(ex, ey),
     onCatch: (e) => { deathBy = catchLine(e); die(); },
@@ -2632,14 +2666,87 @@ function nearCandle() {
   }
   return false;
 }
-function updateFear(dt) {
+function updateFear(dt, grace) {
   const lit = isPlayerLit();
   const night = 0.5 + Math.min(1, hour / 12) * 0.9;
-  const rise = realMode ? 0.7 : 2.2;                  // gentler baseline over a real night
+  const rise = (realMode ? 0.7 : 2.2) * (grace ? 0.25 : 1);   // barely climbs while you settle in
   if (!lit) player.fear = Math.min(100, player.fear + dt * (rise * night));
   else player.fear = Math.max(0, player.fear - dt * (realMode ? 4.2 : 3.2));
   if (player.hidden) player.fear = Math.min(100, player.fear + dt * 1.4);
   if (nearCandle()) player.fear = Math.max(0, player.fear - dt * 5);
+  if (grace) player.fear = Math.min(player.fear, 55);         // the grace can never kill you
+}
+// ---- the opening tutorial: a few clear lines while the night holds its breath ----
+const ONBOARD = [
+  'You’re inside. The flashlight is already in your hand — its beam is lit.',
+  'Move with the left stick (WASD on desktop). Look with your head (mouse).',
+  'Trigger / E picks things up and reads documents. Tab opens your Case File.',
+  'Follow the pale wisp — it drifts toward whatever you must do next.',
+  'Keep your light on — but know the dead can see its beam. Dark hides you; it also feeds fear.',
+  'The dead still keep to their dens. In a minute the night turns. Follow the wisp. Survive till dawn.',
+];
+function updateOnboarding(dt) {
+  if (onboardStep < 0 || onboardStep >= ONBOARD.length) return;
+  onboardT -= dt;
+  if (onboardT <= 0) {
+    showSubtitle(ONBOARD[onboardStep], 4.6);
+    onboardStep++; onboardT = 5.0;
+    if (onboardStep >= ONBOARD.length) { onboardStep = -1;
+      setTimeout(() => { if (state === 'PLAY') showSubtitle('The building knows you’re here now.', 3.5); }, 5200); }
+  }
+}
+// ---- the guiding wisp: a faint spirit-light hovering toward your next task ----
+function currentGoal() {
+  if (ritual && ritual.done) { const r = data.floors[1].rooms.find((x) => x.tag === 'lobby'); return r ? { floor: 1, x: r.cx, y: r.cy, label: 'the front doors' } : null; }
+  const o = data.objectives.find((x) => !x.done);
+  if (!o) { const r = data.floors[1].rooms.find((x) => x.tag === 'lobby'); return r ? { floor: 1, x: r.cx, y: r.cy, label: 'the front doors' } : null; }
+  const r = data.floors[o.floor].rooms.find((x) => x.tag === o.tag);
+  return r ? { floor: o.floor, x: r.cx, y: r.cy, label: o.title } : null;
+}
+function updateWisp(dt) {
+  if (!wisp) {
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), new THREE.MeshBasicMaterial({ color: 0xbfe8ff, fog: false }));
+    g.add(core);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(150,210,255,0.7)'), transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.set(1.1, 1.1, 1); g.add(halo);
+    const light = new THREE.PointLight(0x9fd4ff, 0.7, 4, 2); g.add(light);
+    g.visible = false; scene.add(g);
+    wisp = { g, core, halo, light, x: player.x, y: player.y, phase: 0 };
+  }
+  const goal = currentGoal();
+  const onGoalFloor = goal && goal.floor === player.floor;
+  // the wisp guides you from the very first moment — follow it to your next task
+  const show = !!goal && state === 'PLAY';
+  wisp.g.visible = show;
+  if (!show) return;
+  wisp.phase += dt;
+  // drift toward a point a couple of tiles ahead of you in the goal's direction
+  let tx, ty;
+  if (onGoalFloor) { const dx = goal.x - player.x, dy = goal.y - player.y, len = Math.hypot(dx, dy) || 1;
+    tx = player.x + (dx / len) * Math.min(3.0, len); ty = player.y + (dy / len) * Math.min(3.0, len);
+  } else { // off-floor: hover over the nearest stairs pointing the way
+    const st = nearestStairTile(); if (st) { tx = st.x; ty = st.y; } else { tx = player.x; ty = player.y; }
+  }
+  wisp.x += (tx - wisp.x) * Math.min(1, dt * 2.2);
+  wisp.y += (ty - wisp.y) * Math.min(1, dt * 2.2);
+  wisp.g.position.set(wisp.x * TILE_M, 1.5 + Math.sin(wisp.phase * 2) * 0.12, wisp.y * TILE_M);
+  wisp.core.material.opacity = 0.8 + Math.sin(wisp.phase * 6) * 0.2;
+  wisp.light.intensity = 0.6 + Math.sin(wisp.phase * 4) * 0.2;
+}
+function nearestStairTile() {
+  const g = data.floors[player.floor].grid;
+  const goal = currentGoal(); if (!goal) return null;
+  const wantUp = goal.floor > player.floor;
+  let best = null, bd = Infinity;
+  for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) {
+    const t = g[y][x];
+    if ((wantUp && t === TILE.UP) || (!wantUp && t === TILE.DOWN)) {
+      const d = Math.hypot(x - player.x, y - player.y);
+      if (d < bd) { bd = d; best = { x: x + 0.5, y: y + 0.5 }; }
+    }
+  }
+  return best;
 }
 function catchLine(e) {
   return ({

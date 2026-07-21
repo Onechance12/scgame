@@ -516,10 +516,12 @@ const Props = (() => {
   function fillRoom(group, solids, animated, room, TILE_M, bloodyChance) {
     const spec = FILL[room.tag] || DEFAULT_FILL;
     const items = spec.items;
-    // room interior in metres, inset from walls
-    const x0 = (room.x + 0.9) * TILE_M, x1 = (room.x + room.w - 0.9) * TILE_M;
-    const z0 = (room.y + 0.9) * TILE_M, z1 = (room.y + room.h - 0.9) * TILE_M;
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    // room interior in metres, inset well clear of the walls (so nothing clips).
+    // Tiny rooms fall back to a smaller inset so they still get their centre piece.
+    const inset = (room.w >= 4 && room.h >= 4) ? 1.2 : 0.7;
+    const x0 = (room.x + inset) * TILE_M, x1 = (room.x + room.w - inset) * TILE_M;
+    const z0 = (room.y + inset) * TILE_M, z1 = (room.y + room.h - inset) * TILE_M;
+    const cx = (room.x + room.w / 2) * TILE_M, cz = (room.y + room.h / 2) * TILE_M;
 
     const place = (name, xm, zm, rotY) => {
       // real glTF furniture when available (loaded by vr-game.js)
@@ -571,9 +573,10 @@ const Props = (() => {
     };
     const bloody = ['morgue', 'autopsy', 'er', 'surgery', 'iso', 'room207'].includes(room.tag);
     const burnt = ['boiler', 'incinerator', 'ritual', 'storage', 'laundry', 'kitchen'].includes(room.tag);
-    if (bloody) { wallDetail('blood', 1 + (Math.random() * 2 | 0)); if (Math.random() < 0.7) place('bloodpool', cx + (Math.random() - 0.5) * 2, cz + (Math.random() - 0.5) * 2, 0); }
-    if (burnt) wallDetail('scorch', 2 + (Math.random() * 2 | 0));
-    if (!bloody && !burnt && Math.random() < 0.3) wallDetail(Math.random() < 0.5 ? 'blood' : 'scorch', 1);
+    if (bloody) { wallDetail('blood', 2 + (Math.random() * 3 | 0)); if (Math.random() < 0.8) place('bloodpool', cx + (Math.random() - 0.5) * 2, cz + (Math.random() - 0.5) * 2, 0); }
+    if (burnt) wallDetail('scorch', 2 + (Math.random() * 3 | 0));
+    // EVERY room now carries some wall grime — the walls are never bare/identical
+    if (!bloody && !burnt) wallDetail(Math.random() < 0.5 ? 'blood' : 'scorch', 1 + (Math.random() * 2 | 0));
     for (let i = 0; i < nClutter; i++) {
       const cxm = x0 + Math.random() * (x1 - x0);
       const czm = z0 + Math.random() * (z1 - z0);

@@ -273,7 +273,7 @@ const World = (() => {
     };
 
     // Ghost-hunting kit + survival supplies scattered around
-    addItem(1, 'lobby', 'flashlight', 'flashlight');       // grab first
+    addItem(1, 'lobby', 'battery', 'bat_start');           // you already hold the flashlight — grab spare cells
     addItem(1, 'admitting', 'battery', 'bat1', 1, 0);
     addItem(1, 'waiting', 'emf', 'emf');
     addItem(1, 'records', 'spiritbox', 'spiritbox');

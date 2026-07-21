@@ -219,7 +219,7 @@ const Entities = (() => {
     const list = [];
     const add = (cfg) => list.push(new Entity(cfg));
     let p;
-    p = R(1, 'er');    add({ name: 'The Grey Nurse', kind: 'nurse', floor: 1, x: p.x, y: p.y, speed: 1.7, huntSpeed: 3.0, hearing: 6, sight: 8, wakeHour: 0, den: ['er', 'waiting', 'admitting', 'lobby'] });
+    p = R(1, 'er');    add({ name: 'The Grey Nurse', kind: 'nurse', floor: 1, x: p.x, y: p.y, speed: 1.7, huntSpeed: 3.0, hearing: 6, sight: 8, wakeHour: 1, den: ['er', 'waiting', 'admitting', 'pharmacy'] });
     p = R(3, 'mose');  add({ name: 'Mose Blackburn', kind: 'mose', floor: 3, x: p.x, y: p.y, speed: 2.0, huntSpeed: 3.7, hearing: 7, sight: 9, wakeHour: 3, den: ['mose', 'recovery', 'surgery', 'iso', 'landing', 'ward'] });
     p = R(2, 'maternity'); add({ name: 'The Child', kind: 'child', floor: 2, x: p.x, y: p.y, speed: 1.5, huntSpeed: 2.7, hearing: 8, sight: 6, wakeHour: 6, den: ['maternity', 'ward', 'room207', 'station'] });
     p = R(0, 'incinerator'); add({ name: 'The Ash', kind: 'ash', floor: 0, x: p.x, y: p.y, speed: 1.1, huntSpeed: 2.2, hearing: 12, sight: 10, wakeHour: 12, den: ['incinerator', 'boiler', 'ritual', 'laundry', 'morgue'] });
