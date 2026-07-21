@@ -854,8 +854,30 @@ function buildExterior() {
   const MOB = window.MobModels || {};
   yard(MOB.playgroundG, doorX - 13, -20, 7.5, 0.5, 0.5);
   yard(MOB.carouselG, doorX + 12, -27, 5.5, -0.4, 0.22);
+  // a cold West Virginia night sky: a dome of stars and a low, hazy moon.
+  // (procedural — a million-face scan would kill the Quest; this is ~free)
+  const NS = 720, sp = new Float32Array(NS * 3), sc2 = new Float32Array(NS * 3);
+  let seed = 481516; const srnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for (let i = 0; i < NS; i++) {
+    const az = srnd() * Math.PI * 2, el = 0.06 + Math.pow(srnd(), 0.7) * 1.45, R = 130;
+    sp[i * 3] = doorX + Math.cos(az) * Math.cos(el) * R;
+    sp[i * 3 + 1] = Math.sin(el) * R;
+    sp[i * 3 + 2] = -20 + Math.sin(az) * Math.cos(el) * R;
+    const warm = srnd() < 0.18, br = 0.55 + srnd() * 0.45;
+    sc2[i * 3] = br * (warm ? 1 : 0.85); sc2[i * 3 + 1] = br * 0.9; sc2[i * 3 + 2] = br * (warm ? 0.75 : 1);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+  sg.setAttribute('color', new THREE.BufferAttribute(sc2, 3));
+  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.9, fog: false, depthWrite: false, sizeAttenuation: false }));
+  stars.frustumCulled = false; g.add(stars);
+  // the moon — a pale disc in a wide sick halo, low over the hill
+  const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(190,200,220,0.55)'), transparent: true, opacity: 0.34, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+  moonHalo.scale.set(34, 34, 1); moonHalo.position.set(doorX - 42, 46, -95); g.add(moonHalo);
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(225,230,240,0.95)'), transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
+  moon.scale.set(9, 9, 1); moon.position.copy(moonHalo.position); g.add(moon);
   scene.add(g);
-  return { g, doorX, flickWin, mist, mixers, t: 0, gustT: 1.5, cardI: 0 };
+  return { g, doorX, flickWin, mist, mixers, stars, t: 0, gustT: 1.5, cardI: 0 };
 }
 const CINE_CARDS = [
   [2, 'COLLEGE HILL', ['Williamson, West Virginia']],
@@ -882,6 +904,8 @@ function cineUpdate(dt) {
   if (c.flickWin) c.flickWin.material.emissiveIntensity = Math.random() < 0.06 ? 0.05 : 0.5 + Math.random() * 0.5;
   // the dead playground stirs — swings sway, the carousel creeps around
   if (c.mixers) c.mixers.forEach((m) => m.update(dt));
+  // the stars breathe, barely
+  if (c.stars) c.stars.material.opacity = 0.82 + Math.sin(c.t * 0.7) * 0.08 + Math.sin(c.t * 2.3) * 0.04;
   // mist drift + wind
   c.mist.position.x = Math.sin(c.t * 0.15) * 2;
   c.gustT -= dt;
