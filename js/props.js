@@ -12,6 +12,13 @@
 const Props = (() => {
   const T = () => window.THREE;
 
+  // Deterministic per-floor RNG. Furniture placement writes COLLISION (solids),
+  // so it must reproduce exactly on floor revisits and across co-op peers —
+  // Math.random() reshuffled the room every rebuild. Seeded in populate().
+  let _seed = 1;
+  function rnd() { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; }
+  function reseed(s) { _seed = s; }
+
   // ---- shared materials (created lazily so THREE exists) ----
   let M = null;
   function mats() {
@@ -188,14 +195,14 @@ const Props = (() => {
     g.add(box(1.8, 0.9, 0.65, m.metal, 0, 0.45, 0));
     g.add(box(1.85, 0.05, 0.7, m.steel, 0, 0.92, 0));
     // abandoned mid-shift: mugs, bottles, a tray of somebody's last meal
-    for (let i = 0; i < 3 + (Math.random() * 3 | 0); i++) {
-      const r = Math.random();
-      const xo = (Math.random() - 0.5) * 1.5, zo = (Math.random() - 0.5) * 0.45;
+    for (let i = 0; i < 3 + (rnd() * 3 | 0); i++) {
+      const r = rnd();
+      const xo = (rnd() - 0.5) * 1.5, zo = (rnd() - 0.5) * 0.45;
       if (r < 0.4) g.add(cyl(0.045, 0.045, 0.09, m.porcelain, xo, 0.99, zo, 8));
       else if (r < 0.7) g.add(cyl(0.035, 0.045, 0.2, m.dark, xo, 1.05, zo, 8));
       else { g.add(box(0.3, 0.02, 0.2, m.steel, xo, 0.96, zo)); g.add(cyl(0.05, 0.06, 0.03, m.rust, xo, 0.98, zo, 8)); }
     }
-    if (Math.random() < 0.4) { const t = cyl(0.045, 0.045, 0.09, m.porcelain, (Math.random() - 0.5) * 1.4, 0.965, 0.1, 8); t.rotation.z = Math.PI / 2; g.add(t); } // tipped mug
+    if (rnd() < 0.4) { const t = cyl(0.045, 0.045, 0.09, m.porcelain, (rnd() - 0.5) * 1.4, 0.965, 0.1, 8); t.rotation.z = Math.PI / 2; g.add(t); } // tipped mug
     g.userData = { fw: 1.85, fd: 0.7 };
     return g;
   }
@@ -319,8 +326,8 @@ const Props = (() => {
     const g = new (T().Group)(), m = mats();
     for (let i = 0; i < 4; i++) {
       const p = new (T().Mesh)(new (T().PlaneGeometry)(0.21, 0.3), m.sheet);
-      p.rotation.x = -Math.PI / 2; p.rotation.z = Math.random() * 6.28;
-      p.position.set((Math.random() - 0.5) * 0.9, 0.012 + i * 0.002, (Math.random() - 0.5) * 0.9);
+      p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28;
+      p.position.set((rnd() - 0.5) * 0.9, 0.012 + i * 0.002, (rnd() - 0.5) * 0.9);
       g.add(p);
     }
     g.userData = { fw: 0.4, fd: 0.4, solid: false };
@@ -408,20 +415,24 @@ const Props = (() => {
   }
 
   // ---- shared decal textures (newsprint / blood / scorch), built once ----
+  // NOTE: these are cache-once builders. They must NOT draw from the seeded
+  // placement stream — consuming it only on the first floor build would shift
+  // every later placement and break floor-revisit determinism.
   let DECALS = null;
   function decals() {
     if (DECALS) return DECALS;
     const THREE = T();
+    let ds = 424242; const drnd = () => { ds = (ds * 1103515245 + 12345) & 0x7fffffff; return ds / 0x7fffffff; };
     const make = (draw) => { const c = document.createElement('canvas'); c.width = c.height = 128; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); return t; };
     DECALS = {
       news: make((x) => { x.fillStyle = '#b6ae96'; x.fillRect(0, 0, 128, 128);
         x.fillStyle = '#2a2620'; x.fillRect(8, 6, 112, 14);
-        for (let r = 28; r < 122; r += 6) { x.fillStyle = 'rgba(40,36,30,' + (0.5 + Math.random() * 0.3) + ')'; x.fillRect(8 + (r % 12 ? 0 : 66), r, r % 12 ? 52 : 54, 2); } }),
+        for (let r = 28; r < 122; r += 6) { x.fillStyle = 'rgba(40,36,30,' + (0.5 + drnd() * 0.3) + ')'; x.fillRect(8 + (r % 12 ? 0 : 66), r, r % 12 ? 52 : 54, 2); } }),
       blood: make((x) => { x.clearRect(0, 0, 128, 128);
         for (let i = 0; i < 9; i++) { const g = x.createRadialGradient(64, 64, 2, 64, 64, 20 + i * 6);
           g.addColorStop(0, 'rgba(90,8,8,0.55)'); g.addColorStop(1, 'rgba(60,4,4,0)'); x.fillStyle = g;
-          x.beginPath(); x.arc(50 + Math.random() * 28, 50 + Math.random() * 28, 18 + Math.random() * 26, 0, 6.28); x.fill(); }
-        for (let i = 0; i < 12; i++) { x.fillStyle = 'rgba(80,6,6,0.5)'; x.fillRect(30 + Math.random() * 70, 60 + Math.random() * 40, 2, 8 + Math.random() * 26); } }),
+          x.beginPath(); x.arc(50 + drnd() * 28, 50 + drnd() * 28, 18 + drnd() * 26, 0, 6.28); x.fill(); }
+        for (let i = 0; i < 12; i++) { x.fillStyle = 'rgba(80,6,6,0.5)'; x.fillRect(30 + drnd() * 70, 60 + drnd() * 40, 2, 8 + drnd() * 26); } }),
       scorch: make((x) => { x.clearRect(0, 0, 128, 128);
         const g = x.createRadialGradient(64, 64, 6, 64, 64, 62);
         g.addColorStop(0, 'rgba(8,6,4,0.9)'); g.addColorStop(0.6, 'rgba(16,12,8,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -440,8 +451,8 @@ const Props = (() => {
     const g = new (T().Group)();
     for (let i = 0; i < 3; i++) {
       const p = decalPlane('news', 0.32, 0.45);
-      p.rotation.x = -Math.PI / 2; p.rotation.z = Math.random() * 6.28;
-      p.position.set((Math.random() - 0.5) * 1.1, 0.015 + i * 0.003, (Math.random() - 0.5) * 1.1);
+      p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28;
+      p.position.set((rnd() - 0.5) * 1.1, 0.015 + i * 0.003, (rnd() - 0.5) * 1.1);
       g.add(p);
     }
     g.userData = { fw: 0.4, fd: 0.4, solid: false };
@@ -449,8 +460,8 @@ const Props = (() => {
   }
   function bloodpool() {
     const g = new (T().Group)();
-    const p = decalPlane('blood', 0.9 + Math.random() * 0.8, 0.9 + Math.random() * 0.8);
-    p.rotation.x = -Math.PI / 2; p.rotation.z = Math.random() * 6.28; p.position.y = 0.014;
+    const p = decalPlane('blood', 0.9 + rnd() * 0.8, 0.9 + rnd() * 0.8);
+    p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28; p.position.y = 0.014;
     g.add(p);
     g.userData = { fw: 0.3, fd: 0.3, solid: false };
     return g;
@@ -541,9 +552,9 @@ const Props = (() => {
         if (clashes(xm - w / 2, zm - d / 2, xm + w / 2, zm + d / 2)) return;   // spot taken
         const g = hm[hkey].clone();
         g.position.set(xm, 0, zm);
-        g.rotation.y = (rotY || 0) + (Math.random() - 0.5) * 0.25;   // nothing sits square
-        if (name === 'chair' && Math.random() < 0.22) {              // knocked over overnight
-          g.rotation.z = Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1);
+        g.rotation.y = (rotY || 0) + (rnd() - 0.5) * 0.25;   // nothing sits square
+        if (name === 'chair' && rnd() < 0.22) {              // knocked over overnight
+          g.rotation.z = Math.PI / 2 * (rnd() < 0.5 ? 1 : -1);
           g.position.y = 0.25;
         }
         group.add(g);
@@ -551,7 +562,7 @@ const Props = (() => {
         return;
       }
       const b = BUILDERS[name]; if (!b) return;
-      const g = b(name === 'bed' && Math.random() < bloodyChance);
+      const g = b(name === 'bed' && rnd() < bloodyChance);
       if (g.userData.solid !== false) {
         const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
         const rot = Math.abs((rotY || 0) % Math.PI) > 0.7; // ~90deg -> swap footprint
@@ -563,7 +574,7 @@ const Props = (() => {
       g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
       group.add(g);
       if (g.userData.ember) group.userData.ember = g;
-      if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: Math.random() * 6 });
+      if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: rnd() * 6 });
     };
 
     // light grit pass — the arranged furniture (vr-game.js) carries the room now,
@@ -574,25 +585,25 @@ const Props = (() => {
     // wall details: blood smears + 1926 fire scorch marks climbing the walls
     const wallDetail = (kind, count) => {
       for (let i = 0; i < count; i++) {
-        const onX = Math.random() < 0.5;
-        const p = decalPlane(kind, 1.1 + Math.random(), 1.2 + Math.random());
-        if (onX) { p.position.set(Math.random() < 0.5 ? x0 + 0.06 : x1 - 0.06, 0.9 + Math.random() * 1.2, z0 + Math.random() * (z1 - z0)); p.rotation.y = p.position.x < (x0 + x1) / 2 ? Math.PI / 2 : -Math.PI / 2; }
-        else { p.position.set(x0 + Math.random() * (x1 - x0), 0.9 + Math.random() * 1.2, Math.random() < 0.5 ? z0 + 0.06 : z1 - 0.06); p.rotation.y = p.position.z < (z0 + z1) / 2 ? 0 : Math.PI; }
+        const onX = rnd() < 0.5;
+        const p = decalPlane(kind, 1.1 + rnd(), 1.2 + rnd());
+        if (onX) { p.position.set(rnd() < 0.5 ? x0 + 0.06 : x1 - 0.06, 0.9 + rnd() * 1.2, z0 + rnd() * (z1 - z0)); p.rotation.y = p.position.x < (x0 + x1) / 2 ? Math.PI / 2 : -Math.PI / 2; }
+        else { p.position.set(x0 + rnd() * (x1 - x0), 0.9 + rnd() * 1.2, rnd() < 0.5 ? z0 + 0.06 : z1 - 0.06); p.rotation.y = p.position.z < (z0 + z1) / 2 ? 0 : Math.PI; }
         group.add(p);
       }
     };
     const bloody = ['morgue', 'autopsy', 'er', 'surgery', 'iso', 'room207'].includes(room.tag);
     const burnt = ['boiler', 'incinerator', 'ritual', 'storage', 'laundry', 'kitchen'].includes(room.tag);
-    if (bloody) { wallDetail('blood', 2 + (Math.random() * 3 | 0)); if (Math.random() < 0.8) place('bloodpool', cx + (Math.random() - 0.5) * 2, cz + (Math.random() - 0.5) * 2, 0); }
-    if (burnt) wallDetail('scorch', 2 + (Math.random() * 3 | 0));
+    if (bloody) { wallDetail('blood', 2 + (rnd() * 3 | 0)); if (rnd() < 0.8) place('bloodpool', cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2, 0); }
+    if (burnt) wallDetail('scorch', 2 + (rnd() * 3 | 0));
     // EVERY room now carries some wall grime — the walls are never bare/identical
-    if (!bloody && !burnt) wallDetail(Math.random() < 0.5 ? 'blood' : 'scorch', 1 + (Math.random() * 2 | 0));
+    if (!bloody && !burnt) wallDetail(rnd() < 0.5 ? 'blood' : 'scorch', 1 + (rnd() * 2 | 0));
     for (let i = 0; i < nClutter; i++) {
-      const cxm = x0 + Math.random() * (x1 - x0);
-      const czm = z0 + Math.random() * (z1 - z0);
+      const cxm = x0 + rnd() * (x1 - x0);
+      const czm = z0 + rnd() * (z1 - z0);
       // keep the door column walkable
       if (Math.abs(cxm / TILE_M - (room.doorX + 0.5)) < 1.6) continue;
-      place(CLUTTER[Math.floor(Math.random() * CLUTTER.length)], cxm, czm, Math.random() * 6.28);
+      place(CLUTTER[Math.floor(rnd() * CLUTTER.length)], cxm, czm, rnd() * 6.28);
     }
 
     const style = spec.style;
@@ -675,17 +686,17 @@ const Props = (() => {
         group.add(light);
       }
       // some dead tubes hang broken off the ceiling by one wire
-      const dead = Math.random() < 0.28;
-      if (dead && Math.random() < 0.5) {
-        tube.rotation.z = 0.55 + Math.random() * 0.3;
+      const dead = rnd() < 0.28;
+      if (dead && rnd() < 0.5) {
+        tube.rotation.z = 0.55 + rnd() * 0.3;
         tube.position.y -= 0.42;
         tube.position.x += 0.5;
         const wire = box(0.02, 0.5, 0.02, m.dark || mats().dark, tube.position.x - 0.75, WALL_H - 0.25, tube.position.z);
         group.add(wire);
         // glass shards on the floor beneath
-        for (let s = 0; s < 4; s++) group.add(box(0.05, 0.01, 0.08, mats().tube, tube.position.x + (Math.random() - 0.5), 0.012, tube.position.z + (Math.random() - 0.5)));
+        for (let s = 0; s < 4; s++) group.add(box(0.05, 0.01, 0.08, mats().tube, tube.position.x + (rnd() - 0.5), 0.012, tube.position.z + (rnd() - 0.5)));
       }
-      fixtures.push({ tube, light, dead, on: !dead, base: withLight ? 1.1 : 0, phase: Math.random() * 6, nextFlick: Math.random() * 3 });
+      fixtures.push({ tube, light, dead, on: !dead, base: withLight ? 1.1 : 0, phase: rnd() * 6, nextFlick: rnd() * 3 });
     };
     // corridor tubes every ~8 tiles; REAL lights only on every other one (Quest perf)
     const ct = (_data && _data.CORR_TOP) || 14, cb = (_data && _data.CORR_BOT) || 17;
@@ -702,6 +713,7 @@ const Props = (() => {
   // ---------- public ----------
   function populate(fi, data, opts) {
     _data = data;
+    reseed(90210 ^ (fi * 7919 + 1));   // same night, same floor -> same rooms, same collision
     const THREE = T();
     const TILE_M = opts.TILE_M, WALL_H = opts.WALL_H;
     const group = new THREE.Group();
@@ -718,16 +730,16 @@ const Props = (() => {
       data.floors[fi].rooms.forEach((r) => doorCols.push(r.doorX));
       const CORR = ['wheelchair', 'cart', 'bed', 'crates', 'iv', 'shelf'];
       for (let x = 6; x < (data.W || 64) - 6; x += 7) {
-        const xx = x + (Math.random() - 0.5) * 2;
+        const xx = x + (rnd() - 0.5) * 2;
         if (doorCols.some((d) => Math.abs(d - xx) < 2)) continue;
         const top = (x / 7) % 2 === 0;
         const zt = top ? (ct + 0.55) : (cb + 0.45);
-        const name = CORR[Math.floor(Math.random() * CORR.length)];
+        const name = CORR[Math.floor(rnd() * CORR.length)];
         const b = BUILDERS[name]; if (!b) continue;
         const g = b();
         const xm = (xx + 0.5) * TILE_M, zm = zt * TILE_M;
         g.position.set(xm, 0, zm);
-        g.rotation.y = (top ? 0 : Math.PI) + (Math.random() - 0.5) * 0.9;
+        g.rotation.y = (top ? 0 : Math.PI) + (rnd() - 0.5) * 0.9;
         group.add(g);
         if (g.userData.solid !== false) {
           const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
