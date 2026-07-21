@@ -47,7 +47,7 @@ const Entities = (() => {
         color: cfg.color, wakeHour: cfg.wakeHour, den: cfg.den || [],
         state: S.DORMANT, target: null, lastSeen: null, cooldown: 0, stepTimer: 0,
         path: null, pathTimer: 0, gaitPhase: Math.random() * 6.28, pause: 0,
-        idleTimer: 3 + Math.random() * 4, staring: false, alpha: 0, slow: 0,
+        idleTimer: 3 + Math.random() * 4, staring: false, alpha: 0, slow: 0, warded: 0,
         moving: false, fast: false, facing: 0, px: cfg.x + 0.5, py: cfg.y + 0.5,
       });
     }
@@ -108,6 +108,20 @@ const Entities = (() => {
       const grid = world.floors[this.floor].grid;
       const onSameFloor = player.floor === this.floor;
       this.px = this.x; this.py = this.y;
+      this.warded = Math.max(0, (this.warded || 0) - dt);
+
+      // ---- WARDED: the raised cross drives the dead back. It flees, cannot catch. ----
+      if (this.warded > 0 && onSameFloor) {
+        this.state = S.HUNT;   // stays active/visible, but recoiling
+        const ax = this.x - player.x, ay = this.y - player.y, len = Math.hypot(ax, ay) || 1;
+        const flee = this.huntSpeed * diff.speedMul * 1.15 * dt;
+        this.moveDirect(grid, this.x + (ax / len) * 6, this.y + (ay / len) * 6, flee);
+        this.facing = Math.atan2(-ay, -ax);
+        const moved = Math.hypot(this.x - this.px, this.y - this.py);
+        this.moving = moved > 0.002; this.fast = true;
+        this.lastSeen = null; this.path = null;
+        return;
+      }
 
       // ---- detection ----
       let detected = false;

@@ -557,10 +557,10 @@ const Props = (() => {
       if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: Math.random() * 6 });
     };
 
-    // generic clutter pass — big rooms get scattered debris so nothing feels bare
+    // generic clutter pass — rooms get scattered debris so nothing feels bare
     const areaT = (room.w - 2) * (room.h - 2);
-    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart', 'papers', 'newspaper', 'newspaper', 'chair'];
-    const nClutter = Math.min(10, Math.floor(areaT / 10));
+    const CLUTTER = ['crates', 'chair', 'iv', 'tray', 'cart', 'papers', 'newspaper', 'newspaper', 'chair', 'crates', 'papers', 'tray', 'chair'];
+    const nClutter = Math.min(18, Math.max(2, Math.floor(areaT / 6)));
     // wall details: blood smears + 1926 fire scorch marks climbing the walls
     const wallDetail = (kind, count) => {
       for (let i = 0; i < count; i++) {

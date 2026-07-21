@@ -74,6 +74,8 @@ const HAUNT = {
 const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
 let hemi = null, lanternLight = null, stickBtnWas = false;
+let heldCross = null, brandishing = false, wardChimeT = 0, wardTaught = false;   // the defensive cross
+const WARD_RANGE = 6.5;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
 function applyBrightness() {
   if (ambient) ambient.intensity = OPTS.bright ? 0.26 : 0.10;
@@ -187,25 +189,32 @@ function init() {
 // ---- persistence (so a 24-hour night survives the headset sleeping) ----
 function saveState() {
   if (!data || !player || state === 'MENU') return;
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      v: 2, realMode, startEpoch,
-      floor: player.floor, x: player.x, y: player.y,
-      fear: player.fear, battery: player.battery, hasLight: player.hasLight,
-      inv: player.inv, keys: player.keys, rite: player.rite,
-      itemsTaken: data.items.filter((i) => i.taken).map((i) => i.id),
-      objectives: data.objectives.map((o) => o.done),
-      docs: documents.filter((d) => d.found).map((d) => d.id),
-      ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
-      ritualDone: !!(ritual && ritual.done),
-      childrenFreed, spiritsFreed,
-      survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
-      finished: state === 'WIN' || state === 'DEAD',
-    }));
-  } catch (e) { /* storage full / disabled */ }
+  const s = {
+    v: 2, realMode, startEpoch,
+    floor: player.floor, x: player.x, y: player.y,
+    fear: player.fear, battery: player.battery, hasLight: player.hasLight, faith: player.faith,
+    inv: player.inv, keys: player.keys, rite: player.rite,
+    itemsTaken: data.items.filter((i) => i.taken).map((i) => i.id),
+    objectives: data.objectives.map((o) => o.done),
+    docs: documents.filter((d) => d.found).map((d) => d.id),
+    ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
+    ritualDone: !!(ritual && ritual.done),
+    childrenFreed, spiritsFreed,
+    survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
+    finished: state === 'WIN' || state === 'DEAD',
+  };
+  // signed-in players get a private per-account save slot; guests use the shared one
+  if (window.Accounts && Accounts.current()) { Accounts.saveGame(s); }
+  else { try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) { } }
 }
-function loadSave() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } }
-function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
+function loadSave() {
+  if (window.Accounts && Accounts.current()) return Accounts.loadGame();
+  try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; }
+}
+function clearSave() {
+  if (window.Accounts && Accounts.current()) { Accounts.clearGame(); return; }
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { }
+}
 
 function offerResume() {
   const s = loadSave();
@@ -410,6 +419,73 @@ function bindUI() {
     const s = loadSave(); if (!s) return;
     if (xrSupported) enterVR(s); else startDesktop(s);
   });
+  bindAccountUI();
+}
+
+// ---- account bar: sign in with phone + PIN, records, leaderboard ----
+function refreshAcctBar() {
+  const A = window.Accounts; if (!A) return;
+  const phone = A.current();
+  const status = document.getElementById('acct-status');
+  const toggle = document.getElementById('acct-toggle');
+  const signout = document.getElementById('acct-signout');
+  const strip = document.getElementById('records-strip');
+  if (phone) {
+    const r = A.records() || {};
+    if (status) status.innerHTML = 'Signed in as <b>' + A.maskPhone(phone) + '</b>';
+    if (toggle) toggle.style.display = 'none';
+    if (signout) signout.style.display = '';
+    if (strip) strip.innerHTML = r.bestTimeSec
+      ? 'Best survived: <b>' + A.fmtTime(r.bestTimeSec) + '</b> · Nights won: <b>' + (r.nightsSurvived || 0) + '</b> · Rites: <b>' + (r.ritesCompleted || 0) + '</b> · Deaths: <b>' + (r.deaths || 0) + '</b>'
+      : 'No runs yet — survive the night and set your record.';
+  } else {
+    if (status) status.textContent = 'Not signed in (playing as guest)';
+    if (toggle) toggle.style.display = '';
+    if (signout) signout.style.display = 'none';
+    if (strip) strip.innerHTML = '';
+  }
+  offerResume();   // the resume button follows the active account's save
+}
+function renderLeaderboard() {
+  const A = window.Accounts; if (!A) return;
+  const rows = A.leaderboard(); const me = A.current();
+  const tb = document.querySelector('#lb-table tbody'); if (!tb) return;
+  let h = '<tr><th class="rank">#</th><th>Player</th><th>Best time</th><th>Nights</th></tr>';
+  if (!rows.length) h += '<tr><td colspan="4" style="color:#7a8590">No records yet. Be the first to survive.</td></tr>';
+  rows.slice(0, 12).forEach((r, i) => {
+    h += '<tr class="' + (r.phone === me ? 'me' : '') + '"><td class="rank">' + (i + 1) + '</td><td>' + r.mask +
+      '</td><td>' + (r.best ? A.fmtTime(r.best) : '—') + '</td><td>' + r.nights + '</td></tr>';
+  });
+  tb.innerHTML = h;
+}
+function bindAccountUI() {
+  const A = window.Accounts; if (!A) return;
+  const $ = (id) => document.getElementById(id);
+  const panel = $('signin'), board = $('leaderboard');
+  const show = (el, on2) => el && el.classList.toggle('show', on2);
+  if ($('acct-toggle')) $('acct-toggle').onclick = () => { show(board, false); show(panel, !panel.classList.contains('show')); if ($('in-err')) $('in-err').textContent = ''; const ph = $('in-phone'); if (ph) ph.focus(); };
+  if ($('in-cancel')) $('in-cancel').onclick = () => show(panel, false);
+  if ($('acct-signout')) $('acct-signout').onclick = () => { A.signOut(); refreshAcctBar(); };
+  if ($('acct-board')) $('acct-board').onclick = () => { show(panel, false); renderLeaderboard(); show(board, !board.classList.contains('show')); };
+  if ($('lb-close')) $('lb-close').onclick = () => show(board, false);
+  const doSignIn = () => {
+    const res = A.signIn($('in-phone').value, $('in-pin').value);
+    if (!res.ok) { if ($('in-err')) $('in-err').textContent = res.err; return; }
+    $('in-pin').value = '';
+    show(panel, false); refreshAcctBar();
+    showToast(res.isNew ? 'Account created. Your record starts tonight.' : 'Welcome back. Your night is where you left it.');
+  };
+  if ($('in-go')) $('in-go').onclick = doSignIn;
+  if ($('in-pin')) $('in-pin').onkeydown = (e) => { if (e.key === 'Enter') doSignIn(); };
+  refreshAcctBar();
+}
+function showToast(msg) {
+  let t = document.getElementById('acct-toast');
+  if (!t) { t = document.createElement('div'); t.id = 'acct-toast';
+    t.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:50;background:rgba(10,12,18,.95);border:1px solid #2f8a55;color:#bfeecf;padding:10px 18px;border-radius:6px;font-size:14px;pointer-events:none;transition:opacity .4s';
+    document.body.appendChild(t); }
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 3200);
 }
 function setMode(v) {
   realMode = v;
@@ -442,7 +518,7 @@ function startDesktop(saved) {
   document.getElementById('vr-hud').classList.add('show');
   document.getElementById('vr-crosshair').style.display = 'block';
   document.getElementById('controls-hint').textContent =
-    'WASD move · mouse look · F flashlight · E interact · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
+    'WASD move · mouse look · F flashlight · E interact · R hold up CROSS · Q spirit box · C drink · V medkit · Tab case file · Shift run · P pause';
   // desktop uses camera-mounted flashlight
   if (flashlight.parent !== camera) { flashlight.parent.remove(flashlight); flashlight.parent.remove(flashlight.target); camera.add(flashlight); camera.add(flashlight.target); flashlight.position.set(0.15, -0.05, 0); flashlight.target.position.set(0, 0, -1); }
   heroReady.then(() => newGame(saved));
@@ -465,7 +541,7 @@ function newGame(saved) {
   const sp = World.spawn(data);
   player = {
     floor: sp.floor, x: sp.x + 0.5, y: sp.y + 0.5,
-    aim: 0, fear: 8, stamina: 100, battery: 100,
+    aim: 0, fear: 8, stamina: 100, battery: 100, faith: 100,
     // you START with the flashlight in your hand and lit — no fumbling in the dark
     hasLight: true, lightOn: true, hidden: false, inv: {}, keys: {}, rite: {},
   };
@@ -497,6 +573,7 @@ function restoreFrom(s) {
   startEpoch = s.startEpoch || Date.now();
   player.floor = s.floor; player.x = s.x; player.y = s.y;
   player.fear = s.fear || 12; player.battery = s.battery == null ? 100 : s.battery;
+  player.faith = s.faith == null ? 100 : s.faith;
   player.hasLight = !!s.hasLight; player.lightOn = false;
   player.inv = s.inv || {}; player.keys = s.keys || {}; player.rite = s.rite || {};
   (s.itemsTaken || []).forEach((id) => { const it = data.items.find((i) => i.id === id); if (it) it.taken = true; });
@@ -1208,7 +1285,7 @@ function addLocker(wx, wz) {
   floorGroup.add(m);
 }
 
-const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060 };
+const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060, ward: 0xfff0c0 };
 function addItemMesh(it) {
   const col = ITEM_COLORS[it.type] || 0xffffff;
   const g = new THREE.Group();
@@ -1692,6 +1769,71 @@ function animateGhost(rec, e, dt) {
   if (rec.embers) rec.embers.rotation.y += dt * (hunt ? 3.5 : 1.2);
 }
 
+// ============================================================ the ward (defense)
+// The Warding Cross: hold it up (R on desktop, right-hand A button in VR) and it
+// glows, ringing a holy chord that drives the nearby dead back — while your FAITH
+// holds. Faith drains as you brandish and recovers when you lower it (faster by
+// candlelight). Your one real defense besides running.
+function buildHeldCross() {
+  const g = new THREE.Group();
+  const src = (window.HeroModels || {}).cross;
+  if (src) {
+    const m = src.clone();
+    const box = new THREE.Box3().setFromObject(m); const sz = box.getSize(new THREE.Vector3());
+    const ref = Math.max(sz.x, sz.y, sz.z) || 1; m.scale.setScalar(0.42 / ref);
+    const c2 = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()); m.position.sub(c2);
+    m.rotation.x = 0.2; g.add(m);
+  } else { // fallback: two crossed bars
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 });
+    g.add(mkBox(0.05, 0.42, 0.05, mat, 0, 0, 0));
+    g.add(mkBox(0.26, 0.05, 0.05, mat, 0, 0.08, 0));
+  }
+  const glow = new THREE.PointLight(0xfff0c0, 0, 6, 2); g.add(glow); g.userData.glow = glow;
+  // a warm holy aura sprite
+  const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(255,240,190,0.85)'), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  aura.scale.set(1.4, 1.4, 1); g.add(aura); g.userData.aura = aura;
+  g.position.set(0.16, -0.16, -0.42);   // held in the lower-right of view
+  g.visible = false; camera.add(g);
+  return g;
+}
+function wantsBrandish() {
+  if (!player || !player.inv || !player.inv.cross) return false;
+  if (!isVR) return !!keys['r'];
+  // VR: hold the right-hand A button (index 4)
+  const rs = OPTS.swapHands ? sources.left : sources.right;
+  const gp = rs && rs.userData.inputSource && rs.userData.inputSource.gamepad;
+  return !!(gp && gp.buttons && gp.buttons[4] && gp.buttons[4].pressed);
+}
+function updateWard(dt) {
+  if (!heldCross) heldCross = buildHeldCross();
+  const active = wantsBrandish() && player.faith > 2;
+  brandishing = active;
+  if (active) {
+    player.faith = Math.max(0, player.faith - dt * 20);
+    if (!wardTaught) { wardTaught = true; showSubtitle('The cross blazes. The dead recoil from it — but your faith is burning down. Don’t lean on it.', 4.5); }
+    // drive back every nearby soul on this floor
+    let hit = false;
+    ents.forEach((e) => {
+      if (e.floor !== player.floor) return;
+      const d = Math.hypot(e.x - player.x, e.y - player.y);
+      if (d < WARD_RANGE) { e.warded = 0.45; if (e.state === Entities.S.HUNT || d < 4) hit = true; }
+    });
+    wardChimeT -= dt;
+    if (wardChimeT <= 0) { wardChimeT = 1.1; Audio2.wardChime(0.05 + (hit ? 0.03 : 0)); }
+    if (hit) { player.fear = Math.max(0, player.fear - dt * 6); haptic(0.25, 40); }
+  } else {
+    player.faith = Math.min(100, player.faith + dt * (nearCandle() ? 22 : 11));
+  }
+  // visual: raise + glow the cross while brandishing
+  heldCross.visible = !!player.inv.cross && (brandishing || (isVR));   // in VR it's always in hand; on desktop only when raised
+  const glow = heldCross.userData.glow, aura = heldCross.userData.aura;
+  const targetGlow = brandishing ? 2.4 + Math.sin(performance.now() / 90) * 0.6 : 0;
+  glow.intensity += (targetGlow - glow.intensity) * Math.min(1, dt * 10);
+  aura.material.opacity += ((brandishing ? 0.85 : 0) - aura.material.opacity) * Math.min(1, dt * 8);
+  const targetY = brandishing ? -0.02 : -0.16;   // raise it up when brandished
+  heldCross.position.y += (targetY - heldCross.position.y) * Math.min(1, dt * 9);
+}
+
 // ============================================================ entity audio
 // Every one of the dead is HEARD in surround: cadenced footsteps panned to where
 // it walks, its own voice when it idles nearby, ragged breathing when it is
@@ -2019,6 +2161,10 @@ function pickupItem(it) {
     case 'spiritbox': player.inv.spiritbox = true; showSubtitle('Spirit box. Hold the left grip to listen. They answer — and come.', 4.5); break;
     case 'candlekit': player.inv.candles = (player.inv.candles || 0) + 3; showSubtitle('Candles — their light steadies your heart.', 3); break;
     case 'key': player.keys[it.id] = true; showSubtitle('A key: ' + keyLabel(it.id), 3); break;
+    case 'ward':
+      player.inv.cross = true;
+      showSubtitle('A heavy iron crucifix. Hold it up (R / right-hand A button) to drive the dead back — while your faith holds.', 6);
+      break;
   }
 }
 function keyLabel(id) {
@@ -2526,6 +2672,7 @@ function update(dt) {
     beamHits: (ex, ey) => beamHits(ex, ey),
     onCatch: (e) => { deathBy = catchLine(e); die(); },
   };
+  updateWard(dt);   // apply the cross's ward BEFORE the dead act this frame (no lag)
   let nearest = Infinity, hunting = false;
   const eDt = dt * Survival.entityTimeScale();
   ents.forEach((e) => {
@@ -2823,7 +2970,7 @@ function findInteract() {
   if (sp) return sp;
   return null;
 }
-function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer' })[t] || t; }
+function itemName(t) { return ({ flashlight: 'flashlight', battery: 'batteries', emf: 'EMF reader', spiritbox: 'spirit box', candlekit: 'candles', key: 'key', draught: 'Quiet Draught', backpack: 'backpack', medkit: 'medkit', teddy: 'teddy bear', anchor: 'Spirit Anchor', censer: 'Matron’s Censer', ward: 'Warding Cross' })[t] || t; }
 function itemDisplay(it) { if (it.type === 'anchor') { const a = data.rite.anchors.find((x) => x.key === it.anchor); return a ? a.name : 'Spirit Anchor'; } return itemName(it.type); }
 
 // ============================================================ HUD
@@ -2831,6 +2978,8 @@ function updateHUD() {
   const done = data.objectives.filter((o) => o.done).length;
   // desktop DOM HUD
   setBar('fear-fill', player.fear); setBar('battery-fill', player.battery); setBar('stamina-fill', player.stamina);
+  const fm = document.getElementById('faith-meter');
+  if (fm) { fm.style.display = player.inv.cross ? '' : 'none'; if (player.inv.cross) setBar('faith-fill', player.faith); }
   setText('clock', fmtClock());
   setText('objective-count', `Truths: ${done}/${data.objectives.length}`);
   const inv = document.getElementById('inventory');
@@ -2839,6 +2988,7 @@ function updateHUD() {
     if (player.hasLight) bits.push(player.lightOn ? '🔦 ON' : '🔦 off');
     if (player.inv.emf) bits.push('📶 EMF');
     if (player.inv.spiritbox) bits.push(spiritActive ? '📻 …' : '📻');
+    if (player.inv.cross) bits.push((brandishing ? '✝✨ ' : '✝ ') + Math.round(player.faith) + '%');
     Object.keys(player.keys).forEach((id) => bits.push('🗝' + (KEY_SHORT[id] || '')));
     // Unbinding Rite progress: seated/total, carried anchors, censer
     if (ritual && data.rite) {
@@ -2921,6 +3071,7 @@ function resumeGame() {
 }
 function die() {
   if (state === 'DEAD') return;
+  if (window.Accounts) Accounts.recordDeath(elapsed);
   state = 'DEAD'; stopSpirit(); Audio2.stinger(true); clearSave();
   setTimeout(() => Audio2.suspend(), 1600);
   if (isVR) showBigPanel('YOU DIED', [deathBy].concat(data.LORE.ending_bad), '#e02a2a');
@@ -2932,6 +3083,7 @@ function die() {
 }
 function win() {
   if (state === 'WIN') return;
+  if (window.Accounts) Accounts.recordWin(elapsed, false);
   state = 'WIN'; stopSpirit(); clearSave();
   if (isVR) showBigPanel('DAWN', data.LORE.ending_good, '#8affb0');
   else {
@@ -2943,6 +3095,7 @@ function win() {
 // The true ending — reached by completing the Unbinding Rite (not just surviving).
 function trueEnding() {
   if (state === 'WIN') return;
+  if (window.Accounts) Accounts.recordWin(elapsed, true);
   riteClimax = false;
   state = 'WIN'; stopSpirit(); clearSave();
   const title = 'THE HOUSE IS EMPTY';

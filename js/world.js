@@ -305,6 +305,9 @@ const World = (() => {
     addItem(4, 'chapel', 'lantern', 'lantern', 1, -1);
     addItem(1, 'kitchen', 'battery', 'bat7', -1, 0);
     addItem(2, 'bath', 'battery', 'bat8');
+    // the Warding Cross — your only real defense: raise it to drive the dead back
+    addItem(4, 'chapel', 'ward', 'holy_cross', -1, 0);
+    addItem(0, 'ritual', 'ward', 'ritual_cross', 1, -1);   // a spare, deep in the basement
     // the orderly's backpack + medkits
     addItem(0, 'storage', 'backpack', 'backpack', -1, 0);
     addItem(1, 'er', 'medkit', 'mk1', -1, 1);

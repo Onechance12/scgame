@@ -25,6 +25,27 @@
     .mode:hover{border-color:#9aa7b0}
     .mode.selected{border-color:var(--blood);color:#e7edf2;background:rgba(160,18,18,.15);box-shadow:0 0 14px rgba(160,18,18,.3)}
     .btn.resume{display:block;margin:0 auto 14px;background:linear-gradient(180deg,#123a24,#0a2417);border-color:#2f8a55;color:#bfeecf}
+    /* account / leaderboard */
+    #acctbar{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;margin:4px 0 12px;font-size:13px;color:#9aa7b0}
+    #acctbar b{color:#e7edf2}
+    .acct-link{pointer-events:auto;cursor:pointer;color:#c9a24a;border-bottom:1px dotted #c9a24a}
+    #signin{max-width:340px;margin:8px auto 14px;padding:14px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:rgba(255,255,255,.03);display:none}
+    #signin.show{display:block}
+    #signin input{width:100%;box-sizing:border-box;margin:6px 0;padding:11px;font-family:inherit;font-size:16px;background:#0c0e14;
+      border:1px solid rgba(255,255,255,.2);border-radius:4px;color:#e7edf2;letter-spacing:1px}
+    #signin .row{display:flex;gap:8px}#signin .row .btn{flex:1;margin:6px 0}
+    #signin .err{color:#e78a8a;font-size:12px;min-height:16px;text-align:center}
+    #signin .hint2{font-size:11px;color:#7a8590;text-align:center;line-height:1.5;margin-top:6px}
+    #leaderboard{max-width:420px;margin:8px auto;padding:14px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:rgba(0,0,0,.35);display:none}
+    #leaderboard.show{display:block}
+    #leaderboard h3{margin:0 0 10px;color:#e7edf2;letter-spacing:2px}
+    #leaderboard table{width:100%;border-collapse:collapse;font-size:13px}
+    #leaderboard td,#leaderboard th{padding:5px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}
+    #leaderboard th{color:#8a95a0;font-weight:normal;font-size:11px;letter-spacing:1px}
+    #leaderboard tr.me{background:rgba(160,18,18,.16)}
+    #leaderboard .rank{color:#c9a24a;width:26px}
+    #records-strip{font-size:12px;color:#9aa7b0;margin:2px 0 10px}
+    #records-strip b{color:#e7a0a0}
   </style>
 </head>
 <body>
@@ -40,6 +61,7 @@
       <div class="meter"><span class="lbl">FEAR</span><div class="bar"><div id="fear-fill" class="fill fear"></div></div></div>
       <div class="meter"><span class="lbl">LIGHT</span><div class="bar"><div id="battery-fill" class="fill battery"></div></div></div>
       <div class="meter"><span class="lbl">BODY</span><div class="bar"><div id="stamina-fill" class="fill stamina"></div></div></div>
+      <div class="meter" id="faith-meter" style="display:none"><span class="lbl">FAITH</span><div class="bar"><div id="faith-fill" class="fill" style="background:linear-gradient(90deg,#c9a24a,#fff0c0)"></div></div></div>
     </div>
     <div id="inventory"></div>
     <div id="objective"></div>
@@ -69,6 +91,31 @@
         are full of children who want you to <i>stay</i>. Find the truth.
         Survive until dawn.
       </p>
+      <!-- account bar -->
+      <div id="acctbar">
+        <span id="acct-status">Not signed in</span>
+        <span class="acct-link" id="acct-toggle">Sign in / Create</span>
+        <span class="acct-link" id="acct-board">🏆 Leaderboard</span>
+        <span class="acct-link" id="acct-signout" style="display:none">Sign out</span>
+      </div>
+      <div id="records-strip"></div>
+      <!-- sign-in panel -->
+      <div id="signin">
+        <input id="in-phone" type="tel" inputmode="numeric" placeholder="Phone number" autocomplete="off" />
+        <input id="in-pin" type="password" inputmode="numeric" maxlength="8" placeholder="PIN (4–8 digits)" autocomplete="off" />
+        <div class="err" id="in-err"></div>
+        <div class="row">
+          <button id="in-go" class="btn">ENTER</button>
+          <button id="in-cancel" class="btn ghost">CANCEL</button>
+        </div>
+        <div class="hint2">New number? We’ll create your account with this PIN.<br>Records &amp; the leaderboard are saved on this device.</div>
+      </div>
+      <!-- leaderboard -->
+      <div id="leaderboard">
+        <h3>🏆 LEADERBOARD — LONGEST SURVIVED</h3>
+        <table id="lb-table"><tbody></tbody></table>
+        <button id="lb-close" class="btn ghost" style="margin-top:10px">CLOSE</button>
+      </div>
       <div id="mode-select">
         <button id="mode-night" class="mode selected">🌙 ONE NIGHT<span>~20 min</span></button>
         <button id="mode-24" class="mode">⏳ 24-HOUR REAL SURVIVAL<span>the clock is real — last until 6 PM tomorrow</span></button>
@@ -111,6 +158,7 @@
   </div>
 
   <!-- shared data + logic (classic scripts, set window globals) -->
+  <script src="js/accounts.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/world.js"></script>
   <script src="js/entities.js"></script>

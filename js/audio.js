@@ -841,6 +841,26 @@ const Audio2 = (() => {
     }
   }
 
+  // The ward: raising the cross rings a bright, holy chord that drives the dead back.
+  function wardChime(vol) {
+    if (!started) return;
+    const t = now(); const v = vol || 0.06;
+    // a shimmering major chord (a chapel bell + choir)
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      const o = ctx.createOscillator(); o.type = i < 2 ? 'triangle' : 'sine'; o.frequency.value = f;
+      const g = ctx.createGain(); const st = t + i * 0.02;
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(v * (1 - i * 0.15), st + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + 1.1);
+      o.connect(g); g.connect(master); o.start(st); o.stop(st + 1.2);
+    });
+    // a soft high shimmer on top
+    const s = noiseSource();
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 5000;
+    const g2 = ctx.createGain(); g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(v * 0.3, t + 0.05); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    s.connect(hp); hp.connect(g2); g2.connect(master); s.start(t); s.stop(t + 0.65);
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -853,7 +873,7 @@ const Audio2 = (() => {
     buzz, scream, drag, laugh, drip, slam,
     babyCry, musicBox, humming, rattle,
     footstepPan, laughPan, chains, crash, thud, gust,
-    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan,
+    growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan, wardChime,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;
