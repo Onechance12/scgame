@@ -2351,14 +2351,15 @@ function dressWalls(fi, g) {
       run = 0;
       usedTiles.add(row.y + ':' + x);
       const wx = (x + 0.5 + (rnd() - 0.5) * 0.3) * TILE_M;
-      const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.04, 2.08, 0.055), M.deadDoor);
-      mount(leaf, wx, 1.04, row.z + row.face * 0.012, row.face);
-      const jambL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.22, 0.07), M.frame);
-      mount(jambL, wx - 0.6, 1.11, row.z + row.face * 0.012, row.face);
-      const jambR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.22, 0.07), M.frame);
-      mount(jambR, wx + 0.6, 1.11, row.z + row.face * 0.012, row.face);
-      const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.1, 0.07), M.frame);
-      mount(lintel, wx, 2.26, row.z + row.face * 0.012, row.face);
+      // the leaf FILLS its frame — jambs hug it, the lintel seats on the jambs
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.04, 2.13, 0.055), M.deadDoor);
+      mount(leaf, wx, 1.065, row.z + row.face * 0.012, row.face);
+      const jambL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.2, 0.07), M.frame);
+      mount(jambL, wx - 0.567, 1.1, row.z + row.face * 0.012, row.face);
+      const jambR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.2, 0.07), M.frame);
+      mount(jambR, wx + 0.567, 1.1, row.z + row.face * 0.012, row.face);
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.23, 0.09, 0.07), M.frame);
+      mount(lintel, wx, 2.17, row.z + row.face * 0.012, row.face);
       const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), M.steel);
       mount(knob, wx + 0.4, 1.02, row.z + row.face * 0.075, row.face);
       const r1 = rnd(), r2 = rnd();

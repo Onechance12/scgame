@@ -26,11 +26,12 @@ const Props = (() => {
     const THREE = T();
     const s = (c, r, m) => new THREE.MeshStandardMaterial({ color: c, roughness: r == null ? 0.9 : r, metalness: m || 0 });
     M = {
-      metal: s(0x8b9098, 0.5, 0.4),
-      steel: s(0xb7bcc4, 0.35, 0.7),
-      white: s(0xc2c6cc, 0.8, 0),
-      sheet: s(0x9aa0a8, 0.95, 0),
-      mattress: s(0x565a62, 1, 0),
+      // forty years of dust: nothing in this building is still white
+      metal: s(0x6e7278, 0.65, 0.35),
+      steel: s(0x8a8e96, 0.55, 0.55),
+      white: s(0x94907f, 0.9, 0),
+      sheet: s(0x7d7669, 0.98, 0),
+      mattress: s(0x4a4d54, 1, 0),
       wood: s(0x5b4632, 0.85, 0),
       darkwood: s(0x3c2e20, 0.85, 0),
       rubber: s(0x161619, 0.9, 0),

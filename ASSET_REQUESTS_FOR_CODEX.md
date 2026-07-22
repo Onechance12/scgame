@@ -93,6 +93,19 @@ Game: "College Hill — 24 Hours", WebXR survival horror, Meta Quest primary tar
     skid, riveted fuel tank, flywheel + hand crank, brass pressure gauge, cloth-wrapped
     cables. Rust, oil staining, chipped paint. ≤ 10k faces, ≤ 1K textures, ~1.7 m long.
     It sits in the boiler room and the player cranks it by hand — make it look worth the risk.
+11b. **`generated/furnace/` — the basement incinerator, GLB.** Owner saw the
+    procedural placeholder and said "eww" — replace it. A coal-fired 1920s
+    hospital incinerator: riveted cast-iron body, arched fire door with a
+    mica/grate window (leave the opening GLASS-FREE — the engine renders its
+    own animated flame behind it), ash drawer, flue pipe rising ~2 m, soot
+    staining. ≤ 6k faces, ≤ 1K textures, ~1.6 m wide footprint, fire-door
+    opening centred on the front face roughly 0.7 m up. One material.
+11c. **`generated/wardbed/` — a 1920s iron ward bed, GLB.** The primitive
+    corridor beds read as white boxes. Real thing: tubular iron frame with
+    chipped enamel, sagging stained mattress, disturbed sheet half-slid to
+    the floor. ≤ 4k faces, ≤ 1K texture, ~0.95 × 2.1 m footprint, one
+    material. A second texture variant with old blood soaked through the
+    mattress would slot straight into the existing "bloody bed" chance.
 12. **`generated/mirrors/` — mirror scare set.** (a) A wall mirror with an aged wooden
     frame, GLB ≤ 3k faces (silvered glass slightly desilvered at the edges); (b) the SAME
     mirror broken: empty frame + a few shards clinging, for the after-state; (c) a 512px
