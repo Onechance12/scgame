@@ -3364,6 +3364,24 @@ function addDoor(x, y, wx, wz, locked) {
   // One hinged leaf per room. Unlocked doors remember their open/closed state
   // across floor revisits; locked leaves remain shut until interacted with.
   const mat = new THREE.MeshStandardMaterial({ map: TEX.doorD, color: locked ? 0x9a5050 : 0x9a8a76, roughness: .85, emissive: locked ? 0x300000 : 0x000000 });
+  // the frame FILLS the raw 2.7 m tile reveal around the ward's double-width
+  // leaf: side posts close the 16 cm gaps, a deep header closes the 26 cm
+  // above — a shut door shows wood, never daylight
+  if (!addDoor.frameMat) {
+    addDoor.frameMat = new THREE.MeshStandardMaterial({ color: 0x453729, roughness: .8 });
+    if (TEX.sharedMaterials) TEX.sharedMaterials.add(addDoor.frameMat);
+  }
+  const frame = new THREE.Group();
+  const postW = TILE_M * 0.06 + 0.02;   // covers the leaf-edge gap with overlap
+  const postL = new THREE.Mesh(new THREE.BoxGeometry(postW, WALL_H, 0.2), addDoor.frameMat);
+  postL.position.set(wx - TILE_M / 2 + postW / 2, WALL_H / 2, wz);
+  const postR = new THREE.Mesh(new THREE.BoxGeometry(postW, WALL_H, 0.2), addDoor.frameMat);
+  postR.position.set(wx + TILE_M / 2 - postW / 2, WALL_H / 2, wz);
+  const headH = WALL_H * 0.08 + 0.04;
+  const header = new THREE.Mesh(new THREE.BoxGeometry(TILE_M, headH, 0.2), addDoor.frameMat);
+  header.position.set(wx, WALL_H - headH / 2, wz);
+  frame.add(postL, postR, header);
+  floorGroup.add(frame);
   const hinge = new THREE.Group();
   hinge.position.set(wx - TILE_M * 0.44, 0, wz);
   const leaf = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.88, WALL_H * 0.92, 0.14), mat);
