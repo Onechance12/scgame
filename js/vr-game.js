@@ -4495,7 +4495,30 @@ function ensureEntityMesh(e) {
       if (map.low) model.scale.y *= 0.62;
       model.updateMatrixWorld(true);
       box = new THREE.Box3().setFromObject(model, true);
-      model.position.y = -box.min.y + (map.fly ? 0.3 : 0);
+      // A gait can dip below the idle baseline (the generated child's walk
+      // sinks ~6 cm) — normalize to the LOWEST sampled frame of every clip so
+      // no cycle ever buries feet. A phantom hovering a hair is fine; feet
+      // through the lino is not.
+      let minY = box.min.y;
+      if (rec.mixer && rec.clips) {
+        const sampled = new Set([rec.clips.idle]);
+        for (const key of ['walk', 'run']) {
+          const clip = rec.clips[key];
+          if (!clip || sampled.has(clip)) continue;
+          sampled.add(clip);
+          rec.mixer.stopAllAction();
+          const action = rec.mixer.clipAction(clip); action.reset().play();
+          for (let ph = 0; ph < 4; ph++) {
+            action.time = clip.duration * ph / 4; rec.mixer.update(0);
+            model.updateMatrixWorld(true);
+            const b2 = new THREE.Box3().setFromObject(model, true);
+            minY = Math.min(minY, b2.min.y);
+          }
+        }
+        rec.mixer.stopAllAction();
+        const idleA = rec.mixer.clipAction(rec.clips.idle); idleA.reset().play(); rec.mixer.update(0);
+      }
+      model.position.y = -minY + (map.fly ? 0.3 : 0);
       model.traverse((o) => {
         if (!o.isMesh || !o.material) return;
         o.frustumCulled = false;
@@ -4618,7 +4641,11 @@ function animateGhost(rec, e, dt) {
       if (rec.action) {
         const metresPerSecond = Math.max(0, e.motionSpeed || 0) * TILE_M;
         const authoredSpeed = e.fast ? 2.5 : 1.1;
-        rec.action.timeScale = e.moving ? Math.max(0.65, Math.min(1.45, metresPerSecond / authoredSpeed)) : 1;
+        // run clips may crank to 2.1x — a Crawler at 5.6 m/s scuttling in
+        // fast-forward is horror, feet skating across the lino is jank.
+        // Walks keep the gentler 1.45x cap so patrols never look comic.
+        const maxScale = e.fast ? 2.1 : 1.45;
+        rec.action.timeScale = e.moving ? Math.max(0.65, Math.min(maxScale, metresPerSecond / authoredSpeed)) : 1;
       }
     }
     if (rec.aura) rec.aura.material.opacity = (hunt ? 0.6 : 0.32) + Math.sin(t * 5) * 0.1;
