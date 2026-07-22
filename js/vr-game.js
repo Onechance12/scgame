@@ -4316,6 +4316,67 @@ function buildRitual() {
   }
 }
 
+// The Child ships as clean vertex-colored porcelain; the HOSPITAL dresses her.
+// Deterministic vertex paint (soaked hem, spatter, tracks from the sockets)
+// plus matted hair strands hung from the Head bone — no textures needed, and
+// the shared geometry is only ever painted once.
+function dressChild(model) {
+  let mesh = null;
+  model.traverse((o) => { if (!mesh && o.isMesh && o.geometry && o.geometry.attributes.color) mesh = o; });
+  if (mesh && !mesh.geometry.userData.childDressed) {
+    mesh.geometry.userData.childDressed = true;
+    const pos = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color;
+    const hash = (x, y, z) => { const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return n - Math.floor(n); };
+    for (let i = 0; i < col.count; i++) {
+      let cr = col.getX(i), cg = col.getY(i), cb = col.getZ(i);
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      // sixty years in the dark: nothing about her is clean any more
+      cr *= 0.6; cg *= 0.57; cb *= 0.55;
+      const h = hash(x, y, z);
+      // the gown hem has dragged through old blood — soaked upward, unevenly
+      if (y < 0.55) {
+        const soak = Math.min(1, (0.55 - y) / 0.4) * (0.5 + 0.5 * h);
+        cr = cr * (1 - soak) + 0.30 * soak;
+        cg = cg * (1 - soak) + 0.045 * soak;
+        cb = cb * (1 - soak) + 0.035 * soak;
+      }
+      // spatter, everywhere a small hand could reach
+      if (h > 0.92 && y > 0.5) { cr = 0.32; cg = 0.05; cb = 0.04; }
+      // dried tracks running down the face from each socket
+      if (z > 0.02 && y > 0.76 && y < 1.06 && Math.abs(Math.abs(x) - 0.055) < 0.032 && hash(x * 3, y * 3, z) > 0.3) {
+        cr = 0.34; cg = 0.05; cb = 0.05;
+      }
+      col.setXYZ(i, cr, cg, cb);
+    }
+    col.needsUpdate = true;
+  }
+  const head = model.getObjectByName('Head');
+  if (head && !head.getObjectByName('childHair')) {
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x121010, roughness: 1 });
+    const hair = new THREE.Group(); hair.name = 'childHair';
+    let s2 = 977; const r2 = () => { s2 = (s2 * 1103515245 + 12345) & 0x7fffffff; return s2 / 0x7fffffff; };
+    const strandGeo = (rad, len) => { const g = new THREE.ConeGeometry(rad, len, 5); g.rotateX(Math.PI); return g; };
+    for (let i = 0; i < 16; i++) {   // a ragged curtain all round the scalp
+      const a = (i / 16) * Math.PI * 2 + (r2() - 0.5) * 0.4;
+      const len = 0.24 + r2() * 0.2;
+      const strand = new THREE.Mesh(strandGeo(0.015 + r2() * 0.012, len), hairMat);
+      const rad = 0.1 + r2() * 0.03;
+      strand.position.set(Math.cos(a) * rad, 0.05 - len / 2 + r2() * 0.04, Math.sin(a) * rad);
+      strand.rotation.x = (r2() - 0.5) * 0.4;
+      strand.rotation.z = (r2() - 0.5) * 0.4;
+      hair.add(strand);
+    }
+    for (let i = 0; i < 6; i++) {    // and lank strands fallen over the face
+      const len = 0.26 + r2() * 0.14;
+      const strand = new THREE.Mesh(strandGeo(0.013, len), hairMat);
+      strand.position.set((r2() - 0.5) * 0.16, 0.06 - len / 2, 0.09 + r2() * 0.03);
+      strand.rotation.x = 0.22 + (r2() - 0.5) * 0.25;
+      hair.add(strand);
+    }
+    head.add(hair);
+  }
+}
+
 // ---- entity meshes ----
 // spectral apparitions: layered translucent shrouds, glow auras, ember swarms
 let auraTexCache = {};
@@ -4409,6 +4470,7 @@ function ensureEntityMesh(e) {
         if (o.material.emissive && map.emissive != null) o.material.emissive.setHex(map.emissive);
         if (map.translucent) { o.material.transparent = true; o.material.opacity = map.opacity; o.material.depthWrite = false; }
       });
+      if (e.kind === 'child') dressChild(model);
       grp.add(model); rec.hasModel = true; rec.yaw = map.yaw || 0;
       if (rec.mixer) { rec.action = rec.mixer.clipAction(rec.clips.idle); rec.action.play(); rec.cur = rec.clips.idle; }
       if (e.kind === 'ash') buildEmbers(rec, grp);
