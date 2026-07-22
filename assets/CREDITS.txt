@@ -65,6 +65,10 @@ license.txt from Sketchfab.
     wolfram/  "The Heilwald Loophole: Wolfram"       by fred346b
               https://sketchfab.com/3d-models/the-heilwald-loophole-wolfram-dd3831d3381f4ae19385244233c74351
               (fred346b — https://sketchfab.com/fred346b — CC-BY-4.0)
+              NOTE (2026-07-22): Helene + Anne no longer loaded — the Grey and
+              Night Nurses are replaced in-game by original generated models
+              (assets/generated/entities/nurse/ and nurse2/). Wolfram (Mose the
+              orderly) is still in use.
 
   The Child (a bound nursery child):
     horror/horrorkid/ "Horror Kid"  by LostModels2025
@@ -279,7 +283,7 @@ GENERATED VISUAL PACK (Codex)
 
   assets/generated/entities/ — original monster cast replacements generated
   for this game (packaged by Codex): procedural rigs, meshes and animations,
-  no third-party model/scan/likeness. Batches 1-2: the Child, the Restraint Crawler. Per-model
+  no third-party model/scan/likeness. Batches 1-3: the Child, the Restraint Crawler, the Grey + Night Nurse. Per-model
   PROVENANCE.md and manifests in each folder. Owned outright — no external
   license or attribution required.
 

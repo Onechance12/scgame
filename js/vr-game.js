@@ -2952,8 +2952,10 @@ const Assets = (() => {
   mob('intro', 'carouselG', 'assets/models/horror/carousel/scene.gltf');
   mob('intro', 'runner096', 'assets/models/horror/scp096/scene.gltf');
   // ---- cast: every apparition (they roam between floors — never floor-scoped)
-  mob('cast', 'helene', 'assets/models/sketchfab/helene/scene.gltf');
-  mob('cast', 'anne', 'assets/models/sketchfab/anne/scene.gltf');
+  // The Grey Nurse + Night Nurse — Codex's original cast (batch 3). The
+  // CC-BY Sketchfab Helene/Anne stay on disk but are no longer loaded.
+  mob('cast', 'nursecast', 'assets/generated/entities/nurse/nurse.glb');
+  mob('cast', 'nurse2cast', 'assets/generated/entities/nurse2/nurse2.glb');
   mob('cast', 'wolfram', 'assets/models/sketchfab/wolfram/scene.gltf');
   // the Child — Codex's original cast replacement (batch 1). The CC-BY-NC
   // horrorkid stays on disk but is no longer loaded or shipped to players.
@@ -4427,9 +4429,9 @@ function auraTex(hex) {
 // kind -> animated model + spectral styling
 const MOBMAP = {
   // The Grey Nurse — Nurse Helene, drained pale & half-there
-  nurse: { key: 'helene', targetH: 1.78, translucent: true, opacity: 0.8, tint: 0xbcccdd, tintAmt: 0.34, aura: 'rgba(150,180,220,0.5)', auraS: 2.4, yaw: Math.PI },
+  nurse: { key: 'nursecast', targetH: 1.78, translucent: true, opacity: 0.8, tint: 0xbcccdd, tintAmt: 0.34, aura: 'rgba(150,180,220,0.5)', auraS: 2.4, yaw: 0 },
   // The Night Nurse — Nurse Anne, sicklier, a charger
-  nurse2: { key: 'anne', targetH: 1.8, translucent: true, opacity: 0.82, tint: 0xaecdb4, tintAmt: 0.3, aura: 'rgba(140,200,150,0.45)', auraS: 2.4, yaw: Math.PI },
+  nurse2: { key: 'nurse2cast', targetH: 1.8, translucent: true, opacity: 0.82, tint: 0xaecdb4, tintAmt: 0.3, aura: 'rgba(140,200,150,0.45)', auraS: 2.4, yaw: 0 },
   // The Child — Fantasma, a small floating phantom
   child: { key: 'childcast', targetH: 1.18, translucent: false, opacity: 1, tint: 0xb8b0aa, tintAmt: 0.22, aura: 'rgba(150,60,60,0.45)', auraS: 1.8, yaw: 0 },
   // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
