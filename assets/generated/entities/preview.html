@@ -26,11 +26,14 @@
     <p>Original procedural mesh, rig, and animation. Drag horizontally to orbit.</p>
     <button data-model="child" class="active">Child</button>
     <button data-model="crawler">Crawler</button>
+    <button data-model="nurse">Grey Nurse</button>
+    <button data-model="nurse2">Night Nurse</button>
     <hr>
     <button data-clip="idle" class="active">Idle</button>
     <button data-clip="walk">Walk</button>
     <button data-clip="run">Run</button>
     <button id="bones">Rig</button>
+    <button id="runtime">Runtime look</button>
     <output>Loading…</output>
     <output id="qa"></output>
   </aside>
@@ -63,13 +66,36 @@
     const models = {
       child: { path: './child/child.glb', title: 'Child Phantom — Batch 1', camera: [1.65, 0.86, 2.5], look: [0, 0.6, 0] },
       crawler: { path: './crawler/crawler.glb', title: 'Restraint Crawler — Batch 2', camera: [1.45, 0.9, 2.15], look: [0, 0.28, -0.05] },
+      nurse: { path: './nurse/nurse.glb', title: 'Grey Nurse — Batch 3', camera: [1.35, 1.03, 2.8], look: [0, 0.92, 0], runtime: { tint: 0xbcccdd, tintAmt: 0.34, opacity: 0.80, rates: { idle: 1, walk: 0.955, run: 1.88 } } },
+      nurse2: { path: './nurse2/nurse2.glb', title: 'Night Nurse — Batch 3', camera: [1.35, 1.03, 2.8], look: [0, 0.92, 0], runtime: { tint: 0xaecdb4, tintAmt: 0.30, opacity: 0.82, rates: { idle: 1, walk: 0.982, run: 1.92 } } },
     };
     let root, mixer, active, helper, currentGltf;
-    let orbit = 0;
+    let orbit = 0, currentModel = 'child', runtimeLook = false;
+    const query = new URLSearchParams(location.search);
+    const requestedSamples = Number.parseInt(query.get('samples') || '64', 10);
+    const qaSamples = Number.isFinite(requestedSamples) ? Math.min(512, Math.max(16, requestedSamples)) : 64;
     const output = document.querySelector('output');
     const qaOutput = document.querySelector('#qa');
     const clipButtons = [...document.querySelectorAll('[data-clip]')];
     const modelButtons = [...document.querySelectorAll('[data-model]')];
+
+    const applyRuntimeLook = () => {
+      if (!root) return;
+      const runtime = models[currentModel]?.runtime;
+      root.traverse((node) => {
+        if (!node.isMesh || !node.material) return;
+        const material = node.material;
+        if (!material.userData.previewColor) material.userData.previewColor = material.color.clone();
+        material.color.copy(material.userData.previewColor);
+        material.transparent = false; material.opacity = 1; material.depthWrite = true;
+        if (runtimeLook && runtime) {
+          material.color.lerp(new THREE.Color(runtime.tint), runtime.tintAmt);
+          material.transparent = true; material.opacity = runtime.opacity; material.depthWrite = false;
+        }
+        material.needsUpdate = true;
+      });
+      document.querySelector('#runtime').classList.toggle('active', runtimeLook && !!runtime);
+    };
 
     const play = (keyName) => {
       const clip = currentGltf?.animations.find((item) => item.name.toLowerCase().includes(keyName));
@@ -92,31 +118,73 @@
       const clips = [];
       for (const clip of gltf.animations) {
         const action = qaMixer.clipAction(clip); action.reset().play();
-        let minRelativeY = Infinity, maxRelativeY = -Infinity, maxHeight = 0;
+        let minRelativeY = Infinity, maxRelativeY = -Infinity, maxWidth = 0, maxHeight = 0, maxDepth = 0;
         const contactSamples = [];
-        for (let sample = 0; sample <= 32; sample++) {
-          qaMixer.setTime(clip.duration * sample / 32);
+        for (let sample = 0; sample <= qaSamples; sample++) {
+          qaMixer.setTime(clip.duration * sample / qaSamples);
           gltf.scene.updateMatrixWorld(true); box.setFromObject(gltf.scene, true);
           const relativeMinY = box.min.y - baselineMinY;
           minRelativeY = Math.min(minRelativeY, relativeMinY);
           maxRelativeY = Math.max(maxRelativeY, relativeMinY);
+          maxWidth = Math.max(maxWidth, box.max.x - box.min.x);
           maxHeight = Math.max(maxHeight, box.max.y - box.min.y);
-          contactSamples.push({ time: clip.duration * sample / 32, minY: relativeMinY });
+          maxDepth = Math.max(maxDepth, box.max.z - box.min.z);
+          contactSamples.push({ time: clip.duration * sample / qaSamples, minY: relativeMinY });
         }
         action.stop();
-        clips.push({ name: clip.name, minRelativeY, maxRelativeY, maxHeight, contactSamples });
+        clips.push({ name: clip.name, minRelativeY, maxRelativeY, maxWidth, maxHeight, maxDepth, contactSamples });
       }
-      const result = { model: keyName, baselineMinY, clips };
+
+      // Mirror the engine's 0.22 s action fade and start the source at many
+      // phases. Individually grounded clips can still drive a shoe below the
+      // floor when two different leg poses are quaternion-blended.
+      const crossfades = [];
+      const phaseCount = qaSamples >= 256 ? 32 : 8;
+      const blendSteps = qaSamples >= 256 ? 32 : 8;
+      const motionKeys = ['idle', 'walk', 'run'];
+      const directedFades = motionKeys.flatMap((from) => motionKeys.filter((to) => to !== from).map((to) => [from, to]));
+      for (const [fromKey, toKey] of directedFades) {
+        const fromClip = gltf.animations.find((clip) => clip.name.toLowerCase().includes(fromKey));
+        const toClip = gltf.animations.find((clip) => clip.name.toLowerCase().includes(toKey));
+        if (!fromClip || !toClip || fromClip === toClip) continue;
+        let minRelativeY = Infinity, worstSourcePhase = 0, worstBlendTime = 0;
+        for (let phase = 0; phase < phaseCount; phase++) {
+          const blendMixer = new THREE.AnimationMixer(gltf.scene);
+          const fromAction = blendMixer.clipAction(fromClip); fromAction.reset().play();
+          fromAction.timeScale = models[keyName]?.runtime?.rates?.[fromKey] || 1;
+          fromAction.time = fromClip.duration * phase / phaseCount; blendMixer.update(0);
+          const toAction = blendMixer.clipAction(toClip); toAction.reset().fadeIn(0.22).play();
+          toAction.timeScale = models[keyName]?.runtime?.rates?.[toKey] || 1;
+          fromAction.fadeOut(0.22);
+          for (let step = 0; step <= blendSteps; step++) {
+            if (step) blendMixer.update(0.22 / blendSteps);
+            gltf.scene.updateMatrixWorld(true); box.setFromObject(gltf.scene, true);
+            const relativeMinY = box.min.y - baselineMinY;
+            if (relativeMinY < minRelativeY) {
+              minRelativeY = relativeMinY;
+              worstSourcePhase = phase / phaseCount;
+              worstBlendTime = 0.22 * step / blendSteps;
+            }
+          }
+          blendMixer.stopAllAction();
+        }
+        crossfades.push({ from: fromKey, to: toKey, duration: 0.22, minRelativeY, worstSourcePhase, worstBlendTime });
+      }
+      const result = { model: keyName, baselineMinY, clips, crossfades };
       window.__entityQA = result;
       qaOutput.dataset.results = JSON.stringify(result);
       const low = Math.min(...clips.map((clip) => clip.minRelativeY));
       const high = Math.max(...clips.map((clip) => clip.maxRelativeY));
-      qaOutput.textContent = `32× bounds/clip · contact ${low.toFixed(3)}…${high.toFixed(3)} m · ` +
+      const widest = Math.max(...clips.map((clip) => clip.maxWidth));
+      const lowestFade = crossfades.length ? Math.min(...crossfades.map((fade) => fade.minRelativeY)) : 0;
+      qaOutput.textContent = `${qaSamples}× bounds/clip · contact ${low.toFixed(3)}…${high.toFixed(3)} m · ` +
+        `fade ≥${lowestFade.toFixed(3)} m · width ≤${widest.toFixed(3)} m · ` +
         clips.map((clip) => `${clip.name.split('_')[0]} ${clip.minRelativeY.toFixed(3)}`).join(' / ');
     };
 
     const loadModel = (keyName) => {
       const config = models[keyName] || models.child;
+      currentModel = models[keyName] ? keyName : 'child';
       output.textContent = 'Loading…'; qaOutput.textContent = '';
       if (mixer) mixer.stopAllAction();
       if (helper) { scene.remove(helper); helper = null; }
@@ -130,6 +198,7 @@
         currentGltf = gltf; root = gltf.scene;
         root.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.frustumCulled = false; } });
         scene.add(root);
+        applyRuntimeLook();
         scanBounds(gltf, keyName);
         mixer = new THREE.AnimationMixer(root);
         play('idle');
@@ -144,7 +213,10 @@
       helper.visible = !helper.visible;
       event.currentTarget.classList.toggle('active', helper.visible);
     });
-    loadModel(new URLSearchParams(location.search).get('model') || 'child');
+    document.querySelector('#runtime').addEventListener('click', () => {
+      runtimeLook = !runtimeLook; applyRuntimeLook();
+    });
+    loadModel(query.get('model') || 'child');
 
     let dragging = false, previousX = 0;
     renderer.domElement.addEventListener('pointerdown', (event) => { dragging = true; previousX = event.clientX; renderer.domElement.setPointerCapture(event.pointerId); });
