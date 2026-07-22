@@ -2083,6 +2083,8 @@ function loadTextures() {
     metal: load('rusty_metal_04_diff.jpg', 1.5, 1.5),
     conc: load('worn_concrete_floor_diff.jpg', 1.4, 1.4),
   };
+  // warm the document paper plates so the first read is never a blank panel
+  Object.keys(DOC_PLATES).forEach(docPlate);
   // blood / drip / grime decals (RGBA, alpha baked from luminance) — no tiling
   const loadDecal = (file) => { const t = L.load('assets/textures/' + file, undefined, undefined, () => {}); if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
   TEX.blood = ['blood1', 'blood2', 'blood3'].map((n) => loadDecal('horror/decals/' + n + '.png'));
@@ -5204,6 +5206,28 @@ function readDocument(doc) {
 
 // desktop: the document as an actual sheet of paper you hold up to the light
 const DOC_TAGS = { clipping: 'PRESS CUTTING', letter: 'CORRESPONDENCE', file: 'PATIENT RECORD', report: 'POLICE EVIDENCE', diary: 'PRIVATE DIARY' };
+// the generated period paper each document type is typed onto (codex pack v1)
+const DOC_PLATES = {
+  file: 'assets/generated/codex-visual-pack-v1/documents/patient-admission-form.jpg',
+  report: 'assets/generated/codex-visual-pack-v1/documents/police-report-letterhead.jpg',
+  diary: 'assets/generated/codex-visual-pack-v1/documents/handwritten-diary-page.jpg',
+  letter: 'assets/generated/codex-visual-pack-v1/documents/handwritten-diary-page.jpg',
+  clipping: 'assets/generated/codex-visual-pack-v1/documents/press-cutting-layout.jpg',
+};
+// preloaded Image objects for the VR canvas panel (browser cache covers the DOM)
+const docPlateImgs = {};
+function docPlate(type) {
+  const src = DOC_PLATES[type] || DOC_PLATES.file;
+  let rec = docPlateImgs[src];
+  if (!rec) {
+    rec = { img: new Image(), ok: false };
+    rec.img.onload = () => { rec.ok = true; };
+    rec.img.onerror = () => { rec.ok = false; };
+    rec.img.src = src;
+    docPlateImgs[src] = rec;
+  }
+  return rec.ok ? rec.img : null;
+}
 function showDocDom(doc) {
   const el = document.getElementById('docview');
   if (!el) { showDocPanel(doc); return; }
@@ -5212,6 +5236,13 @@ function showDocDom(doc) {
     '<h4>' + doc.title + '</h4>' +
     doc.body.map((l) => '<p>' + l + '</p>').join('') +
     '<div class="dochint">FILED TO CASE FILE · CLICK OR PRESS E TO PUT IT DOWN</div></div>';
+  // lay the story text over the generated period form/letterhead/diary page
+  const paper = el.querySelector('.paper');
+  if (paper && DOC_PLATES[doc.type || 'file']) {
+    paper.style.backgroundImage = 'url(' + (DOC_PLATES[doc.type] || DOC_PLATES.file) + ')';
+    paper.style.backgroundSize = '100% 100%';
+  }
+  docPlate(doc.type);   // warm the VR-side cache too
   const close = () => { el.className = ''; el.innerHTML = ''; };
   el.onclick = close;
   el.dataset.open = '1';
@@ -5231,6 +5262,22 @@ function wrapDraw(c, text, x, y, maxW, lh) {
 function showDocPanel(doc) {
   bigPanel.visible = true; docPanelTimer = 11;
   const c = bigCtx; c.clearRect(0, 0, 1024, 512);
+  const plate = docPlate(doc.type);
+  if (plate) {
+    // the generated 1024x768 paper, centre-cropped to the panel's 2:1 —
+    // story text goes on in period ink instead of terminal amber
+    c.drawImage(plate, 0, 128, 1024, 512, 0, 0, 1024, 512);
+    c.fillStyle = 'rgba(238,230,210,0.36)'; c.fillRect(0, 0, 1024, 512);   // lift text zones
+    c.textAlign = 'center'; c.fillStyle = '#2a2015'; c.font = "40px 'Special Elite', monospace";
+    c.fillText(doc.title, 512, 92);
+    c.textAlign = 'left'; c.fillStyle = '#3a3020'; c.font = "26px 'Special Elite', monospace";
+    let y = 150;
+    doc.body.forEach((line) => { y = wrapDraw(c, line, 80, y, 860, 34) + 8; });
+    c.textAlign = 'center'; c.fillStyle = '#6a6152'; c.font = "20px 'Special Elite', monospace";
+    c.fillText('— saved to your Case File (open with Tab) —', 512, 462);
+    bigTex.needsUpdate = true;
+    return;
+  }
   c.fillStyle = 'rgba(10,9,5,0.94)'; c.fillRect(0, 0, 1024, 512);
   c.strokeStyle = 'rgba(120,100,50,0.5)'; c.lineWidth = 3; c.strokeRect(40, 30, 944, 452);
   c.textAlign = 'center'; c.fillStyle = '#e8dfa0'; c.font = "40px 'Special Elite', monospace";
