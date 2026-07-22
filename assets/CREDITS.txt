@@ -77,6 +77,8 @@ license.txt from Sketchfab.
     horror/crawler2/ "Crawling mutated human"  by Elisey
               https://sketchfab.com/3d-models/crawling-mutated-human-a87532a3e89947159cc1303008c06eaf
               (Elisey — https://sketchfab.com/dwelfster — CC-BY-4.0)
+              NOTE (2026-07-22): no longer loaded — replaced in-game by the
+              original generated crawler (assets/generated/entities/crawler/).
 
   The Ghoul (basement corpse-eater):
     horror/ghoul/   "Ghoul"  by DivyeSh PanchAl
@@ -277,7 +279,7 @@ GENERATED VISUAL PACK (Codex)
 
   assets/generated/entities/ — original monster cast replacements generated
   for this game (packaged by Codex): procedural rigs, meshes and animations,
-  no third-party model/scan/likeness. Batch 1: the Child. Per-model
+  no third-party model/scan/likeness. Batches 1-2: the Child, the Restraint Crawler. Per-model
   PROVENANCE.md and manifests in each folder. Owned outright — no external
   license or attribution required.
 

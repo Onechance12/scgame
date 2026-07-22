@@ -2958,7 +2958,9 @@ const Assets = (() => {
   // the Child — Codex's original cast replacement (batch 1). The CC-BY-NC
   // horrorkid stays on disk but is no longer loaded or shipped to players.
   mob('cast', 'childcast', 'assets/generated/entities/child/child.glb');
-  mob('cast', 'crawler2', 'assets/models/horror/crawler2/scene.gltf');
+  // the Crawler — Codex's original cast replacement (batch 2). The licensed
+  // crawler2 stays on disk but is no longer loaded.
+  mob('cast', 'crawlercast', 'assets/generated/entities/crawler/crawler.glb');
   mob('cast', 'ghoul', 'assets/models/horror/ghoul/scene.gltf');
   mob('cast', 'closer', 'assets/models/horror/closer/scene.gltf');
   mob('cast', 'undead', 'assets/models/horror/undead/scene.gltf');
@@ -4320,6 +4322,34 @@ function buildRitual() {
 // Deterministic vertex paint (soaked hem, spatter, tracks from the sockets)
 // plus matted hair strands hung from the Head bone — no textures needed, and
 // the shared geometry is only ever painted once.
+function dressCrawler(model) {
+  let mesh = null;
+  model.traverse((o) => { if (!mesh && o.isMesh && o.geometry && o.geometry.attributes.color) mesh = o; });
+  if (!mesh || mesh.geometry.userData.crawlerDressed) return;
+  mesh.geometry.userData.crawlerDressed = true;
+  const pos = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color;
+  const hash = (x, y, z) => { const n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return n - Math.floor(n); };
+  for (let i = 0; i < col.count; i++) {
+    let cr = col.getX(i), cg = col.getY(i), cb = col.getZ(i);
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    // it lives on the floor of a place that was never cleaned again
+    cr *= 0.55; cg *= 0.52; cb *= 0.5;
+    const h = hash(x, y, z);
+    // everything that touches the ground has dragged through old gore
+    if (y < 0.14) {
+      const soak = Math.min(1, (0.14 - y) / 0.12) * (0.5 + 0.5 * h);
+      cr = cr * (1 - soak) + 0.27 * soak;
+      cg = cg * (1 - soak) + 0.04 * soak;
+      cb = cb * (1 - soak) + 0.03 * soak;
+    }
+    // the hands and forearms are the worst of it
+    if (z > 0.35 && y < 0.3 && h > 0.3) { cr = Math.max(cr, 0.3); cg = Math.min(cg, 0.06); cb = Math.min(cb, 0.05); }
+    // spatter across the back and shoulders
+    if (h > 0.94) { cr = 0.3; cg = 0.05; cb = 0.04; }
+    col.setXYZ(i, cr, cg, cb);
+  }
+  col.needsUpdate = true;
+}
 function dressChild(model) {
   let mesh = null;
   model.traverse((o) => { if (!mesh && o.isMesh && o.geometry && o.geometry.attributes.color) mesh = o; });
@@ -4405,7 +4435,7 @@ const MOBMAP = {
   // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
   mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
   // The Crawler — a mutated human dragging itself along the floor (prone, so targetH is its low height)
-  crawler: { key: 'crawler2', targetH: 0.62, translucent: false, opacity: 1, tint: 0x54514a, tintAmt: 0.72, emissive: 0x0e0604, aura: 'rgba(80,10,20,0.5)', auraS: 2.0, yaw: 0 },
+  crawler: { key: 'crawlercast', targetH: 0.62, translucent: false, opacity: 1, tint: 0x54514a, tintAmt: 0.72, emissive: 0x0e0604, aura: 'rgba(80,10,20,0.5)', auraS: 2.0, yaw: 0 },
   // The Ash — the Closer's straitjacketed body, charred and wreathed in living embers (the 1926 fire's dead)
   ash: { key: 'closer', targetH: 1.92, translucent: false, opacity: 1, tint: 0x2a1810, tintAmt: 0.6, emissive: 0x501403, aura: 'rgba(255,90,20,0.5)', auraS: 3.0, yaw: 0 },
   // The Ghoul — a hunched, blood-clawed corpse-eater that haunts the basement
@@ -4476,6 +4506,7 @@ function ensureEntityMesh(e) {
         if (map.translucent) { o.material.transparent = true; o.material.opacity = map.opacity; o.material.depthWrite = false; }
       });
       if (e.kind === 'child') dressChild(model);
+      if (e.kind === 'crawler') dressCrawler(model);
       grp.add(model); rec.hasModel = true; rec.yaw = map.yaw || 0;
       if (rec.mixer) { rec.action = rec.mixer.clipAction(rec.clips.idle); rec.action.play(); rec.cur = rec.clips.idle; }
       if (e.kind === 'ash') buildEmbers(rec, grp);
