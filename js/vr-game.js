@@ -1075,10 +1075,14 @@ function buildExterior() {
     sx3.fillText(ch, tx3, 50);
     tx3 += sx3.measureText(ch).width;
   }
-  const signT = new THREE.CanvasTexture(sc3); if ('colorSpace' in signT) signT.colorSpace = THREE.SRGBColorSpace;
-  const sign2 = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 0.9),
-    new THREE.MeshStandardMaterial({ map: signT, emissive: 0xffffff, emissiveMap: signT, emissiveIntensity: 0.14, roughness: 0.9 }));
-  sign2.position.set(doorX, 4.9, 0.1); sign2.rotation.z = -0.022;   // one bolt gave out years ago
+  // the real facade sign (generated aged enamel) when available; canvas fallback otherwise
+  let signT, signW = 9.5, signH = 0.9;
+  const genSign = signTex('college-hill-hospital-est-1928');
+  if (genSign) { signT = genSign; signW = 8.2; signH = 2.05; }
+  else { signT = new THREE.CanvasTexture(sc3); if ('colorSpace' in signT) signT.colorSpace = THREE.SRGBColorSpace; }
+  const sign2 = new THREE.Mesh(new THREE.PlaneGeometry(signW, signH),
+    new THREE.MeshStandardMaterial({ map: signT, transparent: !!genSign, emissive: 0xffffff, emissiveMap: signT, emissiveIntensity: 0.14, roughness: 0.9 }));
+  sign2.position.set(doorX, genSign ? 5.3 : 4.9, 0.1); sign2.rotation.z = -0.022;   // one bolt gave out years ago
   g.add(sign2);
   // door + steps
   const door = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.4, 0.3),
@@ -1347,7 +1351,11 @@ function addIntroProps(c) {
   const nx = doorX + 1.1, nz = -23;
   const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0x3a3d3a, roughness: 1 }));
   rock.position.set(nx + 0.32, 0.2, nz); rock.scale.y = 0.6; g.add(rock);
-  const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.66), new THREE.MeshStandardMaterial({ color: 0xb8b09a, roughness: 1, side: THREE.DoubleSide, emissive: 0x2a2820, emissiveIntensity: 0.25 }));
+  // the actual front page of the Williamson Daily, October 1988 (generated prop art)
+  const paperMat = TEX.newsprint
+    ? new THREE.MeshStandardMaterial({ map: TEX.newsprint, color: 0xd8d2c4, roughness: 1, side: THREE.DoubleSide, emissive: 0x36322a, emissiveIntensity: 0.35, emissiveMap: TEX.newsprint })
+    : new THREE.MeshStandardMaterial({ color: 0xb8b09a, roughness: 1, side: THREE.DoubleSide, emissive: 0x2a2820, emissiveIntensity: 0.25 });
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.62), paperMat);
   paper.position.set(nx, 0.42, nz); paper.rotation.set(-0.7, 0.4, 0.15); g.add(paper);
   const nhalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: auraTex('rgba(205,214,230,0.55)'), transparent: true, opacity: 0.26, depthWrite: false, blending: THREE.AdditiveBlending }));
   nhalo.scale.set(1.15, 1.15, 1); nhalo.position.set(nx, 0.5, nz); g.add(nhalo);
@@ -1719,9 +1727,21 @@ function loadTextures() {
   const wRose = load('wall_diff.jpg', 1, 1), wRoseN = load('wall_nor.jpg', 1, 1, false),
         wGrey = load('painted_plaster_wall_diff.jpg', 1, 1);
   // one tinted material per floor so each level still reads distinct
+  // Codex visual pack v1 (generated for this game — provenance in assets/generated/codex-visual-pack-v1)
+  const gload = (p, rx, ry) => {
+    const t = L.load(p, undefined, undefined, () => console.warn('texture missing:', p));
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+    if (rx) t.repeat.set(rx, ry);
+    return t;
+  };
+  const wGreen = gload('assets/generated/codex-visual-pack-v1/walls/hospital-green-painted-plaster-albedo.jpg', 1, 1.2);
+  const wFloral = gload('assets/generated/codex-visual-pack-v1/walls/1920s-floral-wallpaper-albedo.jpg', 1, 1.2);
+  TEX.fire8 = gload('assets/generated/codex-visual-pack-v1/flames/fire-orange-8x8.png');
+  TEX.newsprint = gload('assets/generated/codex-visual-pack-v1/newspaper/williamson-daily-october-1988.png');
   TEX.wallMats = [
-    new THREE.MeshStandardMaterial({ map: wGrey, color: 0x8d94a0, roughness: .95 }),                    // 1 cool institutional grey
-    new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x9c8f8b, roughness: .94 }), // 2 faded ward rose
+    new THREE.MeshStandardMaterial({ map: wGreen, color: 0xb9beb2, roughness: .95 }),                   // 1 surgical-green plaster, peeling
+    new THREE.MeshStandardMaterial({ map: wFloral, color: 0xb8b0a4, roughness: .94 }),                  // 2 water-stained 1920s wallpaper
     new THREE.MeshStandardMaterial({ map: wGrey, color: 0x82927c, roughness: .96 }),                    // 3 damp mould grey-green
     new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x847b76, roughness: .96 }), // 4 dim, dust-warm
   ];
@@ -1868,6 +1888,7 @@ function buildFloor(fi) {
     if (fi === 0) addGenerator();
     if (powerOn && fi <= 1) reviveFixtures();
     buildScareTriggers(fi);
+    mountSigns(fi);
   } catch (e) { console.warn('power/scares failed:', e); }
 
   // children behind the walls
@@ -3298,33 +3319,33 @@ function buildRitual() {
       fxMixers.push(gmx);
     } else { ritual.glyphSpin = gl; }
   }
-  // the altar fire — two crossed sprite-sheet flame planes that ignite once all
-  // four anchors are seated (flipbook animated in spinItems)
-  if ((window.HeroModels || {}).firesheet) {
+  // the altar fire — two crossed flame planes that ignite once all four anchors
+  // are seated. Prefers the generated uniform 8×8 flipbook (ping-pong playback
+  // hides the sheet's first/last luminance jump); falls back to the old strip.
+  let t1 = null, mode = null;
+  if (TEX.fire8) { t1 = TEX.fire8.clone(); mode = 'grid8'; }
+  else if ((window.HeroModels || {}).firesheet) {
     const src = window.HeroModels.firesheet;
-    let ftex = null;
-    src.traverse((o) => { if (!ftex && o.isMesh && o.material && o.material.map) ftex = o.material.map; });
-    if (ftex) {
-      // the sheet is an atlas of horizontal flame strips — ride one tall-flame
-      // strip (2nd row band) as a 16-frame flipbook
-      const t1 = ftex.clone(); t1.needsUpdate = true;
-      t1.wrapS = t1.wrapT = THREE.RepeatWrapping;
-      const COLS = 16, BAND_V = 0.751, BAND_H = 0.117;
-      t1.repeat.set(1 / COLS, BAND_H);
-      t1.offset.set(0, BAND_V);
-      const fmat = new THREE.MeshBasicMaterial({ map: t1, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
-      const fireG = new THREE.Group();
-      for (let i = 0; i < 2; i++) {
-        const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.3), fmat);
-        pl.rotation.y = i * Math.PI / 2;
-        pl.position.y = 0.65; fireG.add(pl);
-      }
-      const fl = new THREE.PointLight(0xff7a2a, 0, 6, 2); fl.position.y = 0.9; fireG.add(fl);
-      fireG.position.set(ritual.altarTileX * TILE_M, 0.8, ritual.altarTileY * TILE_M);
-      fireG.visible = false;
-      floorGroup.add(fireG);
-      ritual.altarFire = { g: fireG, tex: t1, light: fl, t: 0, cols: COLS, bandV: BAND_V, frame: 0 };
+    src.traverse((o) => { if (!t1 && o.isMesh && o.material && o.material.map) t1 = o.material.map.clone(); });
+    if (t1) mode = 'strip';
+  }
+  if (t1) {
+    t1.needsUpdate = true;
+    t1.wrapS = t1.wrapT = THREE.RepeatWrapping;
+    if (mode === 'grid8') { t1.repeat.set(1 / 8, 1 / 8); t1.offset.set(0, 7 / 8); }
+    else { t1.repeat.set(1 / 16, 0.117); t1.offset.set(0, 0.751); }
+    const fmat = new THREE.MeshBasicMaterial({ map: t1, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    const fireG = new THREE.Group();
+    for (let i = 0; i < 2; i++) {
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.3), fmat);
+      pl.rotation.y = i * Math.PI / 2;
+      pl.position.y = 0.65; fireG.add(pl);
     }
+    const fl = new THREE.PointLight(0xff7a2a, 0, 6, 2); fl.position.y = 0.9; fireG.add(fl);
+    fireG.position.set(ritual.altarTileX * TILE_M, 0.8, ritual.altarTileY * TILE_M);
+    fireG.visible = false;
+    floorGroup.add(fireG);
+    ritual.altarFire = { g: fireG, tex: t1, light: fl, t: 0, mode, frame: 0 };
   }
 }
 
@@ -4466,8 +4487,15 @@ function spinItems(dt) {
       if (burning) {
         AF.t += dt;
         if (AF.t > 0.055) {
-          AF.t = 0; AF.frame = (AF.frame + 1) % AF.cols;
-          AF.tex.offset.set(AF.frame / AF.cols, AF.bandV);
+          AF.t = 0; AF.frame++;
+          if (AF.mode === 'grid8') {
+            // 64 frames, ping-ponged (0..63..0) so the loop never pops
+            const cyc = AF.frame % 126;
+            const idx = cyc < 63 ? cyc : 126 - cyc;
+            AF.tex.offset.set((idx % 8) / 8, 1 - (((idx / 8) | 0) + 1) / 8);
+          } else {
+            AF.tex.offset.set((AF.frame % 16) / 16, 0.751);
+          }
         }
         AF.light.intensity = 1.6 + Math.random() * 0.9;
       }
@@ -4955,6 +4983,36 @@ function beamHits(ex, ey) {
   if (da > CONE) return false;
   return Entities.lineOfSight(data.floors[player.floor].grid, player.x, player.y, ex, ey);
 }
+// ============================================================ wayfinding signs
+// Aged enamel signs (generated pack) hung over the doorways they name — the
+// hospital finally tells you where you are.
+const SIGN_FOR_TAG = { maternity: 'maternity', surgery: 'surgery', xray: 'x-ray', records: 'records', morgue: 'morgue', autopsy: 'autopsy', pharmacy: 'pharmacy', chapel: 'chapel' };
+const WARD_SIGNS = ['ward-2-a', 'ward-2-b'];
+const signTexCache = {};
+function signTex(name) {
+  if (signTexCache[name] !== undefined) return signTexCache[name];
+  const t = new THREE.TextureLoader().load('assets/generated/codex-visual-pack-v1/signs/' + name + '.png',
+    undefined, undefined, () => { signTexCache[name] = null; });
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  return (signTexCache[name] = t);
+}
+function mountSigns(fi) {
+  let wardIdx = 0;
+  const grid = data.floors[fi].grid;
+  (data.floors[fi].rooms || []).forEach((r) => {
+    let key = r.tag === 'ward' ? WARD_SIGNS[wardIdx++ % WARD_SIGNS.length] : SIGN_FOR_TAG[r.tag];
+    if (r.locked || (r.doorY != null && grid[r.doorY] && grid[r.doorY][r.doorX] === TILE.LOCKED)) key = 'no-admittance';   // what the county bolted stays nameless
+    if (!key || r.doorX == null) return;
+    const t = signTex(key); if (!t) return;
+    const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.4),
+      new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.85, emissive: 0x30302c, emissiveIntensity: 0.35, emissiveMap: t, side: THREE.DoubleSide, depthWrite: false }));
+    // hung over the doorway, in the door's own plane
+    sp.position.set((r.doorX + 0.5) * TILE_M, 2.42, (r.doorY + 0.5) * TILE_M);
+    sp.renderOrder = 2;
+    floorGroup.add(sp);
+  });
+}
+
 // ============================================================ the generator
 // A hulking 1920s unit in the boiler room. Cranking it is a held, LOUD ritual —
 // the dead hear every pull — and what it buys is thin: the bottom two floors

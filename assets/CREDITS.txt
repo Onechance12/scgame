@@ -253,6 +253,17 @@ work, used under CC-BY-4.0. This project is a non-commercial fan tribute.
                    https://sketchfab.com/3d-models/candle-light-d9d5ed5de83b4d899ab93f55bdc3d0bc
                    (CC-BY-4.0; the melted candle clusters at candle tiles)
 
+
+GENERATED VISUAL PACK (Codex)
+-----------------------------
+  assets/generated/codex-visual-pack-v1/ — original images generated for this
+  game (OpenAI image generation, packaged by Codex). No third-party or archival
+  material; the newspaper and title building are fictional. Full prompts,
+  hashes and provenance: PROMPTS.md / PROVENANCE.md / asset-manifest.json in
+  that directory. Integrated: title key art, Williamson Daily newspaper prop,
+  8x8 fire flipbook (altar), hospital-green + floral wall albedos, wayfinding
+  signs + facade sign.
+
 VENDORED LIBRARIES
 ------------------
   js/vendor/peerjs.min.js — PeerJS 1.5.4 (https://peerjs.com), MIT License.
