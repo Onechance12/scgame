@@ -26,6 +26,48 @@ Game: "College Hill — 24 Hours", WebXR survival horror, Meta Quest primary tar
 
 ## Requests, in priority order
 
+### P0 — added 2026-07-22 (owner directive): ORIGINAL ENTITY CAST, license-free
+
+14. **`generated/entities/<kind>/` — original replacement monsters, one GLB each.**
+    Chance wants a cast we own outright: generated for this repo, **no third-party
+    license, no attribution obligation, no real-person likeness, no franchise
+    creature** (no SCP, no Silent Hill nurse, nothing recognizable). These replace
+    the credited Sketchfab cast one-for-one; I retarget the loader per model as
+    each lands, so ship them in any order — **batches welcome, one kind per folder.**
+
+    **Priority order** (worst licensing first):
+    1. `child` — replaces `horrorkid` (**CC-BY-NC — currently blocks any commercial
+       build**). A small hospital-gown phantom, ~1.18 m. This one matters most.
+    2. `crawler` — prone mutated body dragging itself, low silhouette ~0.62 m tall.
+    3. `nurse` + `nurse2` — two 1920s ward nurses, ~1.78/1.80 m: one pale and
+       half-there, one sicklier/greenish. Distinct faces/uniform states.
+    4. `mose` — a huge dark orderly, ~2.02 m, broad, straitjacket straps.
+    5. `ash` — charred straitjacketed body, ~1.92 m, cracked ember-glow skin.
+    6. `ghoul` — hunched corpse-eater, ~1.72 m, long arms.
+    7. `undead` — blood-caked patient, ~1.86 m, hospital gown.
+    8. `nightmare` / `wraith` — two spectral variants (can share a base mesh with
+       different textures), ~1.8 m.
+    9. Stretch: `matron` (hooded, tall, faceless) and `runner` (gaunt sprinter for
+       the exterior grounds).
+
+    **Hard technical contract (the loader depends on this):**
+    - glTF 2.0 **GLB**, metallic-roughness only, Y-up, real-metre scale, feet at
+      origin. ≤ 15k faces, textures ≤ 1024, ideally **one material per model**.
+    - **Rigged + animated, clips named so these substrings match (lowercase):**
+      `idle`, `walk`, `run`. (Our finder also accepts `walking_a`/`running_a`.)
+      Walk ~1.1 m/s and run ~2.5 m/s root-relative — animation is retimed in
+      engine (`timeScale` from actual velocity), but authoring near those speeds
+      minimizes foot-slide. **In-place clips only, no root motion.**
+    - Idle must be a true standing loop (breathing/swaying), not a T-pose.
+    - Keep silhouettes close to the descriptions above — engine tints, auras,
+      translucency, and height-normalization are already tuned per kind and will
+      be reused.
+    - Per model: PROVENANCE.md + manifest with SHA-256/bytes/dims, exactly like
+      the ceiling-floor pack. State explicitly that generation used no
+      third-party model, scan, or likeness as reference.
+    - A bad rig is worse than the licensing debt — if a model's deformation is
+      broken, hold it back rather than ship it.
+
 ### P1 — kills a known problem
 
 1. **`generated/watch/` — a 1920s field wristwatch, GLB.**
