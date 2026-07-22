@@ -910,7 +910,7 @@ function newGame(saved) {
   nurseryActive = false; nurseryTimer = 0; nurseryMusicTimer = 3; surgeTimer = 20; blackoutUntil = 0;
   // clear set-piece state so a scare from a previous night can't bleed into this one
   morgueScared = false; carter = null; carterTimer = 50; fallingDebris = []; debrisKept = []; sceneAnims = []; riteClimax = false;
-  dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = []; hideSpot = null;
+  dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = []; hideSpot = null; pausedAt = 0;
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
   if (wristMenuPanel && wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
@@ -4250,8 +4250,21 @@ function seatAnchor(n) {
   saveState();
 }
 function performUnbinding() {
-  ritual.done = true; riteClimax = true; Audio2.stinger(true);
+  ritual.done = true; Audio2.stinger(true);
   player.fear = Math.min(player.fear, 25);   // the circle steadies you for the working
+  if (realMode) {
+    // 24-HOUR SURVIVAL: even the Rite doesn't empty this house for good. It buys
+    // the longest silence there is — half an hour — and full faith. Then they return.
+    if (window.Survival && Survival.grantPeace) Survival.grantPeace(30, 'sanctum');
+    player.faith = 100;
+    ents.forEach((e) => { e.state = Entities.S.DORMANT; e.target = null; e.lastSeen = null; e.path = null; });
+    playLore('unbinding', () => {
+      showSubtitle('The circle takes them down, every one. Thirty minutes of true silence. But this house has been hungry since 1928 — they WILL come back.', 7);
+      saveState();
+    });
+    return;
+  }
+  riteClimax = true;
   // Freeze every soul the instant the censer swings — nothing can take you now.
   spiritsFreed = true; childrenFreed = true;
   ents.forEach((e) => { e.state = Entities.S.DORMANT; e.wakeHour = 999; e.target = null; e.lastSeen = null; e.path = null; if (e.den) e.den = []; });
@@ -4305,13 +4318,35 @@ function completeObjective(o) {
   }
   o.done = true;
   playLore(o.lore, () => {
-    if (o.id === 'roof') return win();
+    // ONE NIGHT: the last truth (the bell) opens the way out. 24-HOUR: truths
+    // never end the night — they buy you PEACE. The dead always come back.
+    if (o.id === 'roof') {
+      if (!realMode) return win();
+      if (window.Survival && Survival.grantPeace) Survival.grantPeace(15, 'sanctum');
+      player.fear = Math.max(0, player.fear - 40);
+      showSubtitle('The bell tolls over Williamson. Every soul in the building goes still — fifteen minutes of real silence. But the ride still comes at 6 PM.', 6);
+      updateDesktopObjective();
+      return;
+    }
     showSubtitle('A truth spoken. The building shifts around you.', 3);
+    if (realMode) {
+      if (window.Survival && Survival.grantPeace) Survival.grantPeace(8, 'truth');
+      player.fear = Math.max(0, player.fear - 25);
+      showSubtitle('The truth settles something. For eight minutes, the house rests.', 4);
+    }
     if (o.id === 'basement') { showSubtitle('Something in the incinerator wakes.', 3.5); Audio2.stinger(true); const a = ents.find((e) => e.kind === 'ash'); if (a) a.awake(); }
     updateDesktopObjective();
   });
 }
 function tryExit() {
+  if (realMode) {
+    // 24-hour survival: the doors open when the ride comes back, and not before
+    const left = Math.max(0, 24 - hour);
+    showSubtitle(left > 0.02
+      ? 'The chain holds. Your ride comes at 6 PM tomorrow — ' + (left >= 1 ? Math.ceil(left) + ' hours' : 'minutes') + ' to go.'
+      : 'The chain is loosening…', 4);
+    return;
+  }
   if (data.objectives.every((o) => o.done)) win();
   else showSubtitle('The chain holds. The hospital won’t let you leave with its secrets unspoken.', 3.5);
 }
@@ -4714,11 +4749,15 @@ function update(dt) {
   updateWisp(dt);
 
   // entities
+  // 24-HOUR SURVIVAL sharpens as it goes: the dead get faster and keener the
+  // deeper into the day you survive (up to +25% by the end). The mental game.
+  const baseDiff = HAUNT[OPTS.haunt] || HAUNT.restless;
+  const grind = realMode ? 1 + Math.min(0.25, hour * 0.011) : 1;
   const ctx = {
     hour, noise,
     playerLit: isPlayerLit(),
     peace: Survival.peaceActive() || grace,   // the dead keep to their dens during the grace
-    diff: HAUNT[OPTS.haunt] || HAUNT.restless,
+    diff: grind === 1 ? baseDiff : { speedMul: baseDiff.speedMul * grind, senseMul: baseDiff.senseMul * grind, extra: baseDiff.extra, label: baseDiff.label },
     beamHits: (ex, ey) => beamHits(ex, ey),
     onCatch: (e) => { deathBy = catchLine(e); lastKiller = e.name; die(); },
   };
@@ -4918,7 +4957,12 @@ function updateOnboarding(dt) {
   if (onboardStep < 0 || onboardStep >= ONBOARD.length) return;
   onboardT -= dt;
   if (onboardT <= 0) {
-    showSubtitle(ONBOARD[onboardStep], 4.6);
+    let line = ONBOARD[onboardStep];
+    // the last line states the mode's contract
+    if (onboardStep === ONBOARD.length - 1 && realMode) {
+      line = 'This is the LONG NIGHT: 24 real hours, no pause, and the dead only get keener. The truths won’t free you — but each one you speak buys minutes of real peace. Last until 6 PM tomorrow.';
+    }
+    showSubtitle(line, 4.6);
     onboardStep++; onboardT = 5.0;
     if (onboardStep >= ONBOARD.length) { onboardStep = -1;
       setTimeout(() => { if (state === 'PLAY') showSubtitle('The building knows you’re here now.', 3.5); }, 5200); }
@@ -5473,13 +5517,24 @@ function bindMPUI() {
 // ============================================================ state
 // free the mouse so the player can click menu buttons (desktop pointer-lock play)
 function freeCursor() { if (!isVR) { try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { } } }
+let pausedAt = 0;
 function pause() {
   if (state !== 'PLAY') return;
+  if (realMode) {
+    // 24-HOUR SURVIVAL: there is no pause. The clock is the challenge.
+    // Your breaks are the ones you EARN — draughts, the chapel, the truths.
+    showSubtitle('There is no pause in the long night. The chapel holds peace. So do the truths.', 4.5);
+    return;
+  }
+  pausedAt = Date.now();
   state = 'PAUSE'; stopSpirit(); Audio2.suspend(); freeCursor();
   if (!isVR) document.getElementById('pausescreen').classList.add('show');
 }
 function resumeGame() {
   if (state !== 'PAUSE') return;
+  // One Night's compressed clock FREEZES while paused (the 24-hour clock never
+  // pauses at all) — shift the epoch so paused time simply didn't happen
+  if (pausedAt) { startEpoch += Date.now() - pausedAt; pausedAt = 0; }
   document.getElementById('pausescreen').classList.remove('show');
   state = 'PLAY'; Audio2.resume(); clock.getDelta();
 }
@@ -5507,12 +5562,22 @@ function die() {
 function win() {
   if (state === 'WIN') return;
   if (window.MP && MP.active()) MP.event({ kind: 'win' });
-  if (window.Accounts) Accounts.recordWin(elapsed, false, runMeta());
+  // in 24-hour survival, finishing the Rite along the way still counts on your record
+  if (window.Accounts) Accounts.recordWin(elapsed, !!(realMode && ritual && ritual.done), runMeta());
   state = 'WIN'; stopSpirit(); clearSave(); freeCursor();
   const filedW = filedLine();
-  if (isVR) showBigPanel('DAWN', data.LORE.ending_good.concat(filedW ? [filedW] : []), '#8affb0');
+  const title = realMode ? '6:00 PM — THE RIDE CAME BACK' : 'DAWN';
+  const doneT = data.objectives.filter((o) => o.done).length;
+  const lines = realMode
+    ? ['Twenty-four hours in the Old Hospital on College Hill.', 'You lasted every one of them.',
+      doneT ? 'Truths uncovered along the way: ' + doneT + '/' + data.objectives.length + (ritual && ritual.done ? ' — and the Rite performed.' : '.') : 'You survived on nerve alone. The truths are still down there.']
+    : data.LORE.ending_good;
+  if (isVR) showBigPanel(title, lines.concat(filedW ? [filedW] : []), '#8affb0');
   else {
-    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = data.LORE.ending_good.map((l) => `<p>${l}</p>`).join('') + (filedW ? `<p class="hint" style="color:#8a95a0">${filedW}</p>` : '');
+    const ws = document.getElementById('winscreen');
+    const h2 = ws && ws.querySelector('h2'); if (h2) h2.textContent = title;
+    const reason = ws && ws.querySelector('.reason'); if (reason) reason.textContent = realMode ? 'You survived 24 real hours in the Old Hospital on College Hill.' : 'You survived the night at the Old Hospital on College Hill.';
+    const wl = document.getElementById('win-lore'); if (wl) wl.innerHTML = lines.map((l) => `<p>${l}</p>`).join('') + (filedW ? `<p class="hint" style="color:#8a95a0">${filedW}</p>` : '');
     document.getElementById('winscreen').classList.add('show');
   }
   refreshAcctBar();

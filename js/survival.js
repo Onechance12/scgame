@@ -314,7 +314,9 @@ const Survival = (() => {
     else if (type === 'battery') { S.batteries = Math.min(S.maxBatteries, S.batteries + 1); }
     else if (type === 'medkit') { S.medkits++; }
   }
-  return { init, reset: () => { reset(); reset2(); }, update, onPickup, give, drink, useMedkit, tryInteract, interactPrompt,
+  // earned breaks (24-hour survival): truths and the Rite call this to buy real minutes of peace
+  function grantPeace(mins, kind) { startPeace(mins, kind || 'truth'); }
+  return { init, reset: () => { reset(); reset2(); }, update, onPickup, give, grantPeace, drink, useMedkit, tryInteract, interactPrompt,
     peaceActive, entityTimeScale, hudText, serialize, restore, lanternActive, toggleLantern, state: () => S };
 })();
 if (typeof window !== 'undefined') window.Survival = Survival;
