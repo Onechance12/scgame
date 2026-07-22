@@ -370,10 +370,14 @@ check('path following is frame-rate invariant and has no waypoint idle frame', (
   expect(highRate.idleStalls === 0, `${highRate.idleStalls} high-rate frames stalled at waypoints`);
 });
 
-function simulateMetreHunt(frameDt, motionScale = 1) {
+function simulateMetreHunt(frameDt, motionScale = 1, options = {}) {
   const grid = makeGrid();
   const world = makeWorld(grid);
-  const entity = makeEntity(5.5, 6.5, { huntSpeed: 2.7, sight: 0, hearing: 0 });
+  const entity = makeEntity(5.5, 6.5, {
+    huntSpeed: Number.isFinite(options.huntSpeed) ? options.huntSpeed : 2.7,
+    sight: 0,
+    hearing: 0,
+  });
   const player = makePlayer(20.5, 6.5);
   entity.state = Entities.S.HUNT;
   entity.cooldown = 10;
@@ -381,7 +385,11 @@ function simulateMetreHunt(frameDt, motionScale = 1) {
   entity.path = null;
   entity.pathTimer = 0;
   doorHook = () => false;
-  const ctx = makeContext({ tileMetres: 2.7, motionScale });
+  const ctx = makeContext({
+    tileMetres: options.tileMetres === false ? undefined : 2.7,
+    motionScale,
+    diff: { speedMul: Number.isFinite(options.speedMul) ? options.speedMul : 1, senseMul: 1 },
+  });
   const frames = Math.round(1 / frameDt);
   for (let i = 0; i < frames; i++) entity.update(frameDt, world, player, ctx);
   return entity;
@@ -396,6 +404,94 @@ check('metre-authored hunt speed is frame-rate invariant and movement-only scale
   approx(blessed.x - 5.5, 0.5, 0.035, 'movement-scaled displacement');
   approx(lowRate.cooldown, 9, 0.001, '10 Hz hunt cooldown');
   approx(blessed.cooldown, 9, 0.001, 'movement-scaled hunt cooldown');
+});
+
+check('authored hunt tiers pressure walking players without beating base sprint', () => {
+  const expected = new Map([
+    ['The Grey Nurse', 4.7], ['Mose Blackburn', 5.0], ['The Child', 4.4],
+    ['The Ash', 4.0], ['The Crawler', 5.6], ['Night Nurse', 4.8],
+    ['The Ghoul', 5.0], ['The Risen', 4.6], ['The Nightmare', 4.5],
+    ['The Wraith', 4.2], ['The Other', 5.6],
+  ]);
+  const cast = Entities.spawnAll(data, { extra: true });
+  expect(cast.length === expected.size, `expected ${expected.size} hunters, got ${cast.length}`);
+  for (const entity of cast) {
+    expect(expected.has(entity.name), `unexpected hunter ${entity.name}`);
+    approx(entity.huntSpeed, expected.get(entity.name), 0.000001, `${entity.name} hunt tier`);
+    expect(entity.huntSpeed > 3.4, `${entity.name} cannot close on a 3.4 m/s walking player`);
+    expect(entity.huntSpeed < 6.2, `${entity.name} beats the player's 6.2 m/s base sprint`);
+  }
+});
+
+check('late-game difficulty scaling respects the sprint panic ceiling', () => {
+  const cast = Entities.spawnAll(data, { extra: true });
+  let fastest = 0;
+  for (const source of cast) {
+    const entity = simulateMetreHunt(1 / 240, 1, { huntSpeed: source.huntSpeed, speedMul: 1.5 });
+    const travelledMetres = (entity.x - 5.5) * 2.7;
+    fastest = Math.max(fastest, travelledMetres);
+    expect(travelledMetres <= 6.2 * 1.05 + 0.015,
+      `${source.name} reached ${travelledMetres.toFixed(3)} m/s at maximum difficulty`);
+    expect(travelledMetres > 3.4,
+      `${source.name} fell below walking pressure at maximum difficulty (${travelledMetres.toFixed(3)} m/s)`);
+  }
+  approx(fastest, 6.45, 0.015, 'maximum scaled hunt speed');
+});
+
+check('flat shell hunt scaling stays below its tile-speed sprint', () => {
+  const cast = Entities.spawnAll(data, { extra: true });
+  let fastest = 0;
+  for (const source of cast) {
+    const entity = simulateMetreHunt(1 / 240, 1, {
+      huntSpeed: source.huntSpeed,
+      speedMul: 1.5,
+      tileMetres: false,
+    });
+    const travelledTiles = entity.x - 5.5;
+    fastest = Math.max(fastest, travelledTiles);
+    expect(travelledTiles > 3.4,
+      `${source.name} cannot close on the flat shell's walking player (${travelledTiles.toFixed(3)} tiles/s)`);
+    expect(travelledTiles < 6.0,
+      `${source.name} beats the flat shell's sprint (${travelledTiles.toFixed(3)} tiles/s)`);
+  }
+  approx(fastest, 5.85, 0.015, 'maximum flat-shell hunt speed');
+});
+
+check('maximum-difficulty infested cast stays stable for 120 simulated seconds', () => {
+  const cast = Entities.spawnAll(data, { extra: true });
+  const dt = 1 / 90;
+  const frames = 120 * 90;
+  doorHook = () => false;
+  entityHook = () => false;
+  entitySegmentHook = () => false;
+
+  for (const entity of cast) entity.awake();
+  for (let frame = 0; frame < frames; frame++) {
+    const targetPhase = Math.floor(frame / (15 * 90));
+    for (let i = 0; i < cast.length; i++) {
+      const entity = cast[i];
+      const rooms = data.floors[entity.floor].rooms;
+      const room = rooms[(targetPhase + i) % rooms.length];
+      const player = makePlayer(room.cx + 0.5, room.cy + 0.5, { floor: entity.floor });
+      entity.state = Entities.S.HUNT;
+      entity.cooldown = 4;
+      entity.lastSeen = { x: player.x, y: player.y };
+      entity.update(dt, data, player, makeContext({
+        hour: 24,
+        tileMetres: 2.7,
+        diff: { speedMul: 1.5, senseMul: 1.22 },
+        noise: 1,
+      }));
+    }
+    Entities.resolveOverlaps(cast, data, dt);
+  }
+
+  expect(cast.length === 11, `expected 11 infested hunters, got ${cast.length}`);
+  for (const entity of cast) {
+    expect(Number.isFinite(entity.x) && Number.isFinite(entity.y), `${entity.name} produced a non-finite position`);
+    expect(entity.passable(data.floors[entity.floor].grid, entity.x, entity.y),
+      `${entity.name} finished the stress run inside blocked geometry`);
+  }
 });
 
 check('motion animation flags use speed rather than per-frame displacement', () => {

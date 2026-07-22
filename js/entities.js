@@ -17,6 +17,14 @@ const Entities = (() => {
   const PATH_RETRY = 0.85;
   const EPSILON = 1e-6;
   const DOOR_TILE = 3;
+  // A late Infested survival run can multiply authored speed by 1.5. Preserve
+  // each monster's threat tier without letting that stack turn a 6.2 m/s player
+  // sprint into a guaranteed catch; 6.45 m/s is the five-percent panic margin.
+  const WEBXR_HUNT_SPEED_CEILING = 6.45;
+  // The flat shell moves in tiles/second and sprints at 6.0. Its hunt table
+  // shares the same authored numbers, but must not apply the metre-to-tile
+  // conversion used by the 2.7 m WebXR world.
+  const FLAT_HUNT_SPEED_CEILING = 5.85;
   // HIDE tiles contain solid lockers in the runtime; the player uses them from
   // beside the mesh, so hunters must route around them instead of clipping in.
   const PASS = { 1: 1, 3: 1, 5: 1, 6: 1, 8: 1, 9: 1 };  // passable tile types
@@ -431,12 +439,17 @@ const Entities = (() => {
       // tile-speed and perception envelope while WebXR uses the real 2.7 m map.
       const speedToTiles = (metres) => metres / speedTileMetres;
       const rangeToTiles = (metres) => metres / rangeTileMetres;
+      const huntSpeed = Math.min(
+        hasWorldScale ? WEBXR_HUNT_SPEED_CEILING : FLAT_HUNT_SPEED_CEILING,
+        Math.max(0, this.huntSpeed) * Math.max(0, Number.isFinite(diff.speedMul) ? diff.speedMul : 1),
+      );
+      const huntTilesPerSecond = hasWorldScale ? speedToTiles(huntSpeed) : huntSpeed;
 
       // ---- WARDED: the raised cross drives the dead back. It flees, cannot catch. ----
       if (this.warded > 0 && onSameFloor) {
         this.state = S.HUNT;   // stays active/visible, but recoiling
         const ax = this.x - player.x, ay = this.y - player.y, len = Math.hypot(ax, ay) || 1;
-        const flee = speedToTiles(this.huntSpeed) * diff.speedMul * motionScale * 1.15 * dt;
+        const flee = huntTilesPerSecond * motionScale * 1.15 * dt;
         this.moveDirect(grid, this.x + (ax / len) * 6, this.y + (ay / len) * 6, flee);
         this.lastSeen = null; this.path = null;
         this.commitMotion(dt);
@@ -477,7 +490,7 @@ const Entities = (() => {
             this.requestPath(grid, goal, true, true);
           }
           if (this.slow > 0) this.slow -= dt;   // the flashlight beam staggers a hunter
-          const spd = speedToTiles(this.huntSpeed) * diff.speedMul * motionScale * (this.slow > 0 ? 0.42 : 1) * dt;
+          const spd = huntTilesPerSecond * motionScale * (this.slow > 0 ? 0.42 : 1) * dt;
           const moveState = goal ? this.followPath(grid, spd) : MOVE.BLOCKED;
           // BFS targets tile centres. Once both actors occupy the same open tile,
           // close the remaining fractional gap without granting a second step.
@@ -654,21 +667,21 @@ const Entities = (() => {
     let p;
     // Speeds and senses are authored in metres/second and metres. The WebXR
     // runtime supplies TILE_M; the 2D shell omits it and continues in tile units.
-    p = R(1, 'er');    add({ name: 'The Grey Nurse', kind: 'nurse', floor: 1, x: p.x, y: p.y, speed: 1.05, huntSpeed: 2.35, hearing: 13, sight: 17, wakeHour: 1, den: ['er', 'waiting', 'admitting', 'pharmacy'] });
-    p = R(3, 'mose');  add({ name: 'Mose Blackburn', kind: 'mose', floor: 3, x: p.x, y: p.y, speed: 1.15, huntSpeed: 2.55, hearing: 15, sight: 18, wakeHour: 3, den: ['mose', 'recovery', 'surgery', 'iso', 'landing', 'ward'] });
-    p = R(2, 'maternity'); add({ name: 'The Child', kind: 'child', floor: 2, x: p.x, y: p.y, speed: 1.0, huntSpeed: 2.4, hearing: 16, sight: 13, wakeHour: 6, den: ['maternity', 'ward', 'room207', 'station'] });
-    p = R(0, 'incinerator'); add({ name: 'The Ash', kind: 'ash', floor: 0, x: p.x, y: p.y, speed: 0.82, huntSpeed: 1.9, hearing: 19, sight: 17, wakeHour: 12, den: ['incinerator', 'boiler', 'ritual', 'laundry', 'morgue'] });
-    p = R(1, 'kitchen'); add({ name: 'The Crawler', kind: 'crawler', floor: 1, x: p.x, y: p.y, speed: 1.25, huntSpeed: 2.8, hearing: 16, sight: 15, wakeHour: 4, den: ['kitchen', 'cafeteria', 'pharmacy', 'records'] });
-    p = R(2, 'ward');  add({ name: 'Night Nurse', kind: 'nurse2', floor: 2, x: p.x, y: p.y, speed: 1.08, huntSpeed: 2.42, hearing: 13, sight: 17, wakeHour: 2, den: ['ward', 'station', 'room207', 'maternity', 'bath'] });
-    p = R(0, 'morgue'); add({ name: 'The Ghoul', kind: 'ghoul', floor: 0, x: p.x, y: p.y, speed: 1.12, huntSpeed: 2.6, hearing: 16, sight: 16, wakeHour: 7, den: ['morgue', 'storage', 'laundry', 'incinerator'] });
-    p = R(4, 'quarters'); add({ name: 'The Risen', kind: 'undead', floor: 4, x: p.x, y: p.y, speed: 1.08, huntSpeed: 2.5, hearing: 15, sight: 17, wakeHour: 5, den: ['quarters', 'matron', 'attic', 'chapel', 'bell'] });
+    p = R(1, 'er');    add({ name: 'The Grey Nurse', kind: 'nurse', floor: 1, x: p.x, y: p.y, speed: 1.05, huntSpeed: 4.7, hearing: 13, sight: 17, wakeHour: 1, den: ['er', 'waiting', 'admitting', 'pharmacy'] });
+    p = R(3, 'mose');  add({ name: 'Mose Blackburn', kind: 'mose', floor: 3, x: p.x, y: p.y, speed: 1.15, huntSpeed: 5.0, hearing: 15, sight: 18, wakeHour: 3, den: ['mose', 'recovery', 'surgery', 'iso', 'landing', 'ward'] });
+    p = R(2, 'maternity'); add({ name: 'The Child', kind: 'child', floor: 2, x: p.x, y: p.y, speed: 1.0, huntSpeed: 4.4, hearing: 16, sight: 13, wakeHour: 6, den: ['maternity', 'ward', 'room207', 'station'] });
+    p = R(0, 'incinerator'); add({ name: 'The Ash', kind: 'ash', floor: 0, x: p.x, y: p.y, speed: 0.82, huntSpeed: 4.0, hearing: 19, sight: 17, wakeHour: 12, den: ['incinerator', 'boiler', 'ritual', 'laundry', 'morgue'] });
+    p = R(1, 'kitchen'); add({ name: 'The Crawler', kind: 'crawler', floor: 1, x: p.x, y: p.y, speed: 1.25, huntSpeed: 5.6, hearing: 16, sight: 15, wakeHour: 4, den: ['kitchen', 'cafeteria', 'pharmacy', 'records'] });
+    p = R(2, 'ward');  add({ name: 'Night Nurse', kind: 'nurse2', floor: 2, x: p.x, y: p.y, speed: 1.08, huntSpeed: 4.8, hearing: 13, sight: 17, wakeHour: 2, den: ['ward', 'station', 'room207', 'maternity', 'bath'] });
+    p = R(0, 'morgue'); add({ name: 'The Ghoul', kind: 'ghoul', floor: 0, x: p.x, y: p.y, speed: 1.12, huntSpeed: 5.0, hearing: 16, sight: 16, wakeHour: 7, den: ['morgue', 'storage', 'laundry', 'incinerator'] });
+    p = R(4, 'quarters'); add({ name: 'The Risen', kind: 'undead', floor: 4, x: p.x, y: p.y, speed: 1.08, huntSpeed: 4.6, hearing: 15, sight: 17, wakeHour: 5, den: ['quarters', 'matron', 'attic', 'chapel', 'bell'] });
     // Deep-night escalation — the hospital itself starts dreaming. They arrive LATE,
     // sense a little less and chase a little slower than the core cast, so ten dead
     // never gang up into an unwinnable night — they are dread, not a death squad.
-    p = R(3, 'surgery'); add({ name: 'The Nightmare', kind: 'nightmare', floor: 3, x: p.x, y: p.y, speed: 0.98, huntSpeed: 2.45, hearing: 15, sight: 17, wakeHour: 9, den: ['surgery', 'xray', 'iso', 'recovery'] });
-    p = R(4, 'chapel');  add({ name: 'The Wraith', kind: 'wraith', floor: 4, x: p.x, y: p.y, speed: 0.9, huntSpeed: 2.2, hearing: 16, sight: 17, wakeHour: 11, den: ['chapel', 'attic', 'bell', 'matron'] });
+    p = R(3, 'surgery'); add({ name: 'The Nightmare', kind: 'nightmare', floor: 3, x: p.x, y: p.y, speed: 0.98, huntSpeed: 4.5, hearing: 15, sight: 17, wakeHour: 9, den: ['surgery', 'xray', 'iso', 'recovery'] });
+    p = R(4, 'chapel');  add({ name: 'The Wraith', kind: 'wraith', floor: 4, x: p.x, y: p.y, speed: 0.9, huntSpeed: 4.2, hearing: 16, sight: 17, wakeHour: 11, den: ['chapel', 'attic', 'bell', 'matron'] });
     // Infested: a second Crawler stalks the upper wards
-    if (opts.extra) { p = R(2, 'station'); add({ name: 'The Other', kind: 'crawler', floor: 2, x: p.x, y: p.y, speed: 1.3, huntSpeed: 2.9, hearing: 17, sight: 16, wakeHour: 5, den: ['ward', 'maternity', 'station'] }); }
+    if (opts.extra) { p = R(2, 'station'); add({ name: 'The Other', kind: 'crawler', floor: 2, x: p.x, y: p.y, speed: 1.3, huntSpeed: 5.6, hearing: 17, sight: 16, wakeHour: 5, den: ['ward', 'maternity', 'station'] }); }
     return list;
   }
 
