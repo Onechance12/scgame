@@ -58,6 +58,29 @@ Game: "College Hill — 24 Hours", WebXR survival horror, Meta Quest primary tar
     can overlay on any intact mirror; (d) a 512px **glass-shard sprite sheet** (4×4, bright
     slivers on black, additive-ready) for the shatter burst.
 
+### P1.6 — added 2026-07-22: the forest (owner request: "trees… a forest and all the tall grass")
+
+13. **`generated/forest/` — an Appalachian night-forest vegetation pack.** The hillside
+    approach is being planted much more densely and everything will be INSTANCED, so the
+    hard technical rule is: **each plant = ONE mesh with ONE material** (single texture,
+    alpha-carded foliage), or it can't go through `THREE.InstancedMesh` and won't ship.
+    - (a) **Three tree species as separate GLBs**, ≤ 2.5k faces each, Y-up, real-metre
+      scale, roots at origin: a **bare winter oak** (gnarled, wide crown of naked
+      branches), an **eastern hemlock/pine** (dark evergreen mass), and a **young
+      sycamore/birch** (thin pale trunk, sparse leaves). Trunk geometry + alpha-card
+      canopy planes, 1K texture each (albedo + alpha; bark and branches can share the
+      sheet). We scale instances 0.5×–2× so silhouettes must hold up both ways.
+    - (b) **Tall grass / weed cards**: one 1024×1024 PNG alpha sheet with 4–6 isolated
+      clumps (broomsedge, dead goldenrod, briers, thistle) laid out on a grid so we can
+      cut per-clump UVs and build crossed-plane billboards. Muted winter browns/greens.
+    - (c) **A night treeline strip**: seamless-tiling 2048×256 (or 1024×256) PNG alpha of
+      a dark forest silhouette skyline — bare crowns + conifer spikes — to ring the far
+      hillside as a billboard wall behind the playable grounds.
+    - (d) Optional: a **fallen log / stump set**, one GLB ≤ 1.5k faces, same one-material
+      rule (we'll scatter and half-bury them).
+    Whole pack ≤ 8 MiB. Provenance/manifest exactly like the ceiling-floor pack — that
+    workflow was perfect.
+
 ### P2 — big atmosphere upgrades
 
 4. **`generated/signs/` — period hospital signage pack, PNGs with alpha, 512px each.**
