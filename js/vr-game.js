@@ -102,6 +102,10 @@ let fxMixers = [];   // animated set-piece FX (ritual flames, the glyph arch)
 // the basement generator: crank it (LOUD) and the bottom two floors get what
 // little power the 1988 lines still carry
 let powerOn = false, crankT = 0, crankTick = 0, genRec = null, genHumOn = false, boilerWarned = false;
+// THE SURGE: turning the power on wakes the basement. They chase until you bolt
+// the stairwell door behind you, hide long enough, earn peace — or reach the
+// Matron and put her between you and them.
+let powerChase = false, chasers = [], surgeT = 0, lockWindowT = 0, chaserArriveT = 0, chaseRefreshT = 0, chaseHideT = 0, chaseFailT = 0, doorBolted = false, stairArrive = null;
 // mirror trigger-scares: armed points that fire ONCE as you pass — a distant
 // shatter down the hall, or the mirror beside you letting go of the wall
 let scareTriggers = [], fallingMirrors = [], firedScares = new Set();
@@ -240,7 +244,7 @@ function saveState() {
     docs: documents.filter((d) => d.found).map((d) => d.id),
     ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
     ritualDone: !!(ritual && ritual.done),
-    childrenFreed, spiritsFreed, powerOn, scares: [...firedScares],
+    childrenFreed, spiritsFreed, powerOn, scares: [...firedScares], doorBolted,
     survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
     finished: state === 'WIN' || state === 'DEAD',
   };
@@ -828,6 +832,10 @@ function castArrived() {
   entityMeshes.forEach((rec, e) => {
     if (!rec.hasModel) { if (rec.group.parent) rec.group.parent.remove(rec.group); entityMeshes.delete(e); }
   });
+  // set-pieces that need cast models and may have missed their floor build
+  if (state === 'PLAY' && player && player.floor === 4 && !matronApp && !matronGone) {
+    try { buildMatronApparition(4); } catch (e) { }
+  }
 }
 // ---- loading screen (DOM on desktop; mirrored onto the big panel in VR) ----
 let loadTickT = 0;
@@ -918,6 +926,7 @@ function newGame(saved) {
   morgueScared = false; carter = null; carterTimer = 50; fallingDebris = []; debrisKept = []; sceneAnims = []; riteClimax = false;
   dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = []; hideSpot = null; pausedAt = 0;
   powerOn = false; crankT = 0; genRec = null; boilerWarned = false; firedScares = new Set(); scareTriggers = []; fallingMirrors = [];
+  powerChase = false; chasers = []; surgeT = 0; lockWindowT = 0; chaserArriveT = 0; chaseHideT = 0; doorBolted = false; stairArrive = null;
   if (genHumOn) { genHumOn = false; Audio2.genHumStop(); }
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
@@ -972,7 +981,7 @@ function restoreFrom(s) {
   } else (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
-  powerOn = !!s.powerOn; firedScares = new Set(s.scares || []);
+  powerOn = !!s.powerOn; firedScares = new Set(s.scares || []); doorBolted = !!s.doorBolted;
   // stairwell-key compatibility: a save from before the lockdown update (or any
   // save made past a stairwell) must never strand the player — grant the keys
   // for every floor between the start floor and wherever they already are.
@@ -2030,6 +2039,7 @@ function matronUpdate(dt) {
     player.fear = Math.min(100, player.fear + 8);
     showSubtitle('A hooded shape stands in the Matron’s room. It has not moved in fifty years. Probably.', 5);
   }
+  if (powerChase) return;   // mid-chase, reaching her is salvation — matronRescue owns this moment
   if (d < 2.3) {   // you walked up to her. she declines the meeting.
     m.fading = 0.7;
     Audio2.screechPan(panTo({ x: m.tx, y: m.ty }), 0.14);
@@ -4097,6 +4107,12 @@ function stopSpirit() { if (spiritActive) { spiritActive = false; Audio2.spiritS
 function interact() {
   const t = tileAt(player.floor, player.x, player.y);
   if (t === TILE.UP) return changeFloor(1);
+  if (t === TILE.DOWN && player.floor === 1 && powerChase && lockWindowT > 0) return lockBasementDoor();
+  if (t === TILE.DOWN && player.floor === 1 && doorBolted) {
+    doorBolted = false;
+    showSubtitle('You slide the bolt back. The dark below is quiet. Probably.', 3);
+    return changeFloor(-1);
+  }
   if (t === TILE.DOWN) return changeFloor(-1);
   // hiding is ANCHORED: you tuck into this spot and stay until you interact again.
   // (Movement is locked while hidden — no walking the halls silent and uncatchable.)
@@ -4317,6 +4333,14 @@ function changeFloor(dir) {
   const landX = Math.max(4, Math.min(World.W - 5, Math.round(player.x)));
   placeDollyAtTile(landX + 0.5, 15.5);
   player.hidden = false;
+  // the surge chase follows you through stairwells — unless you bolt the door
+  if (powerChase && chasers.length) {
+    stairArrive = { x: landX + 0.5, y: 15.5 };
+    if (nf === 1 && dir > 0) {
+      lockWindowT = 6; chaserArriveT = 0;
+      showSubtitle('The stairwell door swings loose behind you — BOLT IT. NOW.', 4);
+    } else { lockWindowT = 0; chaserArriveT = 3.0; }
+  }
   const f = data.floors[nf];
   showSubtitle(f.name + ' — ' + f.subtitle, 3.4);
 }
@@ -4783,6 +4807,7 @@ function update(dt) {
   updateMelee(dt);  // and the weapon swing, same frame-order guarantee
   updateGenerator(dt);
   updateScares(dt);
+  updateChase(dt);
   // the boiler room is guarded — first steps inside earn the warning
   if (!boilerWarned && player.floor === 0 && !powerOn && inRoom(0, 'boiler')) {
     boilerWarned = true;
@@ -4995,10 +5020,81 @@ function updateGenerator(dt) {
     powerOn = true;
     Audio2.generatorStart();
     reviveFixtures();
-    player.fear = Math.max(0, player.fear - 10);
-    showSubtitle('The generator catches. Down here and the first floor, a few tubes stutter alive — the wards above lost their lines in the ’88 fire.', 6);
+    showSubtitle('The generator catches. Down here and the first floor, a few tubes stutter alive…', 4);
+    surgeT = 1.8;   // …and then the basement answers
     saveState();
   }
+}
+
+// ============================================================ the surge chase
+function startPowerChase() {
+  chasers = ents.filter((e) => e.floor === 0 && e.kind !== 'ash').slice(0, 3);
+  if (!chasers.length) chasers = ents.filter((e) => e.kind === 'ghoul').slice(0, 1);
+  if (!chasers.length) return;
+  chasers.forEach((e) => { if (e.awake) e.awake(); e.state = Entities.S.HUNT; e.lastSeen = { x: player.x, y: player.y }; e.cooldown = 8; e.path = null; });
+  powerChase = true; chaseFailT = 110; chaseHideT = 0; doorBolted = false;
+  Audio2.stinger(true); Audio2.chase(true); haptic(0.9, 250);
+  player.fear = Math.min(100, player.fear + 12);
+  showSubtitle('The current sings through the walls — and every throat in the basement opens at once. RUN. Up the stairs. BOLT THE DOOR.', 6);
+}
+function updateChase(dt) {
+  if (surgeT > 0) { surgeT -= dt; if (surgeT <= 0) startPowerChase(); }
+  if (!powerChase) return;
+  chaseFailT -= dt;
+  // they smell the current on you — the hunt does not decay on its own
+  chaseRefreshT -= dt;
+  if (chaseRefreshT <= 0) {
+    chaseRefreshT = 1.2;
+    chasers.forEach((e) => { if (e.floor === player.floor && !player.hidden) { e.state = Entities.S.HUNT; e.lastSeen = { x: player.x, y: player.y }; e.cooldown = 6; } });
+  }
+  // the bolt window: reach floor 1 and you have seconds before they're at the door
+  if (lockWindowT > 0) { lockWindowT -= dt; if (lockWindowT <= 0) chaserArriveT = 0.1; }
+  if (chaserArriveT > 0) {
+    chaserArriveT -= dt;
+    if (chaserArriveT <= 0 && stairArrive) {
+      chasers.forEach((e, i) => { e.floor = player.floor; e.x = stairArrive.x + (i - 1) * 0.7; e.y = stairArrive.y; e.state = Entities.S.HUNT; e.lastSeen = { x: player.x, y: player.y }; e.path = null; });
+      Audio2.slam(); Audio2.screechPan(0, 0.2);
+      showSubtitle('The stairwell door BURSTS open behind you.', 3);
+    }
+  }
+  // OUT 1: go still, stay hidden — they lose the scent
+  if (player.hidden) { chaseHideT += dt; if (chaseHideT > 8) return endPowerChase('hide'); } else chaseHideT = 0;
+  // OUT 2: an earned peace (draught, sanctum, a truth) disperses the hunt
+  if (Survival.peaceActive()) return endPowerChase('peace');
+  // OUT 3: the Matron. Put the soul-trapper between you and them.
+  if (matronApp && !matronGone && player.floor === 4 && Math.hypot(matronApp.tx - player.x, matronApp.ty - player.y) < 3.4) return matronRescue();
+  if (chaseFailT <= 0) return endPowerChase('faded');
+}
+function endPowerChase(reason) {
+  powerChase = false; lockWindowT = 0; chaserArriveT = 0; chaseHideT = 0; surgeT = 0;
+  chasers.forEach((e) => { e.floor = 0; e.state = Entities.S.PATROL; e.path = null; e.lastSeen = null; });
+  chasers = [];
+  if (reason === 'hide') showSubtitle('The footsteps circle… stop… and drag away down the stairwell. They’ve gone back to the dark.', 5);
+  else if (reason === 'peace') showSubtitle('The quiet takes them mid-stride. They turn, lost, and sink back toward the basement.', 5);
+  else if (reason === 'faded') showSubtitle('Somewhere behind you, the hunt loses your thread. For now.', 4);
+  saveState();
+}
+function lockBasementDoor() {
+  doorBolted = true;
+  Audio2.slam(); Audio2.rattle(); haptic(0.7, 150);
+  endPowerChase('bolted');
+  player.fear = Math.max(0, player.fear - 8);
+  showSubtitle('The bolt drops. Something hits the door. Once. Twice. …Then, quiet.', 5);
+  let n = 0;
+  const pound = setInterval(() => { if (state !== 'PLAY' || ++n > 3) return clearInterval(pound); Audio2.thud(0.5); Audio2.rattle(); }, 900);
+}
+function matronRescue() {
+  powerChase = false; lockWindowT = 0; chaserArriveT = 0; chaseHideT = 0;
+  Audio2.scream(); Audio2.stinger(true); comfortBlink(1); haptic(1, 300);
+  // she takes them — a game-hour of silence from the ones she dragged down
+  chasers.forEach((e) => { e.floor = 0; e.state = Entities.S.DORMANT; e.wakeHour = Math.min(23, hour + 1); e.path = null; e.lastSeen = null; });
+  chasers = [];
+  player.fear = Math.min(100, player.fear + 10);   // saved — but you'll never unsee it
+  // and she spends herself doing it: when you look back, the corner is empty
+  if (matronApp) { floorGroup.remove(matronApp.grp); matronApp = null; }
+  matronGone = true;
+  showSubtitle('The hooded thing finally MOVES — one step, arms opening. The dead behind you scream as she takes them. When you look back, the corner is empty.', 7);
+  saveState();
 }
 
 // ============================================================ mirror scares
@@ -5271,6 +5367,8 @@ function ambientEvent() {
 }
 function findInteract() {
   const t = tileAt(player.floor, player.x, player.y);
+  if (t === TILE.DOWN && player.floor === 1 && powerChase && lockWindowT > 0) return '🚨 Trigger — SLAM the door and BOLT IT (' + Math.ceil(lockWindowT) + 's)';
+  if (t === TILE.DOWN && player.floor === 1 && doorBolted) return 'Trigger — unbolt the stairwell door and descend';
   if (t === TILE.UP || t === TILE.DOWN) {
     const nf = Math.max(0, Math.min(4, player.floor + (t === TILE.UP ? 1 : -1)));
     const need = STAIR_KEYS[nf];
