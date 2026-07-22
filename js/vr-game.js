@@ -2063,6 +2063,12 @@ function loadTextures() {
   const wFloral = gload('assets/generated/codex-visual-pack-v1/walls/1920s-floral-wallpaper-albedo.jpg', 1, 1.2);
   TEX.fire8 = gload('assets/generated/codex-visual-pack-v1/flames/fire-orange-8x8.png');
   TEX.newsprint = gload('assets/generated/codex-visual-pack-v1/newspaper/williamson-daily-october-1988.png');
+  // the 4x4 hospital grime atlas — mold, rust runs, handprints, peeling paint
+  TEX.grimeAtlas = gload('assets/generated/codex-visual-pack-v1/grime/hospital-grime-atlas.png');
+  TEX.grimeAtlasMat = shared(new THREE.MeshStandardMaterial({
+    map: TEX.grimeAtlas, transparent: true, depthWrite: false, roughness: 1,
+    polygonOffset: true, polygonOffsetFactor: -1,
+  }));
   // The institutional dado: the approved cream-painted-steel albedo (surface-kit
   // PR #1) tinted per floor, with a slight enamel sheen — the scrubbable lower
   // wall every old hospital wore below its chair rail.
@@ -2278,6 +2284,13 @@ function fakeSignMat(label) {
   }
   return fakeSignMat.c[label];
 }
+// a plane whose UVs select one 128px cell of the 4x4 grime atlas
+function grimeCellGeo(col, row, w, h) {
+  const geo = new THREE.PlaneGeometry(w, h);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (col + uv.getX(i)) / 4, (3 - row + uv.getY(i)) / 4);
+  return geo;
+}
 let DRESS_MATS = null;
 function dressMats() {
   if (DRESS_MATS) return DRESS_MATS;
@@ -2382,6 +2395,33 @@ function dressWalls(fi, g) {
       const backing = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.7, 0.025), M.frame);
       mount(backing, wx, 1.62, row.z, row.face);
       mount(plane(0.94, 0.6, M.board), wx, 1.62, row.z + row.face * 0.016, row.face);
+    }
+  }
+  // sixty years of damp and hands: real grime decals from the atlas, drawn
+  // over walls and dead doors alike. One shared material -> one draw call.
+  if (TEX.grimeAtlasMat) {
+    // [col,row,w,h,y,role] — streaks hang from the ceiling line, mold climbs
+    // from the base, prints live at hand height, peeling paint mid-wall
+    const GRIME = [
+      [0, 0, 0.5, 1.0, 2.5], [1, 1, 0.55, 1.05, 2.45], [0, 1, 0.3, 0.95, 2.5],
+      [2, 0, 0.85, 0.7, 0.42], [3, 0, 1.0, 0.5, 0.32], [2, 1, 0.8, 0.6, 0.5],
+      [0, 2, 0.38, 0.46, 1.3], [1, 2, 0.42, 0.5, 1.42], [3, 1, 0.8, 0.5, 1.5],
+      [0, 3, 0.7, 0.7, 1.85], [1, 3, 0.75, 0.75, 1.7], [3, 3, 0.7, 0.7, 1.95],
+    ];
+    for (let x = 3; x < World.W - 3; x++) {
+      const row = rows[(x + fi + 1) % 2];
+      if (!wallAt(x, row.y)) continue;
+      if (rnd() > 0.42) continue;
+      const g2 = GRIME[(rnd() * GRIME.length) | 0];
+      const m2 = new THREE.Mesh(grimeCellGeo(g2[0], g2[1], g2[2], g2[3]), TEX.grimeAtlasMat);
+      mount(m2, (x + 0.5 + (rnd() - 0.5) * 0.9) * TILE_M, g2[4] + (rnd() - 0.5) * 0.16, row.z + row.face * 0.006, row.face);
+      m2.renderOrder = 2;
+      // handprints cluster: sometimes a second print beside the first
+      if (g2[1] === 2 && rnd() < 0.4) {
+        const m3 = new THREE.Mesh(grimeCellGeo(1, 2, 0.42, 0.5), TEX.grimeAtlasMat);
+        mount(m3, (x + 0.5) * TILE_M + 0.3, g2[4] - 0.08, row.z + row.face * 0.006, row.face);
+        m3.renderOrder = 2;
+      }
     }
   }
   return grp;
@@ -2544,6 +2584,28 @@ function buildFloor(fi) {
       emberProp = p.ember || null;
       animatedProps = p.animated || [];
       moodLights = p.moods || [];
+      // the incinerator's firebox: the 1926 fire never quite went out. A real
+      // flipbook flame licks behind the glowing door (ping-pong playback).
+      if (emberProp && TEX.fire8) {
+        const ft = TEX.fire8.clone(); ft.needsUpdate = true;
+        ft.wrapS = ft.wrapT = THREE.RepeatWrapping;
+        ft.repeat.set(1 / 8, 1 / 8); ft.offset.set(0, 7 / 8);
+        const fm = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.8),
+          new THREE.MeshBasicMaterial({ map: ft, transparent: true, opacity: 0.92, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+        fm.position.set(0, 0.74, 0.79);
+        emberProp.add(fm);
+        const ff = { t: 0, frame: 0 };
+        sceneAnims.push((dt) => {
+          if (!fm.parent || !fm.parent.parent) return false;
+          ff.t += dt;
+          if (ff.t > 1 / 24) {
+            ff.t = 0; ff.frame = (ff.frame + 1) % 126;
+            const idx = ff.frame < 63 ? ff.frame : 126 - ff.frame;   // ping-pong hides the loop pop
+            ft.offset.set((idx % 8) / 8, (7 - Math.floor(idx / 8)) / 8);
+          }
+          return true;
+        });
+      }
     } catch (e) { console.warn('props failed:', e); }
   }
 
