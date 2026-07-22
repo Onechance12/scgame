@@ -1061,6 +1061,17 @@ function buildExterior() {
   // and in front of the facade, so the onboarding walk (and every hand-placed
   // prop near it) stays honest. Bias is upward: props sink into rises (reads
   // fine in the dark) instead of floating over hollows (never does).
+  // the same height field drives both the mesh displacement and everything
+  // planted on it, so grass and trees actually SIT on the hill
+  const hillH = (lx, ly) => {
+    const wz = -40 - ly;   // world z after the -PI/2 tilt
+    let h = Math.sin(lx * 0.11 + 1.7) * Math.sin(ly * 0.09 + 0.6) * 0.55
+          + Math.sin(lx * 0.23 - 0.9) * Math.sin(ly * 0.21 + 2.2) * 0.30;
+    h = Math.max(h * 0.4 + 0.1, -0.16);
+    const offPath = Math.min(1, Math.max(0, (Math.abs(lx) - 2.6) / 5));
+    const offDoor = Math.min(1, Math.max(0, (-wz - 7) / 7));
+    return h * offPath * offDoor;
+  };
   const gGeo = new THREE.PlaneGeometry(160, 160, 72, 72);
   {
     const pos = gGeo.attributes.position;
@@ -1068,14 +1079,10 @@ function buildExterior() {
     let hs = 77003; const hr = () => { hs = (hs * 1103515245 + 12345) & 0x7fffffff; return hs / 0x7fffffff; };
     for (let i = 0; i < pos.count; i++) {
       const lx = pos.getX(i), ly = pos.getY(i);
-      const wz = -40 - ly;   // world z after the -PI/2 tilt
-      let h = Math.sin(lx * 0.11 + 1.7) * Math.sin(ly * 0.09 + 0.6) * 0.55
-            + Math.sin(lx * 0.23 - 0.9) * Math.sin(ly * 0.21 + 2.2) * 0.30
-            + (hr() - 0.5) * 0.10;
-      h = Math.max(h * 0.4 + 0.1, -0.16);
+      const wz = -40 - ly;
       const offPath = Math.min(1, Math.max(0, (Math.abs(lx) - 2.6) / 5));
       const offDoor = Math.min(1, Math.max(0, (-wz - 7) / 7));
-      pos.setZ(i, h * offPath * offDoor);
+      pos.setZ(i, hillH(lx, ly) + (hr() - 0.5) * 0.04 * offPath * offDoor);
       // Absolute metre UVs keep the leaf/clay scale stable across the full
       // displaced mesh and line up with the hospital's horizontal surfaces.
       uv.setXY(i, (doorX + lx) / TILE_M, wz / TILE_M);
@@ -1206,14 +1213,17 @@ function buildExterior() {
   // dead oaks crowd the hillside — dark shapes either side of the path up
   const oakSrc = (window.HeroModels || {}).oaktrees;
   if (oakSrc) {
-    [[-24, -14, 0.3, 6.2], [22, -22, 1.8, 7.0], [-19, -36, 3.6, 5.4], [27, -40, 5.1, 6.6], [-30, -46, 2.4, 7.4]].forEach(([ox, oz, yaw, sc]) => {
+    [[-24, -14, 0.3, 6.2], [22, -22, 1.8, 7.0], [-19, -36, 3.6, 5.4], [27, -40, 5.1, 6.6], [-30, -46, 2.4, 7.4],
+     [-38, -24, 1.1, 6.8], [34, -30, 4.4, 5.9], [-44, -38, 0.7, 7.8], [40, -46, 2.9, 6.4], [-27, -56, 5.7, 6.1],
+     [31, -58, 1.5, 7.2], [-48, -52, 3.2, 5.6], [46, -20, 0.2, 6.9], [-36, -10, 2.1, 5.2], [38, -8, 3.8, 5.7],
+     [-12, -56, 4.6, 6.6], [12, -62, 0.9, 7.0], [-52, -14, 5.3, 6.3]].forEach(([ox, oz, yaw, sc]) => {
       const t = oakSrc.clone();
       let b = new THREE.Box3().setFromObject(t);
       const h = (b.max.y - b.min.y) || 1;
       t.scale.setScalar(sc / h);
       b = new THREE.Box3().setFromObject(t);
       const c2 = b.getCenter(new THREE.Vector3());
-      t.position.set(doorX + ox - c2.x, -b.min.y - 0.05, oz - c2.z);
+      t.position.set(doorX + ox - c2.x, hillH(ox, -oz - 40) - b.min.y - 0.08, oz - c2.z);
       t.rotation.y = yaw;
       t.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.32); o.frustumCulled = false; } });
       g.add(t);
@@ -1252,7 +1262,7 @@ function buildExterior() {
   }
   // forty years of neglect: wild grass in every crack, lichened boulders,
   // moss eating the ground — the hill taking its grounds back
-  const scatter = (srcKey, spots, dark) => {
+  const scatter = (srcKey, spots, dark, sink) => {
     const src = (window.HeroModels || {})[srcKey];
     if (!src) return;
     spots.forEach(([ox, oz, yaw, sc]) => {
@@ -1262,7 +1272,7 @@ function buildExterior() {
       it.scale.setScalar(sc / ref);
       b = new THREE.Box3().setFromObject(it);
       const cc = b.getCenter(new THREE.Vector3());
-      it.position.set(doorX + ox - cc.x, -b.min.y - 0.02, oz - cc.z);
+      it.position.set(doorX + ox - cc.x, hillH(ox, -oz - 40) - b.min.y - 0.02 - (sink || 0), oz - cc.z);
       it.rotation.y = yaw;
       it.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(dark); o.frustumCulled = false; } });
       g.add(it);
@@ -1270,8 +1280,61 @@ function buildExterior() {
   };
   scatter('wildgrass', [[-3.8, -10, 0.4, 1.6], [4.4, -13, 2.1, 1.3], [-5.2, -24, 1.1, 1.5], [5.6, -29, 3.6, 1.7], [-4.6, -38, 5.2, 1.4],
     [3.9, -42, 0.9, 1.6], [-11, -17, 2.8, 1.8], [10, -21, 4.4, 1.5], [-15, -30, 1.7, 1.9], [14, -35, 3.1, 1.6], [7.5, -4, 5.6, 1.4], [-8.5, -5, 2.3, 1.7]], 0.42);
-  scatter('mossrock', [[-7, -12, 0.7, 1.1], [8, -26, 2.4, 1.5], [-13, -34, 4.1, 0.8], [12, -9, 1.2, 1.3], [-9, -44, 3.3, 1.0], [16, -44, 5.0, 1.7]], 0.45);
-  scatter('mosspatch', [[-5, -15, 1.0, 2.6], [6, -33, 2.9, 3.1], [-12, -27, 0.3, 2.8], [10, -14, 4.6, 2.4]], 0.5);
+  scatter('mossrock', [[-7, -12, 0.7, 1.1], [8, -26, 2.4, 1.5], [-13, -34, 4.1, 0.8], [12, -9, 1.2, 1.3], [-9, -44, 3.3, 1.0], [16, -44, 5.0, 1.7],
+    [-19, -22, 1.9, 1.2], [20, -31, 0.5, 0.9], [-24, -40, 2.7, 1.5], [24, -18, 4.2, 1.1], [-16, -50, 5.5, 1.3], [18, -52, 1.4, 1.0]], 0.45);
+  // the moss mats sit LOW and dark now — lit flat they read as dumped sheets
+  scatter('mosspatch', [[-5, -15, 1.0, 2.6], [6, -33, 2.9, 3.1], [-12, -27, 0.3, 2.8], [10, -14, 4.6, 2.4]], 0.3, 0.07);
+  // ---- forty years of hillside taking over: INSTANCED undergrowth ----
+  // Two instanced meshes (clumps + taller weeds) drawn from the wildgrass
+  // model's geometry — hundreds of plants for a couple of draw calls.
+  (() => {
+    const src = (window.HeroModels || {}).wildgrass;
+    if (!src) return;
+    src.updateMatrixWorld(true);
+    const meshes = [];
+    src.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    if (!meshes.length) return;
+    let b = new THREE.Box3().setFromObject(src);
+    const ref = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) || 1;
+    let vs = 24601; const vr = () => { vs = (vs * 1103515245 + 12345) & 0x7fffffff; return vs / 0x7fffffff; };
+    // seeded plan: clumps everywhere off-path, weeds crowding walls/fences/trees
+    const plots = [];
+    for (let i = 0; i < 170; i++) {
+      const ox = (vr() - 0.5) * 120, oz = -2 - vr() * 68;
+      if (Math.abs(ox) < 2.4 && oz > -52) continue;              // never on the path
+      if (oz > -6 && Math.abs(ox) < 12) continue;                // or the apron/steps
+      plots.push({ ox, oz, yaw: vr() * 6.283, s: 0.8 + vr() * 1.3, tall: false });
+    }
+    for (let i = 0; i < 60; i++) {
+      const ox = (vr() - 0.5) * 110, oz = -3 - vr() * 62;
+      if (Math.abs(ox) < 2.6 && oz > -52) continue;
+      if (oz > -6 && Math.abs(ox) < 12) continue;
+      plots.push({ ox, oz, yaw: vr() * 6.283, s: 1.0 + vr() * 1.1, tall: true });
+    }
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    meshes.forEach((mesh) => {
+      const mat = mesh.material.clone();
+      if (mat.color) mat.color.multiplyScalar(0.38);
+      const makeInst = (list, yScale, tint) => {
+        if (!list.length) return;
+        const m2 = mat.clone(); if (tint && m2.color) m2.color.multiplyScalar(tint);
+        const inst = new THREE.InstancedMesh(mesh.geometry, m2, list.length);
+        list.forEach((p, i) => {
+          const s = (p.s / ref) * 1.0;
+          q.setFromAxisAngle(up, p.yaw);
+          mtx.compose(new THREE.Vector3(doorX + p.ox, hillH(p.ox, -p.oz - 40) - 0.05, p.oz),
+            q, new THREE.Vector3(s, s * yScale, s));
+          mtx.multiply(mesh.matrixWorld);
+          inst.setMatrixAt(i, mtx);
+        });
+        inst.instanceMatrix.needsUpdate = true;
+        inst.frustumCulled = false;
+        g.add(inst);
+      };
+      makeInst(plots.filter((p) => !p.tall), 1.0);
+      makeInst(plots.filter((p) => p.tall), 1.9, 0.75);   // taller, darker weeds
+    });
+  })();
   // the hospital's transformer cabinet, rusted dead beside the doors
   const boxSrc = (window.HeroModels || {}).elecbox;
   if (boxSrc) {
@@ -1906,13 +1969,20 @@ function loadTextures() {
   const wFloral = gload('assets/generated/codex-visual-pack-v1/walls/1920s-floral-wallpaper-albedo.jpg', 1, 1.2);
   TEX.fire8 = gload('assets/generated/codex-visual-pack-v1/flames/fire-orange-8x8.png');
   TEX.newsprint = gload('assets/generated/codex-visual-pack-v1/newspaper/williamson-daily-october-1988.png');
+  // The institutional dado: the approved cream-painted-steel albedo (surface-kit
+  // PR #1) tinted per floor, with a slight enamel sheen — the scrubbable lower
+  // wall every old hospital wore below its chair rail.
+  const wSteel = gload('assets/generated/surface-kit-v1/cream-painted-steel-albedo.jpg', 1, 1);
+  TEX.dadoMats = [0x77836f, 0x83786a, 0x6f7a80, 0x7d7264].map((c) =>
+    shared(new THREE.MeshStandardMaterial({ map: wSteel, color: c, roughness: .78, metalness: .04 })));
+  TEX.railMat = shared(new THREE.MeshStandardMaterial({ color: 0x3a3128, roughness: .62, metalness: .08 }));
   TEX.wallMats = [
-    new THREE.MeshStandardMaterial({ map: wGreen, color: 0xb9beb2, roughness: .95 }),                   // 1 surgical-green plaster, peeling
-    new THREE.MeshStandardMaterial({ map: wFloral, color: 0xb8b0a4, roughness: .94 }),                  // 2 water-stained 1920s wallpaper
-    new THREE.MeshStandardMaterial({ map: wGrey, color: 0x82927c, roughness: .96 }),                    // 3 damp mould grey-green
-    new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x847b76, roughness: .96 }), // 4 dim, dust-warm
+    shared(new THREE.MeshStandardMaterial({ map: wGreen, color: 0xb9beb2, roughness: .95 })),                   // 1 surgical-green plaster, peeling
+    shared(new THREE.MeshStandardMaterial({ map: wFloral, color: 0xb8b0a4, roughness: .94 })),                  // 2 water-stained 1920s wallpaper
+    shared(new THREE.MeshStandardMaterial({ map: wGrey, color: 0x82927c, roughness: .96 })),                    // 3 damp mould grey-green
+    shared(new THREE.MeshStandardMaterial({ map: wRose, normalMap: wRoseN, color: 0x847b76, roughness: .96 })), // 4 dim, dust-warm
   ];
-  TEX.wallMatBase = new THREE.MeshStandardMaterial({ map: wGrey, color: 0x64696a, roughness: .97 });    // 0 cold damp concrete-grey
+  TEX.wallMatBase = shared(new THREE.MeshStandardMaterial({ map: wGrey, color: 0x64696a, roughness: .97 }));    // 0 cold damp concrete-grey
   // retexture maps for prop models that shipped a flat/plain baseColor (own instances)
   TEX.propTex = {
     wood: load('wood_floor_worn_diff.jpg', 1.6, 1.1),
@@ -2005,26 +2075,184 @@ function roomSurfacePhase(fi, room, ceiling) {
   return { u: ((h >>> 0) & 7) / 8, v: ((h >>> 3) & 7) / 8 };
 }
 
+// ---- wall dressing: the paper skin of a working hospital, sixty years on ----
+// Evacuation cards, chart holders, extinguishers, notice boards. All canvas
+// textures are cached and materials shared, so mergeStaticProps collapses the
+// whole layer into a handful of draw calls.
+function evacCardTex() {
+  if (evacCardTex.t) return evacCardTex.t;
+  const c = document.createElement('canvas'); c.width = 192; c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#cfc6ae'; x.fillRect(0, 0, 192, 256);          // yellowed card
+  x.fillStyle = '#8e2f24'; x.fillRect(0, 0, 192, 44);           // faded red header
+  x.fillStyle = '#e8ddc2'; x.font = 'bold 19px Georgia'; x.textAlign = 'center';
+  x.fillText('IN CASE OF FIRE', 96, 29);
+  x.fillStyle = '#3a352a'; x.font = '11px Georgia'; x.textAlign = 'left';
+  ['1. SOUND THE ALARM', '2. CLOSE ALL DOORS', '3. EVACUATE PATIENTS', '4. DO NOT USE LIFTS', '5. REPORT TO MATRON'].forEach((l, i) => x.fillText(l, 14, 68 + i * 20));
+  x.strokeStyle = '#5a5344'; x.lineWidth = 1; x.strokeRect(10, 168, 172, 66);   // little floor plan
+  x.strokeRect(30, 168, 40, 30); x.strokeRect(110, 168, 40, 30);
+  x.strokeStyle = '#8e2f24'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(50, 210); x.lineTo(96, 210); x.lineTo(96, 228); x.stroke();
+  x.fillStyle = '#8e2f24'; x.beginPath(); x.moveTo(90, 224); x.lineTo(102, 224); x.lineTo(96, 234); x.fill();
+  x.fillStyle = 'rgba(60,50,30,0.18)'; x.fillRect(0, 236, 192, 20);   // grime at the base
+  const t = new THREE.CanvasTexture(c);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  return (evacCardTex.t = t);
+}
+function chartPaperTex() {
+  if (chartPaperTex.t) return chartPaperTex.t;
+  const c = document.createElement('canvas'); c.width = 160; c.height = 224;
+  const x = c.getContext('2d');
+  x.fillStyle = '#d6cfb8'; x.fillRect(0, 0, 160, 224);
+  x.fillStyle = '#3a352a'; x.font = 'bold 13px Georgia'; x.textAlign = 'center';
+  x.fillText('PATIENT RECORD', 80, 22);
+  x.strokeStyle = '#6a6252'; x.lineWidth = 1;
+  for (let i = 0; i < 9; i++) { x.beginPath(); x.moveTo(14, 44 + i * 19); x.lineTo(146, 44 + i * 19); x.stroke(); }
+  x.font = '10px Georgia'; x.textAlign = 'left'; x.fillStyle = '#55503f';
+  x.fillText('NAME', 16, 40); x.fillText('WARD', 96, 40);
+  x.fillStyle = 'rgba(80,20,10,0.5)'; x.font = 'bold 15px Georgia';
+  x.fillText('DISCHARGED —', 22, 130);   // and nothing after it
+  const t = new THREE.CanvasTexture(c);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  return (chartPaperTex.t = t);
+}
+function noticeBoardTex() {
+  if (noticeBoardTex.t) return noticeBoardTex.t;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 320;
+  const x = c.getContext('2d');
+  let s = 1931; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  x.fillStyle = '#6a5236'; x.fillRect(0, 0, 512, 320);            // cork
+  for (let i = 0; i < 300; i++) { x.fillStyle = 'rgba(40,30,16,' + (0.05 + r() * 0.1).toFixed(2) + ')'; x.beginPath(); x.arc(r() * 512, r() * 320, 1 + r() * 3, 0, 6.283); x.fill(); }
+  for (let i = 0; i < 7; i++) {                                    // pinned, curling papers
+    const px = 24 + r() * 380, py = 20 + r() * 200, w = 60 + r() * 60, h = 70 + r() * 60;
+    x.save(); x.translate(px + w / 2, py + h / 2); x.rotate((r() - 0.5) * 0.3);
+    x.fillStyle = ['#cfc6ae', '#c9c2b2', '#d2c39a', '#bfb9a8'][i % 4];
+    x.fillRect(-w / 2, -h / 2, w, h);
+    x.strokeStyle = 'rgba(70,60,40,0.6)'; x.lineWidth = 1;
+    for (let l = 1; l < 5; l++) { x.beginPath(); x.moveTo(-w / 2 + 6, -h / 2 + l * (h / 5)); x.lineTo(w / 2 - 6, -h / 2 + l * (h / 5)); x.stroke(); }
+    x.fillStyle = '#8e2f24'; x.beginPath(); x.arc(0, -h / 2 + 5, 3, 0, 6.283); x.fill();   // pin
+    x.restore();
+  }
+  x.fillStyle = 'rgba(20,14,8,0.5)'; x.font = 'bold 22px Georgia'; x.textAlign = 'center';
+  x.fillText('NOTICES', 256, 306);
+  const t = new THREE.CanvasTexture(c);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  return (noticeBoardTex.t = t);
+}
+function fireSignTex() {
+  if (fireSignTex.t) return fireSignTex.t;
+  const c = document.createElement('canvas'); c.width = 96; c.height = 224;
+  const x = c.getContext('2d');
+  x.fillStyle = '#9b2c20'; x.fillRect(0, 0, 96, 224);
+  x.strokeStyle = '#d8cdb4'; x.lineWidth = 4; x.strokeRect(4, 4, 88, 216);
+  x.fillStyle = '#d8cdb4'; x.font = 'bold 34px Georgia'; x.textAlign = 'center';
+  'FIRE'.split('').forEach((ch, i) => x.fillText(ch, 48, 56 + i * 46));
+  const t = new THREE.CanvasTexture(c);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  return (fireSignTex.t = t);
+}
+let DRESS_MATS = null;
+function dressMats() {
+  if (DRESS_MATS) return DRESS_MATS;
+  DRESS_MATS = {
+    evac: new THREE.MeshStandardMaterial({ map: evacCardTex(), roughness: .9 }),
+    chart: new THREE.MeshStandardMaterial({ map: chartPaperTex(), roughness: .95 }),
+    board: new THREE.MeshStandardMaterial({ map: noticeBoardTex(), roughness: .95 }),
+    fire: new THREE.MeshStandardMaterial({ map: fireSignTex(), roughness: .85 }),
+    frame: new THREE.MeshStandardMaterial({ color: 0x3a3128, roughness: .7 }),
+    steel: new THREE.MeshStandardMaterial({ color: 0x777d80, roughness: .5, metalness: .5 }),
+    red: new THREE.MeshStandardMaterial({ color: 0x8e1f14, roughness: .45, metalness: .25 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x1c1a17, roughness: .8 }),
+  };
+  // survive floor rebuilds like every other shared material
+  if (TEX.sharedMaterials) Object.values(DRESS_MATS).forEach((m) => TEX.sharedMaterials.add(m));
+  return DRESS_MATS;
+}
+// Everything mounts on a corridor-facing or room wall face: `face` is +1 when
+// the face looks toward +z (a wall row above the corridor), -1 when toward -z.
+function dressWalls(fi, g) {
+  const M = dressMats(), grp = new THREE.Group();
+  let s = 5077 + fi * 131; const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  const ct = data.CORR_TOP || 14, cb = data.CORR_BOT || 17;
+  const wallAt = (x, y) => g[y] && g[y][x] === TILE.WALL;
+  const mount = (mesh, wx, wy, wz, face) => {
+    mesh.position.set(wx, wy, wz + face * 0.017);
+    if (face < 0) mesh.rotation.y = Math.PI;
+    grp.add(mesh);
+  };
+  const plane = (w, h, mat) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  // corridor rows: north wall faces +z at z=ct*TILE_M, south faces -z at z=(cb+1)*TILE_M
+  const rows = [
+    { y: ct - 1, z: ct * TILE_M, face: 1 },
+    { y: cb + 1, z: (cb + 1) * TILE_M, face: -1 },
+  ];
+  // chart holder beside every room door, on the corridor side
+  data.floors[fi].rooms.forEach((r) => {
+    const top = r.doorY < ct;
+    const row = top ? rows[0] : rows[1];
+    const side = wallAt(r.doorX + 1, row.y) ? 1 : -1;
+    if (!wallAt(r.doorX + side, row.y)) return;
+    const back = plane(0.3, 0.4, M.steel);
+    mount(back, (r.doorX + 0.5) * TILE_M + side * 1.05, 1.38, row.z, row.face);
+    const paper = plane(0.24, 0.33, M.chart);
+    mount(paper, (r.doorX + 0.5) * TILE_M + side * 1.05, 1.37, row.z + row.face * 0.004, row.face);
+  });
+  // evacuation cards, extinguishers, notice boards — walked down the corridor
+  let nextEvac = 4 + rnd() * 4, nextExt = 9 + rnd() * 5, nextBoard = 12 + rnd() * 8;
+  for (let x = 3; x < World.W - 3; x++) {
+    const row = rows[(x + fi) % 2];
+    if (!wallAt(x, row.y)) continue;
+    const wx = (x + 0.5) * TILE_M;
+    if (x >= nextEvac) {
+      nextEvac = x + 7 + rnd() * 5;
+      mount(plane(0.25, 0.34, M.evac), wx + (rnd() - 0.5) * 0.8, 1.52, row.z, row.face);
+    } else if (x >= nextExt) {
+      nextExt = x + 12 + rnd() * 6;
+      // wall bracket, the bottle, the stencilled sign above it
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.42, 10), M.red);
+      mount(body, wx, 1.06, row.z + row.face * 0.078, row.face);
+      const nozzle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.05), M.dark);
+      mount(nozzle, wx + 0.05, 1.3, row.z + row.face * 0.07, row.face);
+      const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.03), M.dark);
+      mount(bracket, wx, 1.06, row.z, row.face);
+      mount(plane(0.11, 0.26, M.fire), wx, 1.72, row.z, row.face);
+    } else if (x >= nextBoard) {
+      nextBoard = x + 18 + rnd() * 9;
+      const backing = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.7, 0.025), M.frame);
+      mount(backing, wx, 1.62, row.z, row.face);
+      mount(plane(0.94, 0.6, M.board), wx, 1.62, row.z + row.face * 0.016, row.face);
+    }
+  }
+  return grp;
+}
+
 // Build wall geometry as exposed faces only, with continuous WORLD-SPACE UVs so the
 // texture flows across tiles instead of copy-pasting the same image every 2 m.
-function buildWallGeometry(g) {
+// Optional y0/y1 emit only a horizontal BAND of every exposed face — the same
+// footprint sliced into dado / chair-rail / upper-wall layers, each of which
+// can then wear its own material (the classic two-tone institutional wall).
+// V coordinates stay in world-height space so the upper band's texture phase
+// matches what the full-height wall used to show.
+function buildWallGeometry(g, y0, y1) {
   const solid = (x, y) => (x < 0 || y < 0 || x >= World.W || y >= World.H) ? true : (g[y][x] === TILE.WALL);
-  const H = WALL_H, TW = 3.0, vTop = H / 3.2;   // one texture ≈ 3 m wide, full wall height tall
+  const H = WALL_H, TW = 3.0;   // one texture ≈ 3 m wide, full wall height tall
+  const b0 = y0 === undefined ? 0 : y0, b1 = y1 === undefined ? H : y1;
+  const v0 = b0 / 3.2, v1 = b1 / 3.2;
   const pos = [], nor = [], uv = [], idx = [];
   let vi = 0;
-  const quad = (v0, v1, v2, v3, nx, ny, nz, u0, u1) => {
-    pos.push(v0[0], v0[1], v0[2], v1[0], v1[1], v1[2], v2[0], v2[1], v2[2], v3[0], v3[1], v3[2]);
+  const quad = (vA, vB, nx, ny, nz, u0, u1) => {
+    pos.push(vA[0], b0, vA[1], vB[0], b0, vB[1], vB[0], b1, vB[1], vA[0], b1, vA[1]);
     for (let k = 0; k < 4; k++) nor.push(nx, ny, nz);
-    uv.push(u0, 0, u1, 0, u1, vTop, u0, vTop);
+    uv.push(u0, v0, u1, v0, u1, v1, u0, v1);
     idx.push(vi, vi + 1, vi + 2, vi, vi + 2, vi + 3); vi += 4;
   };
   for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) {
     if (g[y][x] !== TILE.WALL) continue;
     const x0 = x * TILE_M, x1 = (x + 1) * TILE_M, z0 = y * TILE_M, z1 = (y + 1) * TILE_M;
-    if (!solid(x, y - 1)) quad([x1, 0, z0], [x0, 0, z0], [x0, H, z0], [x1, H, z0], 0, 0, -1, x1 / TW, x0 / TW);
-    if (!solid(x, y + 1)) quad([x0, 0, z1], [x1, 0, z1], [x1, H, z1], [x0, H, z1], 0, 0, 1, x0 / TW, x1 / TW);
-    if (!solid(x - 1, y)) quad([x0, 0, z0], [x0, 0, z1], [x0, H, z1], [x0, H, z0], -1, 0, 0, z0 / TW, z1 / TW);
-    if (!solid(x + 1, y)) quad([x1, 0, z1], [x1, 0, z0], [x1, H, z0], [x1, H, z1], 1, 0, 0, z1 / TW, z0 / TW);
+    if (!solid(x, y - 1)) quad([x1, z0], [x0, z0], 0, 0, -1, x1 / TW, x0 / TW);
+    if (!solid(x, y + 1)) quad([x0, z1], [x1, z1], 0, 0, 1, x0 / TW, x1 / TW);
+    if (!solid(x - 1, y)) quad([x0, z0], [x0, z1], -1, 0, 0, z0 / TW, z1 / TW);
+    if (!solid(x + 1, y)) quad([x1, z1], [x1, z0], 1, 0, 0, z1 / TW, z0 / TW);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -2107,11 +2335,28 @@ function buildFloor(fi) {
   }
 
   // walls — exposed-face geometry with continuous world-space UVs (no per-tile repeat),
-  // one tinted plaster material per floor so levels stay distinct
+  // one tinted plaster material per floor so levels stay distinct. Above the
+  // basement every wall is the classic institutional two-tone: painted dado
+  // below, dark chair rail, wallpaper/plaster above — like every 1928 ward.
   const wallMat = fi === 0 ? TEX.wallMatBase : (TEX.wallMats[(fi - 1) % TEX.wallMats.length] || TEX.wallMats[0]);
-  const walls = new THREE.Mesh(buildWallGeometry(g), wallMat);
-  walls.castShadow = true; walls.receiveShadow = true;
-  floorGroup.add(walls);
+  if (fi === 0 || !TEX.dadoMats) {
+    const walls = new THREE.Mesh(buildWallGeometry(g), wallMat);
+    walls.castShadow = true; walls.receiveShadow = true;
+    floorGroup.add(walls);
+  } else {
+    const RAIL_Y = 1.16, RAIL_H = 0.08;
+    const dado = new THREE.Mesh(buildWallGeometry(g, 0, RAIL_Y), TEX.dadoMats[(fi - 1) % TEX.dadoMats.length]);
+    const rail = new THREE.Mesh(buildWallGeometry(g, RAIL_Y, RAIL_Y + RAIL_H), TEX.railMat);
+    const upper = new THREE.Mesh(buildWallGeometry(g, RAIL_Y + RAIL_H, WALL_H), wallMat);
+    upper.castShadow = true; upper.receiveShadow = true; dado.receiveShadow = true;
+    floorGroup.add(dado, rail, upper);
+  }
+  // the hospital's paper skin: evac cards, chart holders, extinguishers, boards
+  try {
+    const dressing = dressWalls(fi, g);
+    mergeStaticProps(dressing);
+    floorGroup.add(dressing);
+  } catch (e) { }
   // collision & fixture state resets FIRST — addStairs pushes stair colliders
   propSolids = []; flickers = []; emberProp = null; fxMixers = [];
   // fixtures the grid still drives: doors, candles, stairs, exits, hide-lockers
@@ -2665,13 +2910,22 @@ function dirtPathTex() {
   const c = document.createElement('canvas'); c.width = 128; c.height = 512;
   const x = c.getContext('2d');
   let s = 5150; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
-  // bare-earth blobs bunched toward the centre line, thinning to nothing at the edges
-  for (let i = 0; i < 900; i++) {
-    const cx = 64 + (r() + r() - 1) * 44, cy = r() * 512;
-    const edge = 1 - Math.min(1, Math.abs(cx - 64) / 58);
-    const tone = 52 + r() * 26;
-    x.fillStyle = 'rgba(' + (tone + 14 | 0) + ',' + (tone | 0) + ',' + (tone * 0.62 | 0) + ',' + (0.14 + edge * 0.5 * r()).toFixed(3) + ')';
-    x.beginPath(); x.arc(cx, cy, 3 + r() * 9, 0, 6.283); x.fill();
+  // bare earth as LONG worn streaks down the walking line (blobs read as
+  // cartoon circles under any real light), thinning to nothing at the edges.
+  // Every stroke draws thrice (y, y±512) so the repeat has no seam.
+  for (let i = 0; i < 340; i++) {
+    const cx = 64 + (r() + r() - 1) * 46;
+    const edge = 1 - Math.min(1, Math.abs(cx - 64) / 60);
+    const tone = 50 + r() * 28;
+    const len = 40 + r() * 150, y0 = r() * 512, w = 1.5 + r() * 5;
+    const j1 = (r() - 0.5) * 7, j2 = (r() - 0.5) * 4;
+    x.strokeStyle = 'rgba(' + (tone + 14 | 0) + ',' + (tone | 0) + ',' + (tone * 0.62 | 0) + ',' + (0.08 + edge * 0.4 * r()).toFixed(3) + ')';
+    x.lineWidth = w; x.lineCap = 'round';
+    for (const dy of [0, -512, 512]) {
+      x.beginPath(); x.moveTo(cx + j2, y0 + dy);
+      x.quadraticCurveTo(cx + j1, y0 + len / 2 + dy, cx + j2, y0 + len + dy);
+      x.stroke();
+    }
   }
   // two foot-worn ruts wandering down the length
   for (const off of [-13, 13]) {

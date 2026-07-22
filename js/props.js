@@ -829,13 +829,21 @@ const Props = (() => {
       const ct = data.CORR_TOP || 14, cb = data.CORR_BOT || 17;
       const doorXs = [];
       data.floors[fi].rooms.forEach((r) => doorXs.push((r.doorX + 0.5) * TILE_M));
-      const CORR = ['wheelchair', 'cart', 'bed', 'crates', 'iv', 'shelf'];
+      const CORR = ['wheelchair', 'cart', 'bed', 'bed', 'chair', 'crates', 'iv', 'shelf', 'wheelchair', 'cabinet'];
       const corridor = { z0: ct * TILE_M + 0.16, z1: (cb + 1) * TILE_M - 0.16 };
       const centreZ = (corridor.z0 + corridor.z1) / 2;
       const corridorPlaced = [];
       const overlaps = (a, b, pad) => a.x0 + pad < b.x1 && a.x1 - pad > b.x0 && a.z0 + pad < b.z1 && a.z1 - pad > b.z0;
+      // candles, lockers, stairs, and the exit keep their whole tile clear
+      const specials = [];
+      const grid = data.floors[fi].grid;
+      const SP = new Set([data.TILE.CANDLE, data.TILE.HIDE, data.TILE.EXIT, data.TILE.UP, data.TILE.DOWN]);
+      for (let y = ct; y <= cb; y++) for (let sx = 0; sx < (data.W || 64); sx++) {
+        if (!SP.has(grid[y][sx])) continue;
+        specials.push({ x0: sx * TILE_M - 0.05, x1: (sx + 1) * TILE_M + 0.05, z0: y * TILE_M - 0.05, z1: (y + 1) * TILE_M + 0.05 });
+      }
       let slot = 0;
-      for (let x = 6; x < (data.W || 64) - 6; x += 7, slot++) {
+      for (let x = 5; x < (data.W || 64) - 5; x += 4, slot++) {
         const xx = x + (rnd() - 0.5) * 2;
         const top = (slot % 2) === 0;
         const name = CORR[Math.floor(rnd() * CORR.length)];
@@ -852,7 +860,8 @@ const Props = (() => {
         const blocksCentre = top ? rec.z1 > centreZ - 0.9 : rec.z0 < centreZ + 0.9;
         const blocksDoor = doorXs.some((dx) => rec.x0 < dx + TILE_M * 1.15 && rec.x1 > dx - TILE_M * 1.15);
         const blocksProp = corridorPlaced.some((p) => overlaps(rec, p, 0.12)) || solids.some((p) => overlaps(rec, p, 0.08));
-        if (blocksCentre || blocksDoor || blocksProp) { g.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); continue; }
+        const blocksSpecial = specials.some((p) => overlaps(rec, p, 0));
+        if (blocksCentre || blocksDoor || blocksProp || blocksSpecial) { g.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); continue; }
         g.position.set(xm, 0, zm);
         g.rotation.y = yaw;
         group.add(g);
