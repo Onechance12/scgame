@@ -78,13 +78,15 @@ const HAUNT = {
 const HAUNT_ORDER = ['faint', 'restless', 'infested'];
 // the arsenal — declared up top because save validation runs at boot, before play
 const WEAPONS = {
-  crowbar: { name: 'Crowbar', model: 'crowbar', scale: 0.52, reach: 2.6, cone: 1.15, cd: 0.9, scare: 1.7, knock: 0.6, heavy: false },
-  pipe: { name: 'Lead Pipe', model: 'w_pipe', scale: 0.6, reach: 2.7, cone: 1.1, cd: 0.9, scare: 1.7, knock: 0.7, heavy: false },
-  bat: { name: 'Baseball Bat', model: 'w_bat', scale: 0.66, reach: 2.8, cone: 1.2, cd: 0.85, scare: 1.9, knock: 0.8, heavy: false },
-  machete: { name: 'Machete', model: 'w_machete', scale: 0.5, reach: 2.4, cone: 1.0, cd: 0.7, scare: 1.3, knock: 0.4, heavy: false },
-  cleaver: { name: 'Bone Cleaver', model: 'w_cleaver', scale: 0.34, reach: 2.2, cone: 0.95, cd: 0.65, scare: 1.2, knock: 0.35, heavy: false },
-  axe: { name: 'Fire Axe', model: 'w_axe', scale: 0.62, reach: 2.7, cone: 1.1, cd: 1.05, scare: 2.4, knock: 1.0, heavy: true },
-  sledge: { name: 'Sledgehammer', model: 'w_sledge', scale: 0.72, reach: 2.9, cone: 1.15, cd: 1.35, scare: 3.0, knock: 1.4, heavy: true },
+  // reach and knock are metres. Keeping combat in world units prevents a
+  // nominal 2.6-tile crowbar from striking through almost seven metres of wall.
+  crowbar: { name: 'Crowbar', model: 'crowbar', scale: 0.52, reach: 1.65, cone: 1.15, cd: 0.9, scare: 1.7, knock: 0.42, heavy: false },
+  pipe: { name: 'Lead Pipe', model: 'w_pipe', scale: 0.6, reach: 1.72, cone: 1.1, cd: 0.9, scare: 1.7, knock: 0.48, heavy: false },
+  bat: { name: 'Baseball Bat', model: 'w_bat', scale: 0.66, reach: 1.85, cone: 1.2, cd: 0.85, scare: 1.9, knock: 0.55, heavy: false },
+  machete: { name: 'Machete', model: 'w_machete', scale: 0.5, reach: 1.55, cone: 1.0, cd: 0.7, scare: 1.3, knock: 0.35, heavy: false },
+  cleaver: { name: 'Bone Cleaver', model: 'w_cleaver', scale: 0.34, reach: 1.35, cone: 0.95, cd: 0.65, scare: 1.2, knock: 0.28, heavy: false },
+  axe: { name: 'Fire Axe', model: 'w_axe', scale: 0.62, reach: 1.75, cone: 1.1, cd: 1.05, scare: 2.4, knock: 0.68, heavy: true },
+  sledge: { name: 'Sledgehammer', model: 'w_sledge', scale: 0.72, reach: 1.9, cone: 1.15, cd: 1.35, scare: 3.0, knock: 0.85, heavy: true },
 };
 const WEAPON_ORDER = ['crowbar', 'pipe', 'bat', 'machete', 'cleaver', 'axe', 'sledge'];
 function saveOpts() { try { localStorage.setItem('collegehill_opts', JSON.stringify(OPTS)); } catch (e) { } }
@@ -111,7 +113,7 @@ let powerChase = false, chasers = [], surgeT = 0, lockWindowT = 0, chaserArriveT
 let scareTriggers = [], fallingMirrors = [], firedScares = new Set();
 let phoneRang = false;   // the 3:33 AM payphone (once a night)
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
-const WARD_RANGE = 6.5;
+const WARD_RANGE_M = 4.5;
 function lightMul() { return OPTS.bright ? 1.9 : 1; }   // "dim lights" vs pitch-dark hardcore
 function applyBrightness() {
   if (ambient) ambient.intensity = OPTS.bright ? 0.26 : 0.10;
@@ -126,12 +128,13 @@ let doorMeshes = new Map();     // current floor: "x,y" -> hinged interactive do
 let doorStates = new Map();     // visit-stable closed/open state: "floor:x,y" -> closed
 let unlockedDoors = new Set();  // locks the player has opened: "floor:x,y" (persisted)
 let doorFloorIndices = new WeakMap(); // grid identity -> floor index (hot AI-path lookup)
+let entitySolidsByGrid = new WeakMap(); // spatially indexed prop-collision snapshots by streamed floor
 let safePlayer = { floor: -1, x: 0, y: 0 }; // last collision-valid tracked-head position
 let hideTiles = [], exitRec = null, fakeDoors = [];
 // entities.js updates every hunter, including those on floors that are not
 // currently rendered. Current-floor collision follows the animated leaf;
 // streamed-out floors follow their visit-stable door state (and locked tiles).
-window.RuntimeDoorBlocked = (grid, x, y) => {
+window.RuntimeDoorBlocked = (grid, x, y, mode) => {
   if (!data || !grid) return false;
   let fi = doorFloorIndices.get(grid);
   if (fi === undefined) {
@@ -142,11 +145,77 @@ window.RuntimeDoorBlocked = (grid, x, y) => {
   const tx = Math.floor(x), ty = Math.floor(y);
   if (player && fi === player.floor) {
     const liveDoor = doorMeshes.get(tx + ',' + ty);
-    if (liveDoor) return !!liveDoor.blocked;
+    if (liveDoor) {
+      if (liveDoor.locked) return true;
+      // Hunters may PLAN through a shut unlocked leaf so they can walk up to it
+      // and trigger Claude's pressure/burst behavior. Physical movement and LOS
+      // still treat that same leaf as blocked until it visibly clears.
+      if (mode === 'hunt-path') return false;
+      return !!liveDoor.blocked;
+    }
   }
   const tile = grid[ty] && grid[ty][tx];
   if (tile === TILE.LOCKED) return true;
+  if (mode === 'hunt-path' && tile === TILE.DOOR) return false;
   return tile === TILE.DOOR && doorStates.get(fi + ':' + tx + ',' + ty) === true;
+};
+// entities.js stays layout-agnostic: this bridge hands it the exact collision
+// boxes produced by whichever prop/layout pass is active. Current-floor solids
+// are live; previously visited floors retain their completed immutable array.
+function indexEntitySolids(grid, solids) {
+  let indexed = entitySolidsByGrid.get(grid);
+  if (indexed && indexed.solids === solids && indexed.count === solids.length) return indexed;
+  const buckets = new Map();
+  solids.forEach((solid) => {
+    const x0 = Math.floor(solid.x0 / TILE_M), x1 = Math.floor(solid.x1 / TILE_M);
+    const y0 = Math.floor(solid.z0 / TILE_M), y1 = Math.floor(solid.z1 / TILE_M);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const key = tx + ',' + ty;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(solid);
+    }
+  });
+  indexed = { solids, count: solids.length, buckets };
+  entitySolidsByGrid.set(grid, indexed);
+  return indexed;
+}
+window.RuntimeEntityBlocked = (grid, x, y, radiusTiles) => {
+  if (!data || !grid) return false;
+  const currentGrid = player && data.floors[player.floor] && data.floors[player.floor].grid;
+  const indexed = grid === currentGrid ? indexEntitySolids(grid, propSolids) : entitySolidsByGrid.get(grid);
+  if (!indexed) return false;
+  const radiusT = Math.max(0, Number.isFinite(radiusTiles) ? radiusTiles : 0.16);
+  const radiusM = radiusT * TILE_M;
+  const tx = Math.floor(x), ty = Math.floor(y), xm = x * TILE_M, zm = y * TILE_M;
+  for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+    const bucket = indexed.buckets.get((tx + ox) + ',' + (ty + oy));
+    if (bucket && solidListBlocked(bucket, xm, zm, radiusM)) return true;
+  }
+  return false;
+};
+window.RuntimeEntitySegmentBlocked = (grid, x0, y0, x1, y1, radiusTiles) => {
+  if (!data || !grid) return false;
+  const currentGrid = player && data.floors[player.floor] && data.floors[player.floor].grid;
+  const indexed = grid === currentGrid ? indexEntitySolids(grid, propSolids) : entitySolidsByGrid.get(grid);
+  if (!indexed) return false;
+  const radiusT = Math.max(0, Number.isFinite(radiusTiles) ? radiusTiles : 0.16);
+  const radiusM = radiusT * TILE_M;
+  const x0m = x0 * TILE_M, z0m = y0 * TILE_M, x1m = x1 * TILE_M, z1m = y1 * TILE_M;
+  const minTx = Math.floor(Math.min(x0, x1) - radiusT);
+  const maxTx = Math.floor(Math.max(x0, x1) + radiusT);
+  const minTy = Math.floor(Math.min(y0, y1) - radiusT);
+  const maxTy = Math.floor(Math.max(y0, y1) + radiusT);
+  const visited = new Set();
+  for (let ty = minTy; ty <= maxTy; ty++) for (let tx = minTx; tx <= maxTx; tx++) {
+    const bucket = indexed.buckets.get(tx + ',' + ty);
+    if (!bucket) continue;
+    for (const solid of bucket) {
+      if (visited.has(solid)) continue;
+      visited.add(solid);
+      if (segmentSolidBlocked(solid, x0m, z0m, x1m, z1m, radiusM)) return true;
+    }
+  }
+  return false;
 };
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
@@ -934,6 +1003,7 @@ function newGame(saved) {
   hideBigPanel();
   data = World.build();
   doorFloorIndices = new WeakMap();
+  entitySolidsByGrid = new WeakMap();
   ents = Entities.spawnAll(data, { extra: (HAUNT[OPTS.haunt] || HAUNT.restless).extra });
   documents = data.documents || [];
   ritual = data.ritual ? { floor: data.ritual.floor, cx: data.ritual.cx, cy: data.ritual.cy, done: false,
@@ -2529,8 +2599,16 @@ function buildFloor(fi) {
   // items on this floor
   data.items.forEach((it) => { if (!it.taken && it.floor === fi) addItemMesh(it); });
 
-  // entities present on this floor get meshes
-  ents.forEach((e) => { if (e.floor === fi) ensureEntityMesh(e); });
+  // Furniture is streamed per floor. Make its completed collision snapshot
+  // authoritative before a monster is shown, then invalidate any off-screen
+  // route that was planned before this floor had solids.
+  indexEntitySolids(g, propSolids);
+  ents.forEach((e) => {
+    if (e.floor !== fi) return;
+    e.path = null; e.pathTimer = 0; e.pathGoalKey = ''; e.pathFailures = 0;
+    if (e.ensureWalkable) e.ensureWalkable(g);
+    ensureEntityMesh(e);
+  });
 
   // prewarm every material/shader now, so the first jump-scare never hitches
   try { renderer.compile(scene, camera); } catch (e) { /* headless GL quirks — safe to skip */ }
@@ -3141,12 +3219,76 @@ function mergeStaticProps(group) {
   });
 }
 
-// true if a world-space point (metres) lies inside any solid prop (+radius)
+// True when a monster circle overlaps any world-space solid AABB.
+function solidListBlocked(solids, xm, zm, radiusM) {
+  for (let i = 0; i < solids.length; i++) {
+    const s = solids[i];
+    const cx = Math.max(s.x0, Math.min(xm, s.x1));
+    const cz = Math.max(s.z0, Math.min(zm, s.z1));
+    if ((xm - cx) ** 2 + (zm - cz) ** 2 < radiusM ** 2) return true;
+  }
+  return false;
+}
+function pointSegmentDistance2(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const length2 = dx * dx + dz * dz;
+  if (length2 <= 1e-12) return (px - ax) ** 2 + (pz - az) ** 2;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / length2));
+  const qx = ax + dx * t, qz = az + dz * t;
+  return (px - qx) ** 2 + (pz - qz) ** 2;
+}
+function segmentsIntersect2D(ax, az, bx, bz, cx, cz, dx, dz) {
+  const cross = (ux, uz, vx, vz) => ux * vz - uz * vx;
+  const abx = bx - ax, abz = bz - az;
+  const cdx = dx - cx, cdz = dz - cz;
+  const abLength2 = abx * abx + abz * abz;
+  const cdLength2 = cdx * cdx + cdz * cdz;
+  if (abLength2 <= 1e-12) return pointSegmentDistance2(ax, az, cx, cz, dx, dz) <= 1e-12;
+  if (cdLength2 <= 1e-12) return pointSegmentDistance2(cx, cz, ax, az, bx, bz) <= 1e-12;
+  const denom = cross(abx, abz, cdx, cdz);
+  const acx = cx - ax, acz = cz - az;
+  if (Math.abs(denom) < 1e-10) {
+    if (Math.abs(cross(acx, acz, abx, abz)) > 1e-10) return false;
+    const useX = Math.abs(abx) >= Math.abs(abz);
+    const a0 = useX ? ax : az, a1 = useX ? bx : bz;
+    const c0 = useX ? cx : cz, c1 = useX ? dx : dz;
+    return Math.max(Math.min(a0, a1), Math.min(c0, c1)) <=
+      Math.min(Math.max(a0, a1), Math.max(c0, c1)) + 1e-10;
+  }
+  const t = cross(acx, acz, cdx, cdz) / denom;
+  const u = cross(acx, acz, abx, abz) / denom;
+  return t >= -1e-10 && t <= 1 + 1e-10 && u >= -1e-10 && u <= 1 + 1e-10;
+}
+function segmentPairDistance2(ax, az, bx, bz, cx, cz, dx, dz) {
+  if (segmentsIntersect2D(ax, az, bx, bz, cx, cz, dx, dz)) return 0;
+  return Math.min(
+    pointSegmentDistance2(ax, az, cx, cz, dx, dz),
+    pointSegmentDistance2(bx, bz, cx, cz, dx, dz),
+    pointSegmentDistance2(cx, cz, ax, az, bx, bz),
+    pointSegmentDistance2(dx, dz, ax, az, bx, bz),
+  );
+}
+// Exact capsule-vs-AABB test used while BFS considers the edge between two
+// clear tile centres. It catches a bed or cart straddling that boundary.
+function segmentSolidBlocked(s, x0, z0, x1, z1, radiusM) {
+  if ((x0 >= s.x0 && x0 <= s.x1 && z0 >= s.z0 && z0 <= s.z1) ||
+      (x1 >= s.x0 && x1 <= s.x1 && z1 >= s.z0 && z1 <= s.z1)) return true;
+  const distance2 = Math.min(
+    segmentPairDistance2(x0, z0, x1, z1, s.x0, s.z0, s.x1, s.z0),
+    segmentPairDistance2(x0, z0, x1, z1, s.x1, s.z0, s.x1, s.z1),
+    segmentPairDistance2(x0, z0, x1, z1, s.x1, s.z1, s.x0, s.z1),
+    segmentPairDistance2(x0, z0, x1, z1, s.x0, s.z1, s.x0, s.z0),
+  );
+  return distance2 <= radiusM * radiusM + 1e-10;
+}
+// Preserve Claude's square player-footprint contract; monster circles use the
+// exact helper above through RuntimeEntityBlocked without changing player feel.
 function solidBlocked(xm, zm) {
-  const R = 0.32;
+  const radiusM = 0.32;
   for (let i = 0; i < propSolids.length; i++) {
     const s = propSolids[i];
-    if (xm > s.x0 - R && xm < s.x1 + R && zm > s.z0 - R && zm < s.z1 + R) return true;
+    if (xm > s.x0 - radiusM && xm < s.x1 + radiusM &&
+        zm > s.z0 - radiusM && zm < s.z1 + radiusM) return true;
   }
   return false;
 }
@@ -4139,7 +4281,7 @@ function buildEmbers(rec, grp) {
 function ensureEntityMesh(e) {
   if (entityMeshes.has(e)) return entityMeshes.get(e);
   const grp = new THREE.Group();
-  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null, mixer: null, clips: null, cur: null, action: null, yaw: 0, hasModel: false,
+  const rec = { group: grp, phase: Math.random() * 6.28, gown: [], embers: null, aura: null, mixer: null, clips: null, cur: null, action: null, yaw: 0, heading: null, hasModel: false,
     stepT: 0, voiceT: 4 + Math.random() * 6, breathT: 0, lastState: 0, beamCd: 0 };
   const MOB = window.MobModels || {};
   const map = MOBMAP[e.kind];
@@ -4262,11 +4404,23 @@ function ensureEntityMesh(e) {
 function animateGhost(rec, e, dt) {
   const t = performance.now() / 1000 + rec.phase;
   const hunt = e.state === Entities.S.HUNT;
-  // face movement direction when moving, else face the player
-  let yaw;
-  if (e.moving) { const dirX = Math.cos(e.facing), dirZ = Math.sin(e.facing); yaw = Math.atan2(dirX, dirZ); }
-  else { camera.getWorldPosition(tmpV2); yaw = Math.atan2(tmpV2.x - e.x * TILE_M, tmpV2.z - e.y * TILE_M); }
-  rec.group.rotation.y = yaw + (rec.yaw || 0);
+  // Actual displacement owns locomotion facing. An idle ghost preserves its
+  // last heading unless the AI explicitly entered a staring beat; shortest-arc
+  // damping removes the old 180-degree waypoint snaps.
+  let targetYaw = rec.heading;
+  if (e.moving) {
+    const dirX = Math.cos(e.facing), dirZ = Math.sin(e.facing);
+    targetYaw = Math.atan2(dirX, dirZ);
+  } else if (e.staring) {
+    camera.getWorldPosition(tmpV2);
+    targetYaw = Math.atan2(tmpV2.x - e.x * TILE_M, tmpV2.z - e.y * TILE_M);
+  }
+  if (!Number.isFinite(rec.heading)) rec.heading = Number.isFinite(targetYaw) ? targetYaw : 0;
+  if (Number.isFinite(targetYaw)) {
+    const delta = Math.atan2(Math.sin(targetYaw - rec.heading), Math.cos(targetYaw - rec.heading));
+    rec.heading += delta * (1 - Math.exp(-dt * 10));
+  }
+  rec.group.rotation.y = rec.heading + (rec.yaw || 0);
 
   if (rec.hasModel) {
     if (rec.mixer) {
@@ -4277,6 +4431,11 @@ function animateGhost(rec, e, dt) {
         next.reset().fadeIn(0.22).play();
         if (rec.action) rec.action.fadeOut(0.22);
         rec.action = next; rec.cur = want;
+      }
+      if (rec.action) {
+        const metresPerSecond = Math.max(0, e.motionSpeed || 0) * TILE_M;
+        const authoredSpeed = e.fast ? 2.5 : 1.1;
+        rec.action.timeScale = e.moving ? Math.max(0.65, Math.min(1.45, metresPerSecond / authoredSpeed)) : 1;
       }
     }
     if (rec.aura) rec.aura.material.opacity = (hunt ? 0.6 : 0.32) + Math.sin(t * 5) * 0.1;
@@ -4412,9 +4571,12 @@ function updateWard(dt) {
     // drive back every nearby soul on this floor
     let hit = false;
     ents.forEach((e) => {
-      if (e.floor !== player.floor) return;
+      if (e.floor !== player.floor || !Entities.isActive(e)) return;
       const d = Math.hypot(e.x - player.x, e.y - player.y);
-      if (d < WARD_RANGE) { e.warded = 0.45; if (e.state === Entities.S.HUNT || d < 4) hit = true; }
+      if (d * TILE_M < WARD_RANGE_M) {
+        e.warded = 0.45;
+        if (e.state === Entities.S.HUNT || d * TILE_M < 2.5) hit = true;
+      }
     });
     wardChimeT -= dt;
     if (wardChimeT <= 0) { wardChimeT = 1.1; Audio2.wardChime(0.05 + (hit ? 0.03 : 0)); }
@@ -4461,20 +4623,23 @@ function wantsSwing() {
   return swingQueued;   // VR: the dominant-grip squeezestart queues one swing
 }
 function doSwing(cfg) {
+  if (player.hidden) return;
   swingT = 0.3; swingCd = cfg.cd; Audio2.swish(0.1);
   camera.getWorldDirection(tmpV2);
   const fYaw = Math.atan2(tmpV2.x, tmpV2.z);
   const grid = data.floors[player.floor].grid;
   let landed = false;
   ents.forEach((e) => {
-    if (e.floor !== player.floor) return;
+    if (e.floor !== player.floor || !Entities.isActive(e)) return;
     const dx = e.x - player.x, dy = e.y - player.y, d = Math.hypot(dx, dy);
-    if (d > cfg.reach) return;
+    if (d * TILE_M > cfg.reach) return;
     const ang = Math.abs(normAng(Math.atan2(dx, dy) - fYaw));
     if (ang > cfg.cone) return;
+    if (!Entities.lineOfSight(grid, player.x, player.y, e.x, e.y, { allowStartHide: true })) return;
     e.warded = Math.max(e.warded || 0, cfg.scare);   // it recoils and flees…
     e.slow = Math.max(e.slow || 0, cfg.scare + 1);   // …and staggers
-    const len = d || 1; if (e.moveDirect) e.moveDirect(grid, e.x + (dx / len) * 4, e.y + (dy / len) * 4, cfg.knock);   // knocked back a step
+    const len = d || 1;
+    if (e.moveDirect) e.moveDirect(grid, e.x + (dx / len) * 4, e.y + (dy / len) * 4, cfg.knock / TILE_M);
     landed = true;
   });
   if (landed) {
@@ -4531,6 +4696,7 @@ function panTo(e) {
 }
 let lightStaggerTaught = false;
 function entitySounds(rec, e, dt, d) {
+  if (!Entities.isActive(e)) { rec.lastState = e.state; rec.stepT = 0; return; }
   if (d > 17) { rec.lastState = e.state; return; }
   const pan = panTo(e);
   const near = Math.max(0, 1 - d / 16);
@@ -5114,7 +5280,7 @@ function performUnbinding() {
     // the longest silence there is — half an hour — and full faith. Then they return.
     if (window.Survival && Survival.grantPeace) Survival.grantPeace(30, 'sanctum');
     player.faith = 100;
-    ents.forEach((e) => { e.state = Entities.S.DORMANT; e.target = null; e.lastSeen = null; e.path = null; });
+    ents.forEach((e) => { if (e.sleep) e.sleep(); else { e.state = Entities.S.DORMANT; e.path = null; } });
     playLore('unbinding', () => {
       showSubtitle('The circle takes them down, every one. Thirty minutes of true silence. But this house has been hungry since 1928 — they WILL come back.', 7);
       saveState();
@@ -5124,7 +5290,7 @@ function performUnbinding() {
   riteClimax = true;
   // Freeze every soul the instant the censer swings — nothing can take you now.
   spiritsFreed = true; childrenFreed = true;
-  ents.forEach((e) => { e.state = Entities.S.DORMANT; e.wakeHour = 999; e.target = null; e.lastSeen = null; e.path = null; if (e.den) e.den = []; });
+  ents.forEach((e) => { if (e.sleep) e.sleep(); else { e.state = Entities.S.DORMANT; e.path = null; } e.wakeHour = 999; if (e.den) e.den = []; });
   // the censer swings — free them one after another, then the true dawn
   playLore('unbinding', () => {
     showSubtitle('One by one, the circle lets them go. The building exhales. It is finally empty.', 5);
@@ -5253,6 +5419,16 @@ function nearestDoorForInteraction() {
   return nearest ? { door: nearest, distance: nearestD } : null;
 }
 
+function entityInDoorway(door) {
+  if (!ents) return false;
+  return ents.some((e) => {
+    if (e.floor !== player.floor || !Entities.isActive(e)) return false;
+    const clearance = 0.5 + (e.radius || 0.16);
+    return Math.abs(e.x - (door.x + 0.5)) < clearance &&
+      Math.abs(e.y - (door.y + 0.5)) < clearance;
+  });
+}
+
 // ---- interact with the nearest faced room door: unlock, open, or close ----
 function interactDoorNearby() {
   const hit = nearestDoorForInteraction();
@@ -5274,7 +5450,6 @@ function interactDoorNearby() {
     unlockedDoors.add(nearest.stateKey);
     nearest.m.material.color.setHex(0x9a8a76);
     nearest.m.material.emissive.setHex(0x000000);
-    ents.forEach((e) => { e.path = null; e.pathTimer = 0; });
     Audio2.creak();
     showSubtitle('The lock gives. ' + (room ? room.name : 'The door') + ' opens.', 2.5);
     saveState();
@@ -5287,11 +5462,14 @@ function interactDoorNearby() {
     showSubtitle('Step clear of the doorway before closing it.', 1.8);
     return true;
   }
+  if (!nearest.closed && entityInDoorway(nearest)) {
+    showSubtitle('Something is blocking the doorway.', 1.8);
+    return true;
+  }
   nearest.closed = !nearest.closed;
   nearest.targetYaw = nearest.closed ? 0 : nearest.openYaw;
   if (nearest.closed) nearest.blocked = true;
   doorStates.set(nearest.stateKey, nearest.closed);
-  ents.forEach((e) => { e.path = null; e.pathTimer = 0; });
   Audio2.creak();
   showSubtitle(nearest.closed ? 'The door closes.' : 'The door opens.', 1.4);
   return true;
@@ -5319,7 +5497,6 @@ function updateDoors(dt) {
         if (door.burstT > 1.5) {
           door.burstT = 0; door.closed = false; door.targetYaw = door.openYaw;
           doorStates.set(door.stateKey, false);
-          ents.forEach((e) => { e.path = null; e.pathTimer = 0; });
           Audio2.slam(); Audio2.thud(0.6); haptic(0.5, 120);
           player.fear = Math.min(100, player.fear + 5);
           showSubtitle('The door BURSTS open.', 2.2);
@@ -5698,8 +5875,12 @@ function update(dt) {
   // deeper into the day you survive (up to +25% by the end). The mental game.
   const baseDiff = HAUNT[OPTS.haunt] || HAUNT.restless;
   const grind = realMode ? 1 + Math.min(0.25, hour * 0.011) : 1;
+  const currentEntityGrid = data.floors[player.floor].grid;
+  indexEntitySolids(currentEntityGrid, propSolids);
   const ctx = {
     hour, noise,
+    tileMetres: TILE_M,
+    motionScale: Survival.entityTimeScale(),
     playerLit: isPlayerLit(),
     peace: Survival.peaceActive() || grace,   // the dead keep to their dens during the grace
     diff: grind === 1 ? baseDiff : { speedMul: baseDiff.speedMul * grind, senseMul: baseDiff.senseMul * grind, extra: baseDiff.extra, label: baseDiff.label },
@@ -5719,17 +5900,20 @@ function update(dt) {
     if (gh && genRec && gh.floor === 0) { gh.target = { x: genRec.tx, y: genRec.ty }; gh.path = null; }
   }
   let nearest = Infinity, hunting = false;
-  const eDt = dt * Survival.entityTimeScale();
+  // Logic timers stay on real frame time. Blessings/witching-hour effects scale
+  // physical movement through ctx.motionScale instead of stretching awareness,
+  // search cooldowns, ward duration, and animation transitions.
+  ents.forEach((e) => e.update(dt, data, player, ctx));
+  if (Entities.resolveOverlaps) Entities.resolveOverlaps(ents, data, dt);
   ents.forEach((e) => {
-    e.update(eDt, data, player, ctx);
-    if (e.floor === player.floor) {
+    if (e.floor === player.floor && Entities.isActive(e)) {
       ensureEntityMesh(e);
       const rec = entityMeshes.get(e);
       rec.group.visible = true;
       if (!rec.hasModel) rec.group.position.set(e.x * TILE_M, 0, e.y * TILE_M);
       else { rec.group.position.x = e.x * TILE_M; rec.group.position.z = e.y * TILE_M; }
       if (e.kind === 'ash' && rec.group.userData.ember) rec.group.userData.ember.intensity = 0.5 + Math.random();
-      animateGhost(rec, e, eDt);
+      animateGhost(rec, e, dt);
       const d = Math.hypot(e.x - player.x, e.y - player.y);
       entitySounds(rec, e, dt, d);
       nearest = Math.min(nearest, d);
@@ -5818,7 +6002,7 @@ function update(dt) {
   // even when fear is low — closer = faster, a hunter close = hammering
   let dangerPulse = 0;
   ents.forEach((e) => {
-    if (e.floor !== player.floor || e.state === Entities.S.DORMANT) return;
+    if (e.floor !== player.floor || !Entities.isActive(e)) return;
     const d = Math.hypot(e.x - player.x, e.y - player.y);
     if (d < 12) dangerPulse = Math.max(dangerPulse, (1 - d / 12) * (e.state === Entities.S.HUNT ? 100 : 62));
   });
@@ -5856,7 +6040,8 @@ function beamHits(ex, ey) {
   const ang = Math.atan2(dy, dx);
   let da = Math.abs(normAng(ang - player.aim));
   if (da > CONE) return false;
-  return Entities.lineOfSight(data.floors[player.floor].grid, player.x, player.y, ex, ey);
+  return Entities.lineOfSight(
+    data.floors[player.floor].grid, player.x, player.y, ex, ey, { allowStartHide: true });
 }
 // ============================================================ wayfinding signs
 // Aged enamel signs (generated pack) hung over the doorways they name — the
@@ -5985,7 +6170,11 @@ function updateChase(dt) {
   if (chaserArriveT > 0) {
     chaserArriveT -= dt;
     if (chaserArriveT <= 0 && stairArrive) {
-      chasers.forEach((e, i) => { e.floor = player.floor; e.x = stairArrive.x + (i - 1) * 0.7; e.y = stairArrive.y; e.state = Entities.S.HUNT; e.lastSeen = { x: player.x, y: player.y }; e.path = null; });
+      chasers.forEach((e, i) => {
+        e.floor = player.floor; e.x = stairArrive.x + (i - 1) * 0.7; e.y = stairArrive.y;
+        e.state = Entities.S.HUNT; e.lastSeen = { x: player.x, y: player.y }; e.path = null; e.pathTimer = 0;
+        if (e.ensureWalkable) e.ensureWalkable(data.floors[player.floor].grid);
+      });
       Audio2.slam(); Audio2.screechPan(0, 0.2);
       showSubtitle('The stairwell door BURSTS open behind you.', 3);
     }
@@ -6000,7 +6189,10 @@ function updateChase(dt) {
 }
 function endPowerChase(reason) {
   powerChase = false; lockWindowT = 0; chaserArriveT = 0; chaseHideT = 0; surgeT = 0;
-  chasers.forEach((e) => { e.floor = 0; e.state = Entities.S.PATROL; e.path = null; e.lastSeen = null; });
+  chasers.forEach((e) => {
+    e.state = Entities.S.PATROL; e.lastSeen = null;
+    if (e.returnHome) e.returnHome(data); else { e.floor = 0; e.path = null; }
+  });
   chasers = [];
   if (reason === 'hide') showSubtitle('The footsteps circle… stop… and drag away down the stairwell. They’ve gone back to the dark.', 5);
   else if (reason === 'peace') showSubtitle('The quiet takes them mid-stride. They turn, lost, and sink back toward the basement.', 5);
@@ -6020,7 +6212,11 @@ function matronRescue() {
   powerChase = false; lockWindowT = 0; chaserArriveT = 0; chaseHideT = 0;
   Audio2.scream(); Audio2.stinger(true); comfortBlink(1); haptic(1, 300);
   // she takes them — a game-hour of silence from the ones she dragged down
-  chasers.forEach((e) => { e.floor = 0; e.state = Entities.S.DORMANT; e.wakeHour = Math.min(23, hour + 1); e.path = null; e.lastSeen = null; });
+  chasers.forEach((e) => {
+    if (e.returnHome) e.returnHome(data); else e.floor = 0;
+    if (e.sleep) e.sleep(); else { e.state = Entities.S.DORMANT; e.path = null; e.lastSeen = null; }
+    e.wakeHour = Math.min(23, hour + 1);
+  });
   chasers = [];
   player.fear = Math.min(100, player.fear + 10);   // saved — but you'll never unsee it
   // and she spends herself doing it: when you look back, the corner is empty
@@ -6113,7 +6309,9 @@ function updateScares(dt) {
         if (e.floor !== player.floor) return;
         if (Math.hypot(e.x - grp.position.x / TILE_M, e.y - grp.position.z / TILE_M) < 12) {
           e.lastSeen = { x: grp.position.x / TILE_M, y: grp.position.z / TILE_M };
-          if (e.state !== Entities.S.HUNT && e.state !== Entities.S.DORMANT) { e.state = Entities.S.SEARCH; e.path = null; }
+          if (e.state !== Entities.S.HUNT && e.state !== Entities.S.DORMANT) {
+            e.state = Entities.S.SEARCH; e.path = null; e.pathTimer = 0; e.cooldown = 5;
+          }
         }
       });
     }

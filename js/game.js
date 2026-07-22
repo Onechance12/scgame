@@ -346,9 +346,10 @@ const Game = (() => {
     // entities
     const ctx = buildEntityCtx(noise);
     let nearest = Infinity, hunting = false;
+    ents.forEach((e) => e.update(dt, data, player, ctx));
+    if (Entities.resolveOverlaps) Entities.resolveOverlaps(ents, data, dt);
     ents.forEach((e) => {
-      e.update(dt, data, player, ctx);
-      if (e.floor === player.floor) {
+      if (e.floor === player.floor && (!Entities.isActive || Entities.isActive(e))) {
         const d = Math.hypot(e.x - player.x, e.y - player.y);
         nearest = Math.min(nearest, d);
         if (e.state === Entities.S.HUNT) hunting = true;
@@ -427,7 +428,8 @@ const Game = (() => {
     const ang = Math.atan2(dy, dx);
     let da = Math.abs(normAng(ang - player.aim));
     if (da > CONE) return false;
-    return Entities.lineOfSight(data.floors[player.floor].grid, player.x, player.y, ex, ey);
+    return Entities.lineOfSight(
+      data.floors[player.floor].grid, player.x, player.y, ex, ey, { allowStartHide: true });
   }
 
   function updateFear(dt, noise) {
@@ -561,7 +563,7 @@ const Game = (() => {
 
     // entities
     ents.forEach((e) => {
-      if (e.floor !== player.floor) return;
+      if (e.floor !== player.floor || (Entities.isActive && !Entities.isActive(e))) return;
       const l = lightAt(e.x, e.y);
       const vis = e.state === Entities.S.HUNT ? Math.max(l, 0.35) : l;
       if (vis < 0.1) return;
@@ -589,7 +591,7 @@ const Game = (() => {
         const ang = Math.atan2(wy - player.y, wx - player.x);
         const da = Math.abs(normAng(ang - player.aim));
         if (da < CONE) {
-          if (Entities.lineOfSight(g, player.x, player.y, wx, wy)) {
+          if (Entities.lineOfSight(g, player.x, player.y, wx, wy, { allowStartHide: true })) {
             const falloff = (1 - dp / LIGHT_RANGE) * (1 - da / CONE * 0.6);
             light = Math.max(light, falloff * flashFlicker);
           }
