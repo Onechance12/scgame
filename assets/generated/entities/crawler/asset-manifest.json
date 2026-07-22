@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "packId": "codex-original-entity-crawler-v1",
+  "created": "2026-07-22",
+  "status": "review-candidate",
+  "generator": {
+    "tool": "OpenAI Codex deterministic procedural glTF builder",
+    "script": "../tools/build-crawler.mjs",
+    "sharedLibrary": "../tools/entity-glb-kit.mjs",
+    "externalReferenceImagesUsed": [],
+    "thirdPartyModelsUsed": [],
+    "scansUsed": []
+  },
+  "rights": {
+    "projectOriginal": true,
+    "thirdPartyContent": false,
+    "attributionRequired": false,
+    "franchiseOrTrademarkContent": false,
+    "realPersonLikeness": false,
+    "commercialClearance": "owner-review-required"
+  },
+  "reproducibility": {
+    "bitReproducible": true,
+    "randomSeed": null,
+    "runtimeDependencies": [
+      "Node.js standard library"
+    ]
+  },
+  "assets": [
+    {
+      "path": "crawler.glb",
+      "role": "rigged-animated-entity",
+      "kind": "crawler",
+      "format": "glTF 2.0 GLB",
+      "coordinateSystem": "Y-up",
+      "units": "metres",
+      "feetAtOrigin": true,
+      "prone": true,
+      "dimensionsMetres": {
+        "width": 0.774743,
+        "height": 0.628052,
+        "length": 1.494471,
+        "depth": 1.494471,
+        "min": [
+          -0.387372,
+          0,
+          -0.878041
+        ],
+        "max": [
+          0.387372,
+          0.628052,
+          0.616431
+        ]
+      },
+      "vertices": 2248,
+      "triangles": 4116,
+      "bones": 21,
+      "meshes": 1,
+      "primitives": 1,
+      "materials": 1,
+      "textures": 0,
+      "clips": [
+        {
+          "name": "idle_twitch",
+          "durationSeconds": 2.4,
+          "inPlace": true,
+          "nominalSpeedMps": 0
+        },
+        {
+          "name": "walk_drag_in_place_1p1mps",
+          "durationSeconds": 1.2,
+          "inPlace": true,
+          "nominalSpeedMps": 1.1
+        },
+        {
+          "name": "run_scuttle_in_place_2p5mps",
+          "durationSeconds": 0.65,
+          "inPlace": true,
+          "nominalSpeedMps": 2.5
+        }
+      ],
+      "bytes": 188044,
+      "sha256": "f7c517ac6534b87e39c92f2464cc8bdd1f4e24956e06b2a3bc533aab9b91963f"
+    }
+  ]
+}
