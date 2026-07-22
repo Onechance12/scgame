@@ -1005,10 +1005,39 @@ function buildExterior() {
   const g = new THREE.Group();
   const lobbyR = data.floors[1].rooms.find((r) => r.tag === 'lobby');
   const doorX = (lobbyR ? lobbyR.cx + 0.5 : 12) * TILE_M;
-  // ground
-  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(160, 160),
+  // ground — the hill itself. A displaced field of pine-needle forest floor:
+  // gentle humps and hollows everywhere EXCEPT dead flat under the walk-up path
+  // and in front of the facade, so the onboarding walk (and every hand-placed
+  // prop near it) stays honest. Bias is upward: props sink into rises (reads
+  // fine in the dark) instead of floating over hollows (never does).
+  const gGeo = new THREE.PlaneGeometry(160, 160, 72, 72);
+  {
+    const pos = gGeo.attributes.position;
+    let hs = 77003; const hr = () => { hs = (hs * 1103515245 + 12345) & 0x7fffffff; return hs / 0x7fffffff; };
+    for (let i = 0; i < pos.count; i++) {
+      const lx = pos.getX(i), ly = pos.getY(i);
+      const wz = -40 - ly;   // world z after the -PI/2 tilt
+      let h = Math.sin(lx * 0.11 + 1.7) * Math.sin(ly * 0.09 + 0.6) * 0.55
+            + Math.sin(lx * 0.23 - 0.9) * Math.sin(ly * 0.21 + 2.2) * 0.30
+            + (hr() - 0.5) * 0.10;
+      h = Math.max(h * 0.4 + 0.1, -0.16);
+      const offPath = Math.min(1, Math.max(0, (Math.abs(lx) - 2.6) / 5));
+      const offDoor = Math.min(1, Math.max(0, (-wz - 7) / 7));
+      pos.setZ(i, h * offPath * offDoor);
+    }
+    gGeo.computeVertexNormals();
+  }
+  const gnd = new THREE.Mesh(gGeo,
     new THREE.MeshStandardMaterial({ map: TEX.groundForest, color: 0x3a3d32, roughness: 1 }));
   gnd.rotation.x = -Math.PI / 2; gnd.position.set(doorX, -0.02, -40); g.add(gnd);
+  // the worn dirt path everyone before you took, ending at a cracked concrete
+  // apron below the front steps
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 48),
+    new THREE.MeshStandardMaterial({ map: dirtPathTex(), transparent: true, depthWrite: false, roughness: 1 }));
+  path.rotation.x = -Math.PI / 2; path.position.set(doorX, 0.015, -27.5); path.renderOrder = 1; g.add(path);
+  const apron = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.2),
+    new THREE.MeshStandardMaterial({ map: crackedApronTex(), color: 0x5e6165, roughness: 1 }));
+  apron.rotation.x = -Math.PI / 2; apron.position.set(doorX, 0.012, -2.0); g.add(apron);
   // facade
   const wallM = new THREE.MeshStandardMaterial({ map: TEX.wallD, color: 0x596068, roughness: .95 });
   const fac = new THREE.Mesh(new THREE.BoxGeometry(46, 15, 2), wallM);
@@ -1739,6 +1768,9 @@ function loadTextures() {
   const wFloral = gload('assets/generated/codex-visual-pack-v1/walls/1920s-floral-wallpaper-albedo.jpg', 1, 1.2);
   TEX.fire8 = gload('assets/generated/codex-visual-pack-v1/flames/fire-orange-8x8.png');
   TEX.newsprint = gload('assets/generated/codex-visual-pack-v1/newspaper/williamson-daily-october-1988.png');
+  // the 1928 checker linoleum (surface-kit-v1, approved from PR #1) — one repeat
+  // per tile puts the checks at ~27 cm, period-correct
+  TEX.checkerD = gload('assets/generated/surface-kit-v1/checker-hospital-linoleum-albedo.jpg', World.W, World.H);
   TEX.wallMats = [
     new THREE.MeshStandardMaterial({ map: wGreen, color: 0xb9beb2, roughness: .95 }),                   // 1 surgical-green plaster, peeling
     new THREE.MeshStandardMaterial({ map: wFloral, color: 0xb8b0a4, roughness: .94 }),                  // 2 water-stained 1920s wallpaper
@@ -1823,15 +1855,23 @@ function buildFloor(fi) {
 
   const spanX = World.W * TILE_M, spanZ = World.H * TILE_M;
 
-  // floor + ceiling (CC0 textures)
-  const floorMat = new THREE.MeshStandardMaterial({ map: TEX.floorD, normalMap: TEX.floorN, color: 0x8f9299, roughness: .95 });
+  // floor: the basement keeps its stained boards over concrete; every ward floor
+  // above walks the 1928 checker linoleum (grimed per floor by tint)
+  const FLOOR_TINTS = [0x8f9299, 0x9aa096, 0x938f86, 0x8a9188, 0x94978e];
+  const floorMat = (fi === 0 || !TEX.checkerD)
+    ? new THREE.MeshStandardMaterial({ map: TEX.floorD, normalMap: TEX.floorN, color: 0x767a82, roughness: .96 })
+    : new THREE.MeshStandardMaterial({ map: TEX.checkerD, color: FLOOR_TINTS[fi], roughness: .92 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(spanX, spanZ), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(spanX / 2, 0, spanZ / 2);
   floor.receiveShadow = true;
   floorGroup.add(floor);
 
-  const ceilMat = new THREE.MeshStandardMaterial({ map: TEX.ceilD, color: 0x6d7076, roughness: 1 });
+  // ceiling: bare concrete below, stained pressed-plaster panels above — with
+  // sixty years of water rings, cracks, and the odd collapsed patch
+  const ceilMat = fi === 0
+    ? new THREE.MeshStandardMaterial({ map: TEX.ceilD, color: 0x53575d, roughness: 1 })
+    : new THREE.MeshStandardMaterial({ map: ceilingPlasterTex(), color: [0xa39f96, 0xa39f96, 0x9c9d94, 0x9d968c, 0xa6a196][fi], roughness: 1 });
   const ceil = new THREE.Mesh(new THREE.PlaneGeometry(spanX, spanZ), ceilMat);
   ceil.rotation.x = Math.PI / 2;
   ceil.position.set(spanX / 2, WALL_H, spanZ / 2);
@@ -2339,6 +2379,133 @@ function softDotTex() {
   g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
   x.fillStyle = g; x.fillRect(0, 0, 64, 64);
   return (softDotTex.t = new THREE.CanvasTexture(c));
+}
+// The upper floors' ceiling: pressed-plaster coffers on a one-tile grid, wearing
+// sixty years of water rings, hairline cracks, and the odd panel that came down
+// to bare lath. One cached 512² canvas, tiled so each repeat spans 4 map tiles
+// (panel seams land exactly on the 2.7 m tile grid).
+function ceilingPlasterTex() {
+  if (ceilingPlasterTex.t) return ceilingPlasterTex.t;
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const x = c.getContext('2d');
+  let s = 909; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  x.fillStyle = '#8a877d'; x.fillRect(0, 0, 512, 512);
+  // aged mottle — plaster never weathers evenly
+  for (let i = 0; i < 260; i++) {
+    const gl = 118 + (r() * 34 | 0);
+    x.fillStyle = 'rgba(' + gl + ',' + (gl - 4) + ',' + (gl - 12) + ',' + (0.05 + r() * 0.08).toFixed(3) + ')';
+    x.beginPath(); x.arc(r() * 512, r() * 512, 4 + r() * 26, 0, 6.283); x.fill();
+  }
+  // panel seams every 128 px (= one map tile) with a faint pressed inner bevel
+  x.strokeStyle = 'rgba(40,38,32,0.45)'; x.lineWidth = 2;
+  for (let i = 0; i <= 4; i++) {
+    x.beginPath(); x.moveTo(i * 128 + (i && i < 4 ? (r() - 0.5) * 2 : 0), 0); x.lineTo(i * 128, 512); x.stroke();
+    x.beginPath(); x.moveTo(0, i * 128); x.lineTo(512, i * 128 + (i && i < 4 ? (r() - 0.5) * 2 : 0)); x.stroke();
+  }
+  x.strokeStyle = 'rgba(206,202,188,0.16)'; x.lineWidth = 1;
+  for (let py = 0; py < 4; py++) for (let px = 0; px < 4; px++) x.strokeRect(px * 128 + 10, py * 128 + 10, 108, 108);
+  // water rings — brown-edged stains blooming through from the floor above
+  for (let i = 0; i < 7; i++) {
+    const sx = r() * 512, sy = r() * 512, rad = 22 + r() * 55;
+    const gr = x.createRadialGradient(sx, sy, rad * 0.35, sx, sy, rad);
+    gr.addColorStop(0, 'rgba(96,78,52,0.10)'); gr.addColorStop(0.82, 'rgba(88,66,38,0.16)');
+    gr.addColorStop(0.94, 'rgba(70,50,26,0.34)'); gr.addColorStop(1, 'rgba(70,50,26,0)');
+    x.fillStyle = gr; x.beginPath(); x.arc(sx, sy, rad, 0, 6.283); x.fill();
+  }
+  // hairline cracks wandering across the panels
+  x.strokeStyle = 'rgba(38,36,30,0.5)'; x.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    let cx = r() * 512, cy = r() * 512, a = r() * 6.283;
+    x.beginPath(); x.moveTo(cx, cy);
+    for (let k = 0; k < 7; k++) { a += (r() - 0.5) * 1.1; cx += Math.cos(a) * (7 + r() * 15); cy += Math.sin(a) * (7 + r() * 15); x.lineTo(cx, cy); }
+    x.stroke();
+  }
+  // two sagging patches: plaster half-gone, lath ghosting through — kept subtle
+  // because this texture repeats every four tiles and hard black voids would
+  // read as wallpaper under a flashlight
+  for (let i = 0; i < 2; i++) {
+    const px = 96 + r() * 320, py = 96 + r() * 320;
+    x.fillStyle = 'rgba(32,30,26,0.55)';
+    x.beginPath(); x.moveTo(px + 12 + r() * 8, py);
+    for (let k = 1; k < 8; k++) { const a = k / 8 * 6.283; x.lineTo(px + Math.cos(a) * (9 + r() * 12), py + Math.sin(a) * (9 + r() * 12)); }
+    x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(70,58,40,0.45)'; x.lineWidth = 2;
+    for (let k = -1; k <= 1; k++) { x.beginPath(); x.moveTo(px - 15, py + k * 6); x.lineTo(px + 15, py + k * 6); x.stroke(); }
+    x.strokeStyle = 'rgba(38,36,30,0.5)'; x.lineWidth = 1;
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(World.W / 4, World.H / 4);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return (ceilingPlasterTex.t = t);
+}
+// The walk-up's worn dirt path: bare trodden earth down the middle, edges
+// dissolving into the pine needles (alpha), two faint foot-worn ruts.
+function dirtPathTex() {
+  if (dirtPathTex.t) return dirtPathTex.t;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 512;
+  const x = c.getContext('2d');
+  let s = 5150; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  // bare-earth blobs bunched toward the centre line, thinning to nothing at the edges
+  for (let i = 0; i < 900; i++) {
+    const cx = 64 + (r() + r() - 1) * 44, cy = r() * 512;
+    const edge = 1 - Math.min(1, Math.abs(cx - 64) / 58);
+    const tone = 52 + r() * 26;
+    x.fillStyle = 'rgba(' + (tone + 14 | 0) + ',' + (tone | 0) + ',' + (tone * 0.62 | 0) + ',' + (0.14 + edge * 0.5 * r()).toFixed(3) + ')';
+    x.beginPath(); x.arc(cx, cy, 3 + r() * 9, 0, 6.283); x.fill();
+  }
+  // two foot-worn ruts wandering down the length
+  for (const off of [-13, 13]) {
+    x.strokeStyle = 'rgba(34,28,18,0.35)'; x.lineWidth = 7;
+    x.beginPath(); x.moveTo(64 + off + (r() - 0.5) * 6, 0);
+    for (let yy = 32; yy <= 512; yy += 32) x.lineTo(64 + off + (r() - 0.5) * 10, yy);
+    x.stroke();
+  }
+  // scattered stones pressed into the tread
+  for (let i = 0; i < 40; i++) {
+    const gl = 96 + r() * 50 | 0;
+    x.fillStyle = 'rgba(' + gl + ',' + gl + ',' + (gl - 8) + ',' + (0.3 + r() * 0.4).toFixed(2) + ')';
+    x.beginPath(); x.arc(64 + (r() - 0.5) * 70, r() * 512, 1 + r() * 2.5, 0, 6.283); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapT = THREE.RepeatWrapping;
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 5); t.anisotropy = 4;
+  return (dirtPathTex.t = t);
+}
+// The cracked concrete apron at the foot of the front steps.
+function crackedApronTex() {
+  if (crackedApronTex.t) return crackedApronTex.t;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const x = c.getContext('2d');
+  let s = 1928; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  x.fillStyle = '#7d7f82'; x.fillRect(0, 0, 256, 128);
+  for (let i = 0; i < 120; i++) {
+    const gl = 110 + r() * 32 | 0;
+    x.fillStyle = 'rgba(' + gl + ',' + gl + ',' + (gl + 3) + ',' + (0.06 + r() * 0.1).toFixed(3) + ')';
+    x.beginPath(); x.arc(r() * 256, r() * 128, 3 + r() * 14, 0, 6.283); x.fill();
+  }
+  // expansion joints, then the cracks that ignored them
+  x.strokeStyle = 'rgba(44,45,48,0.6)'; x.lineWidth = 2;
+  for (const jx of [85, 170]) { x.beginPath(); x.moveTo(jx, 0); x.lineTo(jx, 128); x.stroke(); }
+  x.strokeStyle = 'rgba(38,38,40,0.65)'; x.lineWidth = 1;
+  for (let i = 0; i < 7; i++) {
+    let cx = r() * 256, cy = r() * 128, a = r() * 6.283;
+    x.beginPath(); x.moveTo(cx, cy);
+    for (let k = 0; k < 6; k++) { a += (r() - 0.5) * 1.2; cx += Math.cos(a) * (6 + r() * 14); cy += Math.sin(a) * (6 + r() * 14); x.lineTo(cx, cy); }
+    x.stroke();
+  }
+  // moss creeping in from the corners
+  for (let i = 0; i < 26; i++) {
+    const nearX = r() < 0.5 ? r() * 46 : 256 - r() * 46, nearY = r() < 0.5 ? r() * 30 : 128 - r() * 30;
+    x.fillStyle = 'rgba(38,52,32,' + (0.10 + r() * 0.2).toFixed(2) + ')';
+    x.beginPath(); x.arc(nearX, nearY, 3 + r() * 9, 0, 6.283); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return (crackedApronTex.t = t);
 }
 
 function makeDust() {
