@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex Ceiling + Floor Pack v1 — Repeat Review</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background:#101214; color:#e8e4dc; }
+    body { margin:0; padding:24px; max-width:1500px; margin-inline:auto; }
+    h1 { font-size:24px; margin:0 0 8px; } p { color:#aaa59b; margin:0 0 24px; }
+    main { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:22px; }
+    article { background:#191c1f; border:1px solid #33383d; border-radius:10px; overflow:hidden; }
+    h2 { font-size:15px; margin:0; padding:12px 14px; }
+    .repeat { aspect-ratio:1; background-size:25% 25%; image-rendering:auto; }
+    .normal { aspect-ratio:2/1; background-size:25% 50%; border-top:1px solid #33383d; }
+    code { font-size:12px; color:#b8b1a4; }
+  </style>
+</head>
+<body>
+  <h1>Codex Ceiling + Floor Pack v1</h1>
+  <p>Each color field repeats 4×4. Normal strips repeat 4×2. Inspect boundaries, landmarks, grid registration, and physical scale before merge.</p>
+  <main id="gallery"></main>
+  <script>
+    const surfaces = [
+      ['Checker hospital linoleum','../surface-kit-v1/checker-hospital-linoleum-albedo.jpg','floors/checker-hospital-linoleum-normal.png'],
+      ['Ground-floor terrazzo','floors/ground-floor-terrazzo-albedo.jpg','floors/ground-floor-terrazzo-normal.png'],
+      ['Basement sealed concrete','floors/basement-sealed-concrete-albedo.jpg','floors/basement-sealed-concrete-normal.png'],
+      ['Upper-floor dark oak','floors/upper-floor-dark-oak-albedo.jpg','floors/upper-floor-dark-oak-normal.png'],
+      ['Aged calcimine plaster','ceilings/aged-calcimine-plaster-albedo.jpg','ceilings/aged-calcimine-plaster-normal.png'],
+      ['Midcentury fiberboard panels','ceilings/midcentury-fiberboard-panels-albedo.jpg','ceilings/midcentury-fiberboard-panels-normal.png'],
+      ['Basement painted concrete','ceilings/basement-painted-concrete-albedo.jpg','ceilings/basement-painted-concrete-normal.png'],
+      ['Appalachian wet leaf/clay','ground/appalachian-wet-leaf-clay-albedo.jpg','ground/appalachian-wet-leaf-clay-normal.png']
+    ];
+    const gallery = document.querySelector('#gallery');
+    for (const [name, albedo, normal] of surfaces) {
+      const card = document.createElement('article');
+      card.innerHTML = `<h2>${name}<br><code>${albedo}</code></h2><div class="repeat"></div><div class="normal"></div>`;
+      card.querySelector('.repeat').style.backgroundImage = `url('${albedo}')`;
+      card.querySelector('.normal').style.backgroundImage = `url('${normal}')`;
+      gallery.append(card);
+    }
+  </script>
+</body>
+</html>

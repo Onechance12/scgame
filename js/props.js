@@ -70,7 +70,7 @@ const Props = (() => {
     g.add(box(0.24, 0.32, 0.02, m.sheet, 0, 0.62, 1.02));
     if (bloody) {
       g.add(box(0.5, 0.02, 0.6, m.stain, 0, 0.68, 0.1));
-      g.add(box(0.34, 0.015, 0.4, m.stain, 0.14, 0.005, 0.62)); // dripped to the floor
+      g.add(box(0.34, 0.015, 0.4, m.stain, 0.14, 0.029, 0.62)); // above the room floor overlay
     }
     g.userData = { fw: 0.95, fd: 2.1 };
     return g;
@@ -327,7 +327,7 @@ const Props = (() => {
     for (let i = 0; i < 4; i++) {
       const p = new (T().Mesh)(new (T().PlaneGeometry)(0.21, 0.3), m.sheet);
       p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28;
-      p.position.set((rnd() - 0.5) * 0.9, 0.012 + i * 0.002, (rnd() - 0.5) * 0.9);
+      p.position.set((rnd() - 0.5) * 0.9, 0.034 + i * 0.002, (rnd() - 0.5) * 0.9);
       g.add(p);
     }
     g.userData = { fw: 0.4, fd: 0.4, solid: false };
@@ -452,7 +452,7 @@ const Props = (() => {
     for (let i = 0; i < 3; i++) {
       const p = decalPlane('news', 0.32, 0.45);
       p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28;
-      p.position.set((rnd() - 0.5) * 1.1, 0.015 + i * 0.003, (rnd() - 0.5) * 1.1);
+      p.position.set((rnd() - 0.5) * 1.1, 0.034 + i * 0.003, (rnd() - 0.5) * 1.1);
       g.add(p);
     }
     g.userData = { fw: 0.4, fd: 0.4, solid: false };
@@ -461,7 +461,7 @@ const Props = (() => {
   function bloodpool() {
     const g = new (T().Group)();
     const p = decalPlane('blood', 0.9 + rnd() * 0.8, 0.9 + rnd() * 0.8);
-    p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28; p.position.y = 0.014;
+    p.rotation.x = -Math.PI / 2; p.rotation.z = rnd() * 6.28; p.position.y = 0.034;
     g.add(p);
     g.userData = { fw: 0.3, fd: 0.3, solid: false };
     return g;
@@ -524,7 +524,7 @@ const Props = (() => {
   };
 
   // place props for one room
-  function fillRoom(group, solids, animated, room, TILE_M, bloodyChance) {
+  function fillRoom(group, solids, animated, room, TILE_M, bloodyChance, reserved) {
     const spec = FILL[room.tag] || DEFAULT_FILL;
     const items = spec.items;
     // room interior in metres, inset well clear of the walls (so nothing clips).
@@ -534,12 +534,63 @@ const Props = (() => {
     const z0 = (room.y + inset) * TILE_M, z1 = (room.y + room.h - inset) * TILE_M;
     const cx = (room.x + room.w / 2) * TILE_M, cz = (room.y + room.h / 2) * TILE_M;
 
+    // The carved room's outer tile ring is wall. Keep the full footprint of every
+    // standing prop inside the actual floor rectangle, not merely its origin.
+    const edgePad = 0.12;
+    const roomBox = {
+      x0: (room.x + 1) * TILE_M + edgePad,
+      x1: (room.x + room.w - 1) * TILE_M - edgePad,
+      z0: (room.y + 1) * TILE_M + edgePad,
+      z1: (room.y + room.h - 1) * TILE_M - edgePad,
+    };
+    const doorX = (room.doorX + 0.5) * TILE_M;
+    const doorAtNearZ = room.doorY <= room.y;
+    const laneDepth = Math.min(TILE_M * 2.2, (roomBox.z1 - roomBox.z0) * 0.42);
+    const doorLane = {
+      x0: doorX - 0.72, x1: doorX + 0.72,
+      z0: doorAtNearZ ? roomBox.z0 : roomBox.z1 - laneDepth,
+      z1: doorAtNearZ ? roomBox.z0 + laneDepth : roomBox.z1,
+    };
+    const occupied = [];       // includes non-colliding floor dressing such as IVs/trays
+    let placedFloor = 0;
+    const overlays = new Set(['bloodpool', 'papers', 'newspaper']);
+    const freeOverlap = new Set(['bloodpool']);   // a stain may sit beneath furniture; loose paper may not
+    const overhead = new Set(['examlight', 'mobile', 'pipes', 'window']);
+    const rotatedFootprint = (fw, fd, yaw) => {
+      const c = Math.abs(Math.cos(yaw || 0)), s = Math.abs(Math.sin(yaw || 0));
+      return { w: fw * c + fd * s, d: fw * s + fd * c };
+    };
+    const overlaps = (a, b, pad) => a.x0 + pad < b.x1 && a.x1 - pad > b.x0 && a.z0 + pad < b.z1 && a.z1 - pad > b.z0;
+
     // never drop furniture inside furniture that's already standing there
-    const clashes = (x0, z0, x1, z1) => {
+    const clashes = (a) => {
       const pad = 0.06;
       for (const s of solids)
-        if (x0 + pad < s.x1 && x1 - pad > s.x0 && z0 + pad < s.z1 && z1 - pad > s.z0) return true;
+        if (overlaps(a, s, pad)) return true;
+      for (const o of occupied)
+        if (overlaps(a, o, pad)) return true;
       return false;
+    };
+    const discard = (g) => g && g.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    const fit = (name, xm, zm, fw, fd, yaw) => {
+      const fp = rotatedFootprint(fw, fd, yaw);
+      if (overhead.has(name)) return { xm, zm, fp, box: null };
+      if (fp.w > roomBox.x1 - roomBox.x0 || fp.d > roomBox.z1 - roomBox.z0) return null;
+      // Wall layouts intentionally propose centres close to the edge. Nudge only
+      // as far as needed to keep the complete footprint out of the wall.
+      xm = Math.max(roomBox.x0 + fp.w / 2, Math.min(roomBox.x1 - fp.w / 2, xm));
+      zm = Math.max(roomBox.z0 + fp.d / 2, Math.min(roomBox.z1 - fp.d / 2, zm));
+      const box = { x0: xm - fp.w / 2, x1: xm + fp.w / 2, z0: zm - fp.d / 2, z1: zm + fp.d / 2 };
+      if (overlaps(box, doorLane, 0)) return null;
+      if ((reserved || []).some((spot) => overlaps(box, spot, 0.06))) return null;
+      if (!freeOverlap.has(name) && clashes(box)) return null;
+      return { xm, zm, fp, box };
+    };
+    const register = (name, rec, solid) => {
+      if (!rec.box || overlays.has(name) || overhead.has(name)) return;
+      placedFloor++;
+      if (solid) solids.push(rec.box);
+      else occupied.push(rec.box);
     };
     const place = (name, xm, zm, rotY) => {
       // real glTF furniture when available (loaded by vr-game.js)
@@ -547,34 +598,32 @@ const Props = (() => {
       const hkey = HERO_MAP[name];
       if (hm && hkey && hm[hkey]) {
         const fp = HERO_FP[name] || { fw: 0.8, fd: 0.8 };
-        const rot = Math.abs((rotY || 0) % Math.PI) > 0.7;
-        const w = rot ? fp.fd : fp.fw, d = rot ? fp.fw : fp.fd;
-        if (clashes(xm - w / 2, zm - d / 2, xm + w / 2, zm + d / 2)) return;   // spot taken
+        const yaw = (rotY || 0) + (rnd() - 0.5) * 0.25;   // nothing sits perfectly square
+        const rec = fit(name, xm, zm, fp.fw, fp.fd, yaw);
+        if (!rec) return false;
         const g = hm[hkey].clone();
-        g.position.set(xm, 0, zm);
-        g.rotation.y = (rotY || 0) + (rnd() - 0.5) * 0.25;   // nothing sits square
+        g.position.set(rec.xm, 0, rec.zm);
+        g.rotation.y = yaw;
         if (name === 'chair' && rnd() < 0.22) {              // knocked over overnight
           g.rotation.z = Math.PI / 2 * (rnd() < 0.5 ? 1 : -1);
           g.position.y = 0.25;
         }
         group.add(g);
-        solids.push({ x0: xm - w / 2, z0: zm - d / 2, x1: xm + w / 2, z1: zm + d / 2 });
-        return;
+        register(name, rec, true);
+        return true;
       }
-      const b = BUILDERS[name]; if (!b) return;
+      const b = BUILDERS[name]; if (!b) return false;
       const g = b(name === 'bed' && rnd() < bloodyChance);
-      if (g.userData.solid !== false) {
-        const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
-        const rot = Math.abs((rotY || 0) % Math.PI) > 0.7; // ~90deg -> swap footprint
-        const w = rot ? fd : fw, d = rot ? fw : fd;
-        if (clashes(xm - w / 2, zm - d / 2, xm + w / 2, zm + d / 2)) return;   // spot taken
-        solids.push({ x0: xm - w / 2, z0: zm - d / 2, x1: xm + w / 2, z1: zm + d / 2 });
-      }
-      g.position.set(xm, 0, zm); g.rotation.y = rotY || 0;
+      const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
+      const rec = fit(name, xm, zm, fw, fd, rotY || 0);
+      if (!rec) { discard(g); return false; }
+      g.position.set(rec.xm, 0, rec.zm); g.rotation.y = rotY || 0;
       g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
       group.add(g);
+      register(name, rec, g.userData.solid !== false);
       if (g.userData.ember) group.userData.ember = g;
       if (g.userData.anim) animated.push({ obj: g, kind: g.userData.anim, phase: rnd() * 6 });
+      return true;
     };
 
     // light grit pass — the arranged furniture (vr-game.js) carries the room now,
@@ -598,14 +647,6 @@ const Props = (() => {
     if (burnt) wallDetail('scorch', 2 + (rnd() * 3 | 0));
     // EVERY room now carries some wall grime — the walls are never bare/identical
     if (!bloody && !burnt) wallDetail(rnd() < 0.5 ? 'blood' : 'scorch', 1 + (rnd() * 2 | 0));
-    for (let i = 0; i < nClutter; i++) {
-      const cxm = x0 + rnd() * (x1 - x0);
-      const czm = z0 + rnd() * (z1 - z0);
-      // keep the door column walkable
-      if (Math.abs(cxm / TILE_M - (room.doorX + 0.5)) < 1.6) continue;
-      place(CLUTTER[Math.floor(rnd() * CLUTTER.length)], cxm, czm, rnd() * 6.28);
-    }
-
     const style = spec.style;
     if (style === 'rows') {
       // grid fill
@@ -628,11 +669,20 @@ const Props = (() => {
       place('drawers', x1, cz + 1.2, Math.PI / 2);
       place('slab', cx, cz, 0);
     } else if (style === 'chapel') {
-      // pews in rows facing an altar+cross at the far (z0) end
-      place('altar', cx, z0 + 0.4, 0);
-      place('cross', cx, z0, 0);
-      let row = 0;
-      items.forEach((it) => { if (it === 'pew') { place('pew', cx, z0 + 1.6 + row * 1.0, 0); row++; } });
+      // Face the altar away from whichever wall owns the door. Two pew banks leave
+      // a real centre aisle instead of putting every bench across the entry line.
+      const frontZ = doorAtNearZ ? z1 : z0;
+      const intoRoom = doorAtNearZ ? -1 : 1;
+      const face = doorAtNearZ ? Math.PI : 0;
+      place('cross', cx, frontZ, face);
+      place('altar', cx, frontZ + intoRoom * 0.9, face);
+      let pew = 0;
+      items.forEach((it) => {
+        if (it !== 'pew') return;
+        const row = Math.floor(pew / 2), side = (pew % 2) ? 1 : -1;
+        place('pew', cx + side * 1.8, frontZ + intoRoom * (2.0 + row * 1.2), face);
+        pew++;
+      });
     } else if (style === 'kitchen') {
       // counters along top & bottom walls, prep table centre
       place('counter', cx - 2, z0, 0); place('counter', cx, z0, 0); place('counter', cx + 2, z0, 0);
@@ -669,6 +719,36 @@ const Props = (() => {
       lay(top, z0, 0);
       lay(bot, z1, Math.PI);
     }
+
+    // Sparse large rooms need one or two readable silhouettes, not random piles.
+    // Fill only side-wall slots, stop at a small density target, and leave the
+    // authored ritual/nursery/chapel layouts alone for their later set-pieces.
+    const noFill = ['ritual', 'nursery', 'chapel', 'kitchen', 'morgue', 'mose'];
+    const desired = areaT >= 70 ? 3 : 2;
+    if (!noFill.includes(room.tag) && placedFloor < desired) {
+      const service = ['boiler', 'incinerator', 'laundry', 'storage', 'supply', 'records', 'linen', 'attic', 'landing', 'roof'].includes(room.tag);
+      const clinical = ['er', 'surgery', 'prep', 'xray', 'autopsy', 'ward', 'recovery', 'iso', 'room207', 'maternity', 'pharmacy', 'bath'].includes(room.tag);
+      const fillers = service ? ['crates', 'shelf', 'cart'] : clinical ? ['wheelchair', 'iv', 'tray', 'shelf'] : ['wheelchair', 'crates', 'tray'];
+      const dz = Math.min((roomBox.z1 - roomBox.z0) * 0.22, TILE_M * 1.4);
+      const slots = [
+        [roomBox.x0 + 0.55, cz - dz, Math.PI / 2],
+        [roomBox.x1 - 0.55, cz + dz, -Math.PI / 2],
+        [roomBox.x0 + 0.55, cz + dz, Math.PI / 2],
+        [roomBox.x1 - 0.55, cz - dz, -Math.PI / 2],
+      ];
+      for (let i = 0; i < slots.length && placedFloor < desired; i++) {
+        const [sx, sz, syaw] = slots[i];
+        place(fillers[i % fillers.length], sx, sz, syaw);
+      }
+    }
+
+    // Loose paper goes in last so it can avoid furniture footprints and the door
+    // runway. It remains non-colliding and therefore cannot narrow traversal.
+    for (let i = 0; i < nClutter; i++) {
+      const cxm = x0 + rnd() * (x1 - x0);
+      const czm = z0 + rnd() * (z1 - z0);
+      place(CLUTTER[Math.floor(rnd() * CLUTTER.length)], cxm, czm, rnd() * 6.28);
+    }
   }
 
   // ---------- fluorescent ceiling fixtures (some flicker / are dead) ----------
@@ -694,7 +774,7 @@ const Props = (() => {
         const wire = box(0.02, 0.5, 0.02, m.dark || mats().dark, tube.position.x - 0.75, WALL_H - 0.25, tube.position.z);
         group.add(wire);
         // glass shards on the floor beneath
-        for (let s = 0; s < 4; s++) group.add(box(0.05, 0.01, 0.08, mats().tube, tube.position.x + (rnd() - 0.5), 0.012, tube.position.z + (rnd() - 0.5)));
+        for (let s = 0; s < 4; s++) group.add(box(0.05, 0.01, 0.08, mats().tube, tube.position.x + (rnd() - 0.5), 0.031, tube.position.z + (rnd() - 0.5)));
       }
       fixtures.push({ tube, light, dead, on: !dead, base: withLight ? 1.1 : 0, phase: rnd() * 6, nextFlick: rnd() * 3 });
     };
@@ -719,31 +799,66 @@ const Props = (() => {
     const group = new THREE.Group();
     const solids = [];
     const animated = [];
+    const reservedFor = (room) => {
+      const keep = [];
+      const grid = data.floors[fi].grid;
+      const special = new Set([data.TILE.HIDE, data.TILE.EXIT, data.TILE.CANDLE]);
+      for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) {
+        if (!special.has(grid[y] && grid[y][x])) continue;
+        keep.push({
+          x0: x * TILE_M + 0.1, x1: (x + 1) * TILE_M - 0.1,
+          z0: y * TILE_M + 0.1, z1: (y + 1) * TILE_M - 0.1,
+        });
+      }
+      const reservePickup = (entry) => {
+        if (!entry || entry.floor !== fi || entry.taken || entry.found) return;
+        if (entry.x < room.x || entry.x >= room.x + room.w || entry.y < room.y || entry.y >= room.y + room.h) return;
+        const x = (entry.x + 0.5) * TILE_M, z = (entry.y + 0.5) * TILE_M, half = 0.62;
+        keep.push({ x0: x - half, x1: x + half, z0: z - half, z1: z + half });
+      };
+      (data.items || []).forEach(reservePickup);
+      (data.documents || []).forEach(reservePickup);
+      return keep;
+    };
     data.floors[fi].rooms.forEach((room) => {
-      try { fillRoom(group, solids, animated, room, TILE_M, fi === 1 || fi === 0 ? 0.25 : 0.12); }
+      try { fillRoom(group, solids, animated, room, TILE_M, fi === 1 || fi === 0 ? 0.25 : 0.12, reservedFor(room)); }
       catch (e) { /* never let one room break the floor */ }
     });
     // corridor clutter — abandoned gurneys, wheelchairs, crates along the walls
     (() => {
       const ct = data.CORR_TOP || 14, cb = data.CORR_BOT || 17;
-      const doorCols = [];
-      data.floors[fi].rooms.forEach((r) => doorCols.push(r.doorX));
+      const doorXs = [];
+      data.floors[fi].rooms.forEach((r) => doorXs.push((r.doorX + 0.5) * TILE_M));
       const CORR = ['wheelchair', 'cart', 'bed', 'crates', 'iv', 'shelf'];
-      for (let x = 6; x < (data.W || 64) - 6; x += 7) {
+      const corridor = { z0: ct * TILE_M + 0.16, z1: (cb + 1) * TILE_M - 0.16 };
+      const centreZ = (corridor.z0 + corridor.z1) / 2;
+      const corridorPlaced = [];
+      const overlaps = (a, b, pad) => a.x0 + pad < b.x1 && a.x1 - pad > b.x0 && a.z0 + pad < b.z1 && a.z1 - pad > b.z0;
+      let slot = 0;
+      for (let x = 6; x < (data.W || 64) - 6; x += 7, slot++) {
         const xx = x + (rnd() - 0.5) * 2;
-        if (doorCols.some((d) => Math.abs(d - xx) < 2)) continue;
-        const top = (x / 7) % 2 === 0;
-        const zt = top ? (ct + 0.55) : (cb + 0.45);
+        const top = (slot % 2) === 0;
         const name = CORR[Math.floor(rnd() * CORR.length)];
         const b = BUILDERS[name]; if (!b) continue;
         const g = b();
-        const xm = (xx + 0.5) * TILE_M, zm = zt * TILE_M;
+        const yaw = (top ? 0 : Math.PI) + (rnd() - 0.5) * 0.32;
+        const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
+        const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw));
+        const w = fw * c + fd * s, d = fw * s + fd * c;
+        const xm = (xx + 0.5) * TILE_M;
+        const zm = top ? corridor.z0 + d / 2 + 0.18 : corridor.z1 - d / 2 - 0.18;
+        const rec = { x0: xm - w / 2, x1: xm + w / 2, z0: zm - d / 2, z1: zm + d / 2 };
+        // Keep a broad centre aisle, door approaches, and other props clear.
+        const blocksCentre = top ? rec.z1 > centreZ - 0.9 : rec.z0 < centreZ + 0.9;
+        const blocksDoor = doorXs.some((dx) => rec.x0 < dx + TILE_M * 1.15 && rec.x1 > dx - TILE_M * 1.15);
+        const blocksProp = corridorPlaced.some((p) => overlaps(rec, p, 0.12)) || solids.some((p) => overlaps(rec, p, 0.08));
+        if (blocksCentre || blocksDoor || blocksProp) { g.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); continue; }
         g.position.set(xm, 0, zm);
-        g.rotation.y = (top ? 0 : Math.PI) + (rnd() - 0.5) * 0.9;
+        g.rotation.y = yaw;
         group.add(g);
+        corridorPlaced.push(rec);
         if (g.userData.solid !== false) {
-          const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
-          solids.push({ x0: xm - fw / 2, z0: zm - fd / 2, x1: xm + fw / 2, z1: zm + fd / 2 });
+          solids.push(rec);
         }
       }
     })();
