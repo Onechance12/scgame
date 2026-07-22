@@ -1302,22 +1302,41 @@ function buildExterior() {
     let b = new THREE.Box3().setFromObject(src);
     const ref = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) || 1;
     let vs = 24601; const vr = () => { vs = (vs * 1103515245 + 12345) & 0x7fffffff; return vs / 0x7fffffff; };
-    // seeded plan: clumps everywhere off-path, weeds crowding walls/fences/trees
+    // Each plot plants ONE bush variant from the cluster (not the whole
+    // 9-bush, 1.4k-vert cluster) — ten times the coverage for the same GPU
+    // cost. Growth clusters around seeded thickets with a uniform sprinkle,
+    // the way an untended field actually seeds itself.
+    const centers = [];
+    for (let i = 0; i < 54; i++) centers.push({ cx: (vr() - 0.5) * 130, cz: -3 - vr() * 70 });
+    const blocked = (ox, oz) =>
+      (Math.abs(ox) < 2.4 && oz > -52) ||          // never on the path
+      (oz > -6 && Math.abs(ox) < 12) ||            // or the apron/steps
+      oz > -1.5;                                    // or against the facade line
     const plots = [];
-    for (let i = 0; i < 170; i++) {
-      const ox = (vr() - 0.5) * 120, oz = -2 - vr() * 68;
-      if (Math.abs(ox) < 2.4 && oz > -52) continue;              // never on the path
-      if (oz > -6 && Math.abs(ox) < 12) continue;                // or the apron/steps
-      plots.push({ ox, oz, yaw: vr() * 6.283, s: 0.8 + vr() * 1.3, tall: false });
+    const plant = (ox, oz, tall) => {
+      if (blocked(ox, oz)) return;
+      plots.push({ ox, oz, yaw: vr() * 6.283, s: (tall ? 1.0 : 0.8) + vr() * (tall ? 1.1 : 1.3), tall, v: (vr() * 9) | 0 });
+    };
+    for (let i = 0; i < 900; i++) {   // thickets
+      const c = centers[(vr() * centers.length) | 0];
+      plant(c.cx + (vr() + vr() - 1) * 9, c.cz + (vr() + vr() - 1) * 9, vr() < 0.24);
     }
-    for (let i = 0; i < 60; i++) {
-      const ox = (vr() - 0.5) * 110, oz = -3 - vr() * 62;
-      if (Math.abs(ox) < 2.6 && oz > -52) continue;
-      if (oz > -6 && Math.abs(ox) < 12) continue;
-      plots.push({ ox, oz, yaw: vr() * 6.283, s: 1.0 + vr() * 1.1, tall: true });
+    for (let i = 0; i < 700; i++) {   // lone volunteers everywhere else
+      plant((vr() - 0.5) * 140, -2 - vr() * 72, vr() < 0.2);
+    }
+    // and a ragged fringe hugging both sides of the path the whole way up
+    for (let i = 0; i < 260; i++) {
+      const side = vr() < 0.5 ? -1 : 1;
+      plant(side * (2.7 + vr() * 3.4), -3 - vr() * 48, vr() < 0.3);
     }
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-    meshes.forEach((mesh) => {
+    meshes.forEach((mesh, mi) => {
+      const short = plots.filter((p) => !p.tall && p.v % meshes.length === mi);
+      const tall = plots.filter((p) => p.tall && p.v % meshes.length === mi);
+      // keep the bush's own orientation/scale but drop its offset inside the
+      // source cluster — otherwise our instance scale multiplies that offset
+      // and bushes land metres from their plot (including on the path)
+      const local = mesh.matrixWorld.clone(); local.setPosition(0, 0, 0);
       const mat = mesh.material.clone();
       if (mat.color) mat.color.multiplyScalar(0.38);
       const makeInst = (list, yScale, tint) => {
@@ -1325,19 +1344,19 @@ function buildExterior() {
         const m2 = mat.clone(); if (tint && m2.color) m2.color.multiplyScalar(tint);
         const inst = new THREE.InstancedMesh(mesh.geometry, m2, list.length);
         list.forEach((p, i) => {
-          const s = (p.s / ref) * 1.0;
+          const s = (p.s / ref) * 2.6;   // single bushes are small — scale to clump size
           q.setFromAxisAngle(up, p.yaw);
           mtx.compose(new THREE.Vector3(doorX + p.ox, hillH(p.ox, -p.oz - 40) - 0.05, p.oz),
             q, new THREE.Vector3(s, s * yScale, s));
-          mtx.multiply(mesh.matrixWorld);
+          mtx.multiply(local);
           inst.setMatrixAt(i, mtx);
         });
         inst.instanceMatrix.needsUpdate = true;
         inst.frustumCulled = false;
         g.add(inst);
       };
-      makeInst(plots.filter((p) => !p.tall), 1.0);
-      makeInst(plots.filter((p) => p.tall), 1.9, 0.75);   // taller, darker weeds
+      makeInst(short, 1.0);
+      makeInst(tall, 1.9, 0.75);   // taller, darker weeds
     });
   })();
   // the hospital's transformer cabinet, rusted dead beside the doors
