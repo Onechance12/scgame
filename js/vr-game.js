@@ -122,7 +122,32 @@ let carter = null, carterTimer = 50;   // the chain-dragging apparition
 let fallingDebris = [], debrisKept = [], dropCooldown = 25;
 let morgueScared = false, sceneAnims = [];
 const SAVE_KEY = 'collegehill_save';
-let doorMeshes = new Map();     // "x,y" -> mesh (for unlocking locked doors)
+let doorMeshes = new Map();     // current floor: "x,y" -> hinged interactive door
+let doorStates = new Map();     // visit-stable closed/open state: "floor:x,y" -> closed
+let unlockedDoors = new Set();  // locks the player has opened: "floor:x,y" (persisted)
+let doorFloorIndices = new WeakMap(); // grid identity -> floor index (hot AI-path lookup)
+let safePlayer = { floor: -1, x: 0, y: 0 }; // last collision-valid tracked-head position
+let hideTiles = [], exitRec = null;
+// entities.js updates every hunter, including those on floors that are not
+// currently rendered. Current-floor collision follows the animated leaf;
+// streamed-out floors follow their visit-stable door state (and locked tiles).
+window.RuntimeDoorBlocked = (grid, x, y) => {
+  if (!data || !grid) return false;
+  let fi = doorFloorIndices.get(grid);
+  if (fi === undefined) {
+    fi = data.floors.findIndex((floor) => floor.grid === grid);
+    if (fi < 0) return false;
+    doorFloorIndices.set(grid, fi);
+  }
+  const tx = Math.floor(x), ty = Math.floor(y);
+  if (player && fi === player.floor) {
+    const liveDoor = doorMeshes.get(tx + ',' + ty);
+    if (liveDoor) return !!liveDoor.blocked;
+  }
+  const tile = grid[ty] && grid[ty][tx];
+  if (tile === TILE.LOCKED) return true;
+  return tile === TILE.DOOR && doorStates.get(fi + ':' + tx + ',' + ty) === true;
+};
 let itemMeshes = new Map();     // item.id -> mesh
 let entityMeshes = new Map();   // entity -> {group,...}
 let candleLights = [];
@@ -245,6 +270,8 @@ function saveState() {
     ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
     ritualDone: !!(ritual && ritual.done),
     childrenFreed, spiritsFreed, powerOn, scares: [...firedScares], doorBolted,
+    doors: [...doorStates].filter(([, closed]) => closed).map(([k]) => k),
+    unlocked: [...unlockedDoors],
     survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
     finished: state === 'WIN' || state === 'DEAD',
   };
@@ -282,6 +309,9 @@ function validateSave(s) {
   s.tool = (s.tool === 'cross' || s.weapons[s.tool]) ? s.tool : 'bare';
   const strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.length <= 64) : [];
   s.itemsTaken = strs(s.itemsTaken); s.docs = strs(s.docs); s.ritualFilled = strs(s.ritualFilled); s.scares = strs(s.scares);
+  const doorKey = /^[0-4]:\d{1,2},\d{1,2}$/;
+  s.doors = strs(s.doors).filter((k) => doorKey.test(k));
+  s.unlocked = strs(s.unlocked).filter((k) => doorKey.test(k));
   s.objectives = Array.isArray(s.objectives) ? s.objectives.map((b) => !!b) : [];
   const DROP_TYPES = { weapon: 1, ward: 1, flashlight: 1 };
   s.drops = (Array.isArray(s.drops) ? s.drops : []).filter((d) =>
@@ -824,9 +854,12 @@ let propsLate = false;
 function propsArrived() {
   if (!data) return;
   if (state !== 'PLAY') { propsLate = true; return; }
+  const preferredX = player.x, preferredY = player.y;
+  const stayHidden = player.hidden && hideSpot;
   comfortBlink(0.8);
   buildFloor(player.floor);
-  placeDollyAtTile(player.x, player.y);
+  if (stayHidden) placeDollyAtTile(hideSpot.x, hideSpot.y);
+  else placeDollyAtNearestSafe(preferredX, preferredY);
 }
 // cast landed: drop any procedural fallback shrouds so the real apparitions
 // take over on their next visible frame
@@ -900,6 +933,7 @@ function newGame(saved) {
   hideAllScreens();
   hideBigPanel();
   data = World.build();
+  doorFloorIndices = new WeakMap();
   ents = Entities.spawnAll(data, { extra: (HAUNT[OPTS.haunt] || HAUNT.restless).extra });
   documents = data.documents || [];
   ritual = data.ritual ? { floor: data.ritual.floor, cx: data.ritual.cx, cy: data.ritual.cy, done: false,
@@ -930,6 +964,7 @@ function newGame(saved) {
   dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = []; hideSpot = null; pausedAt = 0;
   powerOn = false; crankT = 0; genRec = null; boilerWarned = false; firedScares = new Set(); scareTriggers = []; fallingMirrors = [];
   powerChase = false; chasers = []; surgeT = 0; lockWindowT = 0; chaserArriveT = 0; chaseHideT = 0; doorBolted = false; stairArrive = null;
+  doorStates.clear(); unlockedDoors.clear(); safePlayer.floor = -1;
   if (genHumOn) { genHumOn = false; Audio2.genHumStop(); }
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
@@ -939,7 +974,7 @@ function newGame(saved) {
   if (saved) restoreFrom(saved); else { startEpoch = Date.now(); }
 
   buildFloor(player.floor);
-  placeDollyAtTile(player.x, player.y);
+  placeDollyAtNearestSafe(player.x, player.y);
   flashState = true;
   flashlight.visible = !!(player.hasLight && player.lightOn);
   state = 'PLAY';
@@ -985,6 +1020,19 @@ function restoreFrom(s) {
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
   powerOn = !!s.powerOn; firedScares = new Set(s.scares || []); doorBolted = !!s.doorBolted;
+  // doors: closed leaves stay closed; locks the player opened stay open
+  (s.doors || []).forEach((k) => doorStates.set(k, true));
+  (s.unlocked || []).forEach((k) => {
+    unlockedDoors.add(k);
+    const m = k.match(/^(\d):(\d+),(\d+)$/); if (!m) return;
+    const fi = +m[1], x = +m[2], y = +m[3];
+    const g = data.floors[fi] && data.floors[fi].grid;
+    if (g && g[y] && g[y][x] === TILE.LOCKED) {
+      g[y][x] = TILE.DOOR;
+      const room = data.floors[fi].rooms.find((r) => r.doorX === x && r.doorY === y);
+      if (room) room.locked = false;
+    }
+  });
   // stairwell-key compatibility: a save from before the lockdown update (or any
   // save made past a stairwell) must never strand the player — grant the keys
   // for every floor between the start floor and wherever they already are.
@@ -1016,6 +1064,7 @@ function buildExterior() {
   const gGeo = new THREE.PlaneGeometry(160, 160, 72, 72);
   {
     const pos = gGeo.attributes.position;
+    const uv = gGeo.attributes.uv;
     let hs = 77003; const hr = () => { hs = (hs * 1103515245 + 12345) & 0x7fffffff; return hs / 0x7fffffff; };
     for (let i = 0; i < pos.count; i++) {
       const lx = pos.getX(i), ly = pos.getY(i);
@@ -1027,11 +1076,15 @@ function buildExterior() {
       const offPath = Math.min(1, Math.max(0, (Math.abs(lx) - 2.6) / 5));
       const offDoor = Math.min(1, Math.max(0, (-wz - 7) / 7));
       pos.setZ(i, h * offPath * offDoor);
+      // Absolute metre UVs keep the leaf/clay scale stable across the full
+      // displaced mesh and line up with the hospital's horizontal surfaces.
+      uv.setXY(i, (doorX + lx) / TILE_M, wz / TILE_M);
     }
     gGeo.computeVertexNormals();
+    uv.needsUpdate = true;
   }
-  const gnd = new THREE.Mesh(gGeo,
-    new THREE.MeshStandardMaterial({ map: TEX.groundForest, color: 0x3a3d32, roughness: 1 }));
+  const groundMat = TEX.groundMat || new THREE.MeshStandardMaterial({ map: TEX.groundForest, color: 0x596057, roughness: 1 });
+  const gnd = new THREE.Mesh(gGeo, groundMat);
   gnd.rotation.x = -Math.PI / 2; gnd.position.set(doorX, -0.02, -40); g.add(gnd);
   // the worn dirt path everyone before you took, ending at a cracked concrete
   // apron below the front steps
@@ -1692,7 +1745,7 @@ function endCinematic() {
   if (propsLate) { propsLate = false; buildFloor(player.floor); }
   if (floorGroup) floorGroup.visible = true;
   const sp = World.spawn(data);
-  placeDollyAtTile(sp.x + 0.5, sp.y + 0.5);
+  placeDollyAtNearestSafe(sp.x + 0.5, sp.y + 0.5);
   dolly.position.y = 0; dolly.rotation.set(0, 0, 0);
   jumpY = 0; jumpVel = 0; crouched = false;
   // the clock — and the 24-hour night — begins the instant you're inside
@@ -1736,33 +1789,106 @@ function loadTextures() {
     t.anisotropy = 4;
     return t;
   };
+  TEX.sharedMaterials = new Set();
+  const shared = (mat) => { TEX.sharedMaterials.add(mat); return mat; };
   TEX.wallD = load('wall_diff.jpg', 1, 1.2);
   TEX.wallN = load('wall_nor.jpg', 1, 1.2, false);
   TEX.wall2D = load('wall2_diff.jpg', 1, 1.2);
   TEX.wall2N = load('wall2_nor.jpg', 1, 1.2, false);
-  TEX.floorD = load('floor_diff.jpg', World.W, World.H);
-  TEX.floorN = load('floor_nor.jpg', World.W, World.H, false);
-  TEX.ceilD = load('ceiling_diff.jpg', World.W / 2, World.H / 2);
+  // Horizontal surfaces carry world-space UVs. Keep their textures at unit
+  // repeat so one source image always covers the same number of metres,
+  // independent of the size of the room mesh using it.
+  TEX.floorD = load('floor_diff.jpg', 1, 1);
+  TEX.floorN = load('floor_nor.jpg', 1, 1, false);
+  TEX.ceilD = load('ceiling_diff.jpg', 1, 1);
   TEX.doorD = load('door_diff.jpg', 1, 1);
-  // per-room floor skins — ONE shared GPU texture per skin (fixed repeat)
+  // Per-room floor skins — one shared GPU texture/material per skin. Physical
+  // repeat is encoded in each room's UVs, never here on the shared texture.
   // Horror upgrades (Screaming Brain Studios, CC0): grimy tile/lino/concrete.
   TEX.rooms = {
-    tile: load('horror/floor_tile.jpg', 5, 4),
-    bigtile: load('large_floor_tiles_02_diff.jpg', 4, 3),
-    lino: load('horror/floor_lino.jpg', 5, 4),
-    wood: load('wood_floor_worn_diff.jpg', 4, 3),
-    conc: load('horror/floor_conc.jpg', 5, 4),
-    carpet: load('dirty_carpet_diff.jpg', 4, 3),
-    mosaic: load('old_mosaic_floor_diff.jpg', 4, 3),
-    metal: load('horror/metal_rust.jpg', 3, 3),
-    bloodwood: load('horror/floor_bloodwood.jpg', 4, 4),   // blood soaked into the boards
+    tile: load('horror/floor_tile.jpg', 1, 1),
+    bigtile: load('large_floor_tiles_02_diff.jpg', 1, 1),
+    lino: load('horror/floor_lino.jpg', 1, 1),
+    wood: load('wood_floor_worn_diff.jpg', 1, 1),
+    conc: load('horror/floor_conc.jpg', 1, 1),
+    carpet: load('dirty_carpet_diff.jpg', 1, 1),
+    mosaic: load('old_mosaic_floor_diff.jpg', 1, 1),
+    metal: load('horror/metal_rust.jpg', 1, 1),
+    bloodwood: load('horror/floor_bloodwood.jpg', 1, 1),   // blood soaked into the boards
   };
-  TEX.groundForest = load('horror/ground_forest.jpg', 26, 26);   // the hill's pine-needle ground
+  TEX.groundForest = load('horror/ground_forest.jpg', 1, 1);   // world-metre UVs set the hillside repeat
   // one material per skin, shared by every room using it
   TEX.roomMats = {};
   Object.keys(TEX.rooms).forEach((k) => {
-    TEX.roomMats[k] = new THREE.MeshStandardMaterial({ map: TEX.rooms[k], color: 0x93969c, roughness: .95 });
+    TEX.roomMats[k] = shared(new THREE.MeshStandardMaterial({ map: TEX.rooms[k], color: 0x93969c, roughness: .95 }));
   });
+  // Generated corridor/ceiling materials load as an atomic albedo+normal pair.
+  // Until both maps succeed, the old CC0 material remains attached, so a
+  // missing/partial pack can never turn a level black or leave a mismatched
+  // normal map. Unit repeat pairs with buildHorizontalSurfaceGeometry below.
+  const SURFACE_ROOT = 'assets/generated/codex-ceiling-floor-pack-v1/';
+  const configureSurface = (t, srgb) => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1, 1);
+    if ('colorSpace' in t && srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  };
+  const surfaceMaterialFrom = (albedoPath, normalPath, fallbackMap, fallbackNormal, opts) => {
+    const mat = shared(new THREE.MeshStandardMaterial({
+      map: fallbackMap, normalMap: fallbackNormal,
+      color: opts.color, roughness: opts.roughness, metalness: 0,
+    }));
+    let albedo = null, normal = null, failed = false;
+    const commit = () => {
+      if (failed || !albedo || !normal) return;
+      mat.map = albedo; mat.normalMap = normal; mat.needsUpdate = true;
+    };
+    const fetch = (path, srgb, ready) => {
+      L.load(path, (t) => { ready(configureSurface(t, srgb)); commit(); }, undefined, () => {
+        failed = true;
+        console.warn('surface texture missing; keeping CC0 fallback:', path);
+      });
+    };
+    fetch(albedoPath, true, (t) => { albedo = t; });
+    fetch(normalPath, false, (t) => { normal = t; });
+    return mat;
+  };
+  const surfaceMaterial = (base, fallbackMap, fallbackNormal, opts) => surfaceMaterialFrom(
+    SURFACE_ROOT + base + '-albedo.jpg', SURFACE_ROOT + base + '-normal.png', fallbackMap, fallbackNormal, opts);
+  // Claude's approved checker albedo already lives in surface-kit-v1. Pair it
+  // with this pass's derived normal instead of shipping/loading a duplicate.
+  const surfaceMaterialWithAlbedo = (base, albedoPath, fallbackMap, fallbackNormal, opts) => surfaceMaterialFrom(
+    albedoPath, SURFACE_ROOT + base + '-normal.png', fallbackMap, fallbackNormal, opts);
+  // A neutral normal keeps ceiling materials in the same shader variant while
+  // their generated normals stream in, avoiding a first-look compile hitch.
+  TEX.flatNormal = new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1, THREE.RGBAFormat);
+  TEX.flatNormal.wrapS = TEX.flatNormal.wrapT = THREE.RepeatWrapping;
+  TEX.flatNormal.needsUpdate = true;
+  TEX.corridorMats = {
+    lino: surfaceMaterialWithAlbedo('floors/checker-hospital-linoleum',
+      'assets/generated/surface-kit-v1/checker-hospital-linoleum-albedo.jpg', TEX.floorD, TEX.floorN,
+      { color: 0x8f9299, roughness: .92 }),
+    terrazzo: surfaceMaterial('floors/ground-floor-terrazzo', TEX.floorD, TEX.floorN, { color: 0x8f9299, roughness: .9 }),
+    concrete: surfaceMaterial('floors/basement-sealed-concrete', TEX.floorD, TEX.floorN, { color: 0x8f9299, roughness: .96 }),
+    oak: surfaceMaterial('floors/upper-floor-dark-oak', TEX.floorD, TEX.floorN, { color: 0x8f9299, roughness: .94 }),
+    // The third floor reuses the existing large slate-grey tile instead of
+    // repeating the second floor's checker pattern.
+    slate: shared(new THREE.MeshStandardMaterial({ map: TEX.rooms.bigtile, color: 0x8f9498, roughness: .96 })),
+  };
+  const legacyCeiling = ceilingPlasterTex();
+  legacyCeiling.repeat.set(1, 1); // geometry carries its intended 4-tile period
+  TEX.ceilingMats = {
+    plaster: surfaceMaterial('ceilings/aged-calcimine-plaster', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1 }),
+    panels: surfaceMaterial('ceilings/midcentury-fiberboard-panels', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1 }),
+    concrete: surfaceMaterial('ceilings/basement-painted-concrete', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1 }),
+    legacy: shared(new THREE.MeshStandardMaterial({ map: legacyCeiling, color: 0x8f8d87, roughness: 1 })),
+    boards: shared(new THREE.MeshStandardMaterial({ map: TEX.rooms.wood, color: 0x625b54, roughness: 1 })),
+  };
+  TEX.roomMats.checker = TEX.corridorMats.lino;
+  TEX.groundMat = surfaceMaterial('ground/appalachian-wet-leaf-clay', TEX.groundForest, TEX.flatNormal,
+    { color: 0x697069, roughness: 1 });
+  TEX.thresholdMat = shared(new THREE.MeshStandardMaterial({ color: 0x342d26, roughness: .72, metalness: .18 }));
   // Interior wall skins: two good high-res plaster bases (own instances at repeat 1,1 —
   // world-space UVs in buildWallGeometry carry the tiling, so no per-tile "cheese" copy).
   const wRose = load('wall_diff.jpg', 1, 1), wRoseN = load('wall_nor.jpg', 1, 1, false),
@@ -1780,9 +1906,6 @@ function loadTextures() {
   const wFloral = gload('assets/generated/codex-visual-pack-v1/walls/1920s-floral-wallpaper-albedo.jpg', 1, 1.2);
   TEX.fire8 = gload('assets/generated/codex-visual-pack-v1/flames/fire-orange-8x8.png');
   TEX.newsprint = gload('assets/generated/codex-visual-pack-v1/newspaper/williamson-daily-october-1988.png');
-  // the 1928 checker linoleum (surface-kit-v1, approved from PR #1) — one repeat
-  // per tile puts the checks at ~27 cm, period-correct
-  TEX.checkerD = gload('assets/generated/surface-kit-v1/checker-hospital-linoleum-albedo.jpg', World.W, World.H);
   TEX.wallMats = [
     new THREE.MeshStandardMaterial({ map: wGreen, color: 0xb9beb2, roughness: .95 }),                   // 1 surgical-green plaster, peeling
     new THREE.MeshStandardMaterial({ map: wFloral, color: 0xb8b0a4, roughness: .94 }),                  // 2 water-stained 1920s wallpaper
@@ -1806,7 +1929,7 @@ function loadTextures() {
 // which floor skin each room type wears
 const ROOM_FLOOR = {
   lobby: 'mosaic', admitting: 'mosaic', waiting: 'carpet', cafeteria: 'carpet',
-  er: 'tile', surgery: 'tile', prep: 'tile', xray: 'tile', autopsy: 'tile', pharmacy: 'tile', bath: 'tile',
+  er: 'checker', surgery: 'checker', prep: 'checker', xray: 'checker', autopsy: 'checker', pharmacy: 'checker', bath: 'tile',
   kitchen: 'bigtile', ward: 'lino', room207: 'lino', maternity: 'lino', quarters: 'lino', matron: 'lino',
   station: 'lino', records: 'lino', linen: 'lino', iso: 'lino', recovery: 'lino',
   chapel: 'wood', sanctum: 'wood', attic: 'wood', nursery: 'wood', bell: 'wood',
@@ -1814,15 +1937,72 @@ const ROOM_FLOOR = {
   morgue: 'conc', storage: 'conc', laundry: 'conc', supply: 'conc', landing: 'conc',
   incinerator: 'metal', boiler: 'metal',
 };
+const ROOM_CEILING = {
+  nursery: 'plaster', xray: 'panels', storage: 'concrete', autopsy: 'panels', morgue: 'concrete',
+  incinerator: 'concrete', boiler: 'concrete', ritual: 'concrete', laundry: 'concrete',
+  lobby: 'plaster', admitting: 'plaster', records: 'plaster', pharmacy: 'panels', er: 'panels',
+  waiting: 'plaster', kitchen: 'panels', cafeteria: 'plaster',
+  ward: 'panels', station: 'panels', maternity: 'panels', room207: 'plaster', linen: 'plaster', bath: 'concrete',
+  surgery: 'panels', recovery: 'panels', mose: 'plaster', prep: 'panels', supply: 'concrete', iso: 'panels', landing: 'plaster',
+  quarters: 'plaster', matron: 'plaster', sanctum: 'plaster', attic: 'boards', chapel: 'boards', bell: 'boards', roof: 'boards',
+};
+// Level identity for the broad corridor slab and ceiling. Rooms keep their
+// role-specific skins above; these maps establish a stable material language
+// between rooms without adding any per-room material instances.
+const CORRIDOR_FLOOR_BY_LEVEL = ['concrete', 'terrazzo', 'lino', 'slate', 'oak'];
+const CEILING_BY_LEVEL = ['concrete', 'plaster', 'panels', 'legacy', 'boards'];
+const FLOOR_REPEAT_M = TILE_M;       // generated floor swatches represent 2.7 m square
+const CEILING_REPEAT_M = TILE_M * 2; // 8x8 panel sheet -> period-correct ~67.5 cm panels
+const ceilingRepeatMetres = (key) => key === 'legacy' ? TILE_M * 4 : CEILING_REPEAT_M;
 
 // ============================================================ world geometry
 function disposeGroup(g) {
   if (!g) return;
   g.traverse((o) => {
     if (o.geometry) o.geometry.dispose();
-    if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose()); }
+    if (o.material) {
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => {
+        // Shared surface materials survive floor changes; disposing them here
+        // forced a shader/GPU re-upload when the same shared material returned.
+        if (!(TEX.sharedMaterials && TEX.sharedMaterials.has(m))) m.dispose();
+      });
+    }
   });
   scene.remove(g);
+}
+
+// A four-vertex horizontal plane whose UVs are derived from absolute world X/Z
+// coordinates. Adjacent meshes therefore meet at the same texture phase, and a
+// 2.7 m swatch remains 2.7 m in a linen closet, a ward, or the full corridor.
+function buildHorizontalSurfaceGeometry(x0, z0, width, depth, metresPerRepeat, faceUp, phase) {
+  const hw = width / 2, hd = depth / 2;
+  const x1 = x0 + width, z1 = z0 + depth, n = faceUp ? 1 : -1;
+  const pu = phase ? phase.u : 0, pv = phase ? phase.v : 0;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([
+    -hw, 0, -hd, -hw, 0, hd, hw, 0, hd, hw, 0, -hd,
+  ], 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute([
+    0, n, 0, 0, n, 0, 0, n, 0, 0, n, 0,
+  ], 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute([
+    x0 / metresPerRepeat + pu, z0 / metresPerRepeat + pv,
+    x0 / metresPerRepeat + pu, z1 / metresPerRepeat + pv,
+    x1 / metresPerRepeat + pu, z1 / metresPerRepeat + pv,
+    x1 / metresPerRepeat + pu, z0 / metresPerRepeat + pv,
+  ], 2));
+  geo.setIndex(faceUp ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]);
+  return geo;
+}
+
+// Rooms that share a material still get a deterministic fractional phase.
+// Ward 2-A and Ward 2-B therefore read as related construction, not cloned
+// texture stamps, without allocating another texture or material.
+function roomSurfacePhase(fi, room, ceiling) {
+  let h = 2166136261 ^ fi;
+  const label = (room.name || room.tag || '') + (ceiling ? ':ceiling' : ':floor');
+  for (let i = 0; i < label.length; i++) h = Math.imul(h ^ label.charCodeAt(i), 16777619);
+  return { u: ((h >>> 0) & 7) / 8, v: ((h >>> 3) & 7) / 8 };
 }
 
 // Build wall geometry as exposed faces only, with continuous WORLD-SPACE UVs so the
@@ -1857,6 +2037,7 @@ function buildWallGeometry(g) {
 function buildFloor(fi) {
   disposeGroup(floorGroup);
   doorMeshes.clear(); itemMeshes.clear(); docMeshes.clear(); candleLights = [];
+  hideTiles = []; exitRec = null;
   moodLights = []; carter = null; fallingDebris = []; debrisKept = []; sceneAnims = [];
   entityMeshes.forEach((v) => v.group && scene.remove(v.group));
   entityMeshes.clear();
@@ -1867,25 +2048,19 @@ function buildFloor(fi) {
 
   const spanX = World.W * TILE_M, spanZ = World.H * TILE_M;
 
-  // floor: the basement keeps its stained boards over concrete; every ward floor
-  // above walks the 1928 checker linoleum (grimed per floor by tint)
-  const FLOOR_TINTS = [0x8f9299, 0x9aa096, 0x938f86, 0x8a9188, 0x94978e];
-  const floorMat = (fi === 0 || !TEX.checkerD)
-    ? new THREE.MeshStandardMaterial({ map: TEX.floorD, normalMap: TEX.floorN, color: 0x767a82, roughness: .96 })
-    : new THREE.MeshStandardMaterial({ map: TEX.checkerD, color: FLOOR_TINTS[fi], roughness: .92 });
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(spanX, spanZ), floorMat);
-  floor.rotation.x = -Math.PI / 2;
+  // Per-level corridor floor + ceiling. Generated material pairs fail-soft to
+  // the original CC0 tile/plaster maps and remain shared across rebuilds.
+  const floorMat = (TEX.corridorMats && TEX.corridorMats[CORRIDOR_FLOOR_BY_LEVEL[fi]]) ||
+    new THREE.MeshStandardMaterial({ map: TEX.floorD, normalMap: TEX.floorN, color: 0x8f9299, roughness: .95 });
+  const floor = new THREE.Mesh(buildHorizontalSurfaceGeometry(0, 0, spanX, spanZ, FLOOR_REPEAT_M, true), floorMat);
   floor.position.set(spanX / 2, 0, spanZ / 2);
   floor.receiveShadow = true;
   floorGroup.add(floor);
 
-  // ceiling: bare concrete below, stained pressed-plaster panels above — with
-  // sixty years of water rings, cracks, and the odd collapsed patch
-  const ceilMat = fi === 0
-    ? new THREE.MeshStandardMaterial({ map: TEX.ceilD, color: 0x53575d, roughness: 1 })
-    : new THREE.MeshStandardMaterial({ map: ceilingPlasterTex(), color: [0xa39f96, 0xa39f96, 0x9c9d94, 0x9d968c, 0xa6a196][fi], roughness: 1 });
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(spanX, spanZ), ceilMat);
-  ceil.rotation.x = Math.PI / 2;
+  const levelCeilingKey = CEILING_BY_LEVEL[fi];
+  const ceilMat = (TEX.ceilingMats && TEX.ceilingMats[levelCeilingKey]) ||
+    new THREE.MeshStandardMaterial({ map: TEX.ceilD, color: 0x6d7076, roughness: 1 });
+  const ceil = new THREE.Mesh(buildHorizontalSurfaceGeometry(0, 0, spanX, spanZ, ceilingRepeatMetres(levelCeilingKey), false), ceilMat);
   ceil.position.set(spanX / 2, WALL_H, spanZ / 2);
   floorGroup.add(ceil);
 
@@ -1894,11 +2069,42 @@ function buildFloor(fi) {
     const key = ROOM_FLOOR[r.tag];
     const mat = key && TEX.roomMats && TEX.roomMats[key];
     if (!mat) return;
-    const pl = new THREE.Mesh(new THREE.PlaneGeometry((r.w - 2) * TILE_M, (r.h - 2) * TILE_M), mat);
-    pl.rotation.x = -Math.PI / 2;
+    const x0 = (r.x + 1) * TILE_M, z0 = (r.y + 1) * TILE_M;
+    const width = (r.w - 2) * TILE_M, depth = (r.h - 2) * TILE_M;
+    const pl = new THREE.Mesh(buildHorizontalSurfaceGeometry(
+      x0, z0, width, depth, FLOOR_REPEAT_M, true, roomSurfacePhase(fi, r, false)), mat);
     pl.position.set((r.x + r.w / 2) * TILE_M, 0.02, (r.y + r.h / 2) * TILE_M);
     floorGroup.add(pl);
   });
+
+  // Ceiling overlays give rooms their own architectural history while the
+  // corridor ceiling keeps each level recognizable. Skip identical pairs so
+  // this adds only the transitions that are actually visible.
+  data.floors[fi].rooms.forEach((r) => {
+    const key = ROOM_CEILING[r.tag];
+    const mat = key && TEX.ceilingMats && TEX.ceilingMats[key];
+    if (!mat || key === levelCeilingKey) return;
+    const x0 = (r.x + 1) * TILE_M, z0 = (r.y + 1) * TILE_M;
+    const width = (r.w - 2) * TILE_M, depth = (r.h - 2) * TILE_M;
+    const pl = new THREE.Mesh(buildHorizontalSurfaceGeometry(
+      x0, z0, width, depth, ceilingRepeatMetres(key), false, roomSurfacePhase(fi, r, true)), mat);
+    pl.position.set((r.x + r.w / 2) * TILE_M, WALL_H - 0.018, (r.y + r.h / 2) * TILE_M);
+    floorGroup.add(pl);
+  });
+
+  // A thin shared threshold masks material changes cleanly and makes every room
+  // entrance readable in flashlight light without becoming a collision step.
+  if (TEX.thresholdMat) {
+    const rooms = data.floors[fi].rooms;
+    const strips = new THREE.InstancedMesh(new THREE.BoxGeometry(1.72, 0.018, 0.13), TEX.thresholdMat, rooms.length);
+    const matrix = new THREE.Matrix4();
+    rooms.forEach((r, i) => {
+      matrix.makeTranslation((r.doorX + 0.5) * TILE_M, 0.031, (r.doorY + 0.5) * TILE_M);
+      strips.setMatrixAt(i, matrix);
+    });
+    strips.instanceMatrix.needsUpdate = true;
+    floorGroup.add(strips);
+  }
 
   // walls — exposed-face geometry with continuous world-space UVs (no per-tile repeat),
   // one tinted plaster material per floor so levels stay distinct
@@ -2603,8 +2809,8 @@ function solidBlocked(xm, zm) {
 }
 
 function addDoor(x, y, wx, wz, locked) {
-  // a hinged leaf: locked doors hang shut; open doorways stand ajar so a
-  // passable door LOOKS passable (you never walk through closed wood)
+  // One hinged leaf per room. Unlocked doors remember their open/closed state
+  // across floor revisits; locked leaves remain shut until interacted with.
   const mat = new THREE.MeshStandardMaterial({ map: TEX.doorD, color: locked ? 0x9a5050 : 0x9a8a76, roughness: .85, emissive: locked ? 0x300000 : 0x000000 });
   const hinge = new THREE.Group();
   hinge.position.set(wx - TILE_M * 0.44, 0, wz);
@@ -2614,9 +2820,15 @@ function addDoor(x, y, wx, wz, locked) {
   hinge.add(leaf);
   // deterministic per-door swing so it doesn't change on revisit
   const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
-  hinge.rotation.y = locked ? 0 : (0.85 + (h % 100) / 100 * 0.5) * ((h >> 3) % 2 ? 1 : -1);
+  const openYaw = (0.9 + (h % 80) / 100) * ((h >> 3) % 2 ? 1 : -1);
+  const stateKey = player.floor + ':' + x + ',' + y;
+  const closed = locked || doorStates.get(stateKey) === true;
+  hinge.rotation.y = closed ? 0 : openYaw;
   floorGroup.add(hinge);
-  if (locked) doorMeshes.set(x + ',' + y, { g: hinge, m: leaf, open: (0.9 + (h % 80) / 100) * ((h >> 3) % 2 ? 1 : -1) });
+  doorMeshes.set(x + ',' + y, {
+    g: hinge, m: leaf, x, y, stateKey, openYaw,
+    locked: !!locked, closed, blocked: closed, targetYaw: closed ? 0 : openYaw,
+  });
 }
 function addCandle(wx, wz) {
   // a real cluster of melted candles when the model is in; procedural fallback otherwise
@@ -2721,7 +2933,7 @@ function addDrip(wx, wz) {
   atmoDrips.push({ pts, pos, wx: wx * TILE_M, wz: wz * TILE_M, vy: new Float32Array(N).map(() => 1 + Math.random() * 2) });
   // a small dark puddle where it lands
   const pud = new THREE.Mesh(new THREE.CircleGeometry(0.35, 12), new THREE.MeshStandardMaterial({ color: 0x10161c, roughness: 0.25, metalness: 0.4, transparent: true, opacity: 0.85 }));
-  pud.rotation.x = -Math.PI / 2; pud.position.set(wx * TILE_M, 0.015, wz * TILE_M); floorGroup.add(pud);
+  pud.rotation.x = -Math.PI / 2; pud.position.set(wx * TILE_M, 0.036, wz * TILE_M); floorGroup.add(pud);
 }
 function updateAtmosphere(dt) {
   const t = performance.now() / 1000;
@@ -2850,6 +3062,10 @@ function addExit(wx, wz) {
     new THREE.MeshStandardMaterial({ color: 0x0a1a0a, emissive: 0x2f7a2f, emissiveIntensity: 0.6 }));
   sign.position.set(0, WALL_H * 0.98, 0.14); g.add(sign);
   floorGroup.add(g);
+  exitRec = { x: wx / TILE_M, y: wz / TILE_M };
+  // The chained leaves are solid. The player uses them from the interior tile
+  // instead of walking through a closed mesh to trigger the ending.
+  propSolids.push({ x0: wx - TILE_M * 0.49, z0: wz - 0.13, x1: wx + TILE_M * 0.49, z1: wz + 0.16 });
 }
 function mkBox(w, h, d, mat, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; }
 function addLocker(wx, wz) {
@@ -2857,6 +3073,8 @@ function addLocker(wx, wz) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(TILE_M * 0.6, WALL_H * 0.8, TILE_M * 0.4), mat);
   m.position.set(wx, WALL_H * 0.4, wz); m.castShadow = true;
   floorGroup.add(m);
+  hideTiles.push({ x: wx / TILE_M, y: wz / TILE_M });
+  propSolids.push({ x0: wx - TILE_M * 0.3, z0: wz - TILE_M * 0.2, x1: wx + TILE_M * 0.3, z1: wz + TILE_M * 0.2 });
 }
 
 const ITEM_COLORS = { flashlight: 0xffe08a, battery: 0x8affa0, emf: 0x7ad0ff, spiritbox: 0xc99cff, candlekit: 0xffb86b, key: 0xffd24a, draught: 0x9ae0c8, backpack: 0xb08a5a, medkit: 0xff8a8a, teddy: 0xd8a06a, lantern: 0xffc04a, anchor: 0xd8b24a, censer: 0xe0c060, ward: 0xfff0c0, weapon: 0xb8c2cc, matches: 0xffa04a };
@@ -4050,6 +4268,8 @@ function placeDollyAtTile(tx, ty) {
   // Put the dolly so the *camera* ends up over (tx,ty). Camera local pos may be
   // offset by the headset; approximate by placing dolly and letting head track.
   dolly.position.set(tx * TILE_M - camera.position.x, 0, ty * TILE_M - camera.position.z);
+  safePlayer = { floor: player ? player.floor : -1, x: tx, y: ty };
+  if (player) { player.x = tx; player.y = ty; }
 }
 
 function playerTileFromCamera() {
@@ -4060,7 +4280,10 @@ function playerTileFromCamera() {
 
 function passableFor(fi, x, y) {
   if (x < 0 || y < 0 || x >= World.W || y >= World.H) return false;
-  const t = data.floors[fi].grid[Math.floor(y)][Math.floor(x)];
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const t = data.floors[fi].grid[iy][ix];
+  const door = fi === player.floor && doorMeshes.get(ix + ',' + iy);
+  if (door && door.blocked) return false;
   return t === TILE.FLOOR || t === TILE.DOOR || t === TILE.UP || t === TILE.DOWN ||
     t === TILE.HIDE || t === TILE.CANDLE || t === TILE.EXIT;
 }
@@ -4069,19 +4292,71 @@ function tileAt(fi, x, y) {
   return data.floors[fi].grid[Math.floor(y)][Math.floor(x)];
 }
 
-// Move the dolly by (dxTiles, dyTiles) with wall collision in tile space.
+function canStandAt(fi, x, y) {
+  const r = 0.24;
+  return passableFor(fi, x - r, y - r) && passableFor(fi, x + r, y - r) &&
+    passableFor(fi, x - r, y + r) && passableFor(fi, x + r, y + r) &&
+    !solidBlocked(x * TILE_M, y * TILE_M);
+}
+
+// Streaming furniture can arrive after the player has already entered a room.
+// Preserve their exact spot when it remains clear; otherwise choose the nearest
+// valid tile centre so a newly loaded bed/cabinet can never materialize around
+// the headset and pin the player inside its collider.
+function placeDollyAtNearestSafe(preferredX, preferredY) {
+  if (canStandAt(player.floor, preferredX, preferredY)) {
+    placeDollyAtTile(preferredX, preferredY);
+    return false;
+  }
+  const candidates = [];
+  for (let y = 0; y < World.H; y++) for (let x = 0; x < World.W; x++) {
+    const cx = x + 0.5, cy = y + 0.5;
+    const d2 = (cx - preferredX) ** 2 + (cy - preferredY) ** 2;
+    candidates.push({ x: cx, y: cy, d2 });
+  }
+  candidates.sort((a, b) => a.d2 - b.d2);
+  const safe = candidates.find((p) => canStandAt(player.floor, p.x, p.y));
+  if (safe) {
+    placeDollyAtTile(safe.x, safe.y);
+    showSubtitle('The room settles around you.', 1.8);
+    return true;
+  }
+  // Every floor has a clear corridor by construction. Keep the last known
+  // logical position untouched if a corrupt/custom layout violates that rule.
+  safePlayer.floor = -1;
+  return false;
+}
+
+// Counter room-scale headset translation if the tracked head crosses a wall,
+// closed door, or furniture collider without going through moveDolly().
+function enforceTrackedCollision() {
+  if (player.hidden && hideSpot) { player.x = hideSpot.x; player.y = hideSpot.y; return; }
+  camera.getWorldPosition(tmpV);
+  const x = tmpV.x / TILE_M, y = tmpV.z / TILE_M;
+  if (safePlayer.floor !== player.floor) safePlayer = { floor: player.floor, x: player.x, y: player.y };
+  if (canStandAt(player.floor, x, y)) {
+    safePlayer.x = x; safePlayer.y = y;
+    player.x = x; player.y = y;
+    return;
+  }
+  dolly.position.x += (safePlayer.x - x) * TILE_M;
+  dolly.position.z += (safePlayer.y - y) * TILE_M;
+  player.x = safePlayer.x; player.y = safePlayer.y;
+}
+
+// Move the dolly by (dxTiles, dyTiles) with axis-separated swept collision.
 function moveDolly(dxT, dyT) {
   playerTileFromCamera();
-  const r = 0.24;
-  const nx = player.x + dxT, ny = player.y + dyT;
-  const sx = dxT > 0 ? r : -r, sy = dyT > 0 ? r : -r;
-  if (dxT !== 0 && passableFor(player.floor, nx + sx, player.y + r) && passableFor(player.floor, nx + sx, player.y - r) &&
-      !solidBlocked((nx + sx) * TILE_M, player.y * TILE_M)) {
+  let px = player.x, py = player.y;
+  const nx = px + dxT;
+  if (dxT !== 0 && canStandAt(player.floor, nx, py)) {
     dolly.position.x += dxT * TILE_M;
+    px = nx; player.x = px;
   }
-  if (dyT !== 0 && passableFor(player.floor, player.x + r, ny + sy) && passableFor(player.floor, player.x - r, ny + sy) &&
-      !solidBlocked(player.x * TILE_M, (ny + sy) * TILE_M)) {
+  const ny = py + dyT;
+  if (dyT !== 0 && canStandAt(player.floor, px, ny)) {
     dolly.position.z += dyT * TILE_M;
+    py = ny; player.y = py;
   }
 }
 
@@ -4317,7 +4592,10 @@ function interact() {
   // hiding is ANCHORED: you tuck into this spot and stay until you interact again.
   // (Movement is locked while hidden — no walking the halls silent and uncatchable.)
   if (player.hidden) { leaveHide(); return; }
-  if (t === TILE.HIDE) { enterHide(); return; }
+  const hide = nearestHideForInteraction();
+  if (hide) { enterHide(hide); return; }
+  if (exitRec && Math.hypot(exitRec.x - player.x, exitRec.y - player.y) < 1.35) return tryExit();
+  if (interactDoorNearby()) return;
   const it = data.items.find((i) => !i.taken && i.floor === player.floor &&
     Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return pickupItem(it);
@@ -4326,7 +4604,6 @@ function interact() {
   if (doc) return readDocument(doc);
   if (player.floor === 0 && genRec && !powerOn && Math.hypot(genRec.tx - player.x, genRec.ty - player.y) < 1.9) return startCrank();
   if (ritual && player.floor === ritual.floor && ritualInteract()) return;
-  if (t === TILE.EXIT) return tryExit();
   const obj = objectiveHere();
   // docId'd truths complete by READING their page, not by standing in the room
   if (obj && ((obj.type === 'document' && !obj.docId) || obj.type === 'bell')) return completeObjective(obj);
@@ -4395,6 +4672,7 @@ function pickupItem(it) {
 }
 function keyLabel(id) {
   return ({ key_mose: 'Room 3-East', key_incinerator: 'the Incinerator', key_roof: 'Roof Access',
+    key_sanctum: 'the Sanctum',
     key_stairs0: 'the Basement Stairwell', key_stairs2: 'the 2nd-Floor Stairwell',
     key_stairs3: 'the Surgical Wing (3rd floor)', key_stairs4: 'the Attic Stair (4th floor)' })[id] || id;
 }
@@ -4531,7 +4809,7 @@ function changeFloor(dir) {
   comfortBlink(1);   // black-blink the stair transition
   buildFloor(nf);
   const landX = Math.max(4, Math.min(World.W - 5, Math.round(player.x)));
-  placeDollyAtTile(landX + 0.5, 15.5);
+  placeDollyAtNearestSafe(landX + 0.5, 15.5);
   player.hidden = false;
   // the surge chase follows you through stairwells — unless you bolt the door
   if (powerChase && chasers.length) {
@@ -4616,22 +4894,93 @@ function playLore(key, done) {
   step();
 }
 
-// ---- unlock locked doors you stand next to with the key ----
-function tryUnlockAhead() {
-  const g = data.floors[player.floor].grid;
-  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
-    const xx = Math.floor(player.x) + i, yy = Math.floor(player.y) + j;
-    if (g[yy] && g[yy][xx] === TILE.LOCKED) {
-      const room = data.floors[player.floor].rooms.find((r) => r.doorX === xx && r.doorY === yy);
-      const keyId = room && KEY_FOR[room.tag];
-      if (keyId && player.keys[keyId]) {
-        g[yy][xx] = TILE.DOOR; Audio2.creak();
-        const dm = doorMeshes.get(xx + ',' + yy);
-        if (dm) { dm.m.material.color.setHex(0x9a8a76); dm.m.material.emissive.setHex(0x000000); dm.g.rotation.y = dm.open; }   // swing it open
-        showSubtitle('The lock gives. ' + (room ? room.name : '') + ' opens.', 2.5);
-      }
+function nearestDoorForInteraction() {
+  let nearest = null, nearestD = 1.25;
+  camera.getWorldDirection(tmpV2);
+  doorMeshes.forEach((door) => {
+    const dx = door.x + 0.5 - player.x, dy = door.y + 0.5 - player.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= 0 || d >= nearestD) return;
+    const facing = (tmpV2.x * dx + tmpV2.z * dy) / d;
+    if (d < 0.58 || facing > 0.12) { nearestD = d; nearest = door; }
+  });
+  return nearest ? { door: nearest, distance: nearestD } : null;
+}
+
+// ---- interact with the nearest faced room door: unlock, open, or close ----
+function interactDoorNearby() {
+  const hit = nearestDoorForInteraction();
+  if (!hit) return false;
+  const nearest = hit.door, nearestD = hit.distance;
+
+  const room = data.floors[player.floor].rooms.find((r) => r.doorX === nearest.x && r.doorY === nearest.y);
+  if (nearest.locked) {
+    const keyId = room && KEY_FOR[room.tag];
+    if (!keyId || !player.keys[keyId]) {
+      Audio2.rattle();
+      showSubtitle(keyId ? 'Locked — you need the key to ' + keyLabel(keyId) + '.' : 'The lock has no keyhole on this side.', 2.6);
+      return true;
     }
+    data.floors[player.floor].grid[nearest.y][nearest.x] = TILE.DOOR;
+    if (room) room.locked = false;
+    nearest.locked = false; nearest.closed = false; nearest.blocked = true; nearest.targetYaw = nearest.openYaw;
+    doorStates.set(nearest.stateKey, false);
+    unlockedDoors.add(nearest.stateKey);
+    nearest.m.material.color.setHex(0x9a8a76);
+    nearest.m.material.emissive.setHex(0x000000);
+    ents.forEach((e) => { e.path = null; e.pathTimer = 0; });
+    Audio2.creak();
+    showSubtitle('The lock gives. ' + (room ? room.name : 'The door') + ' opens.', 2.5);
+    saveState();
+    return true;
   }
+
+  const doorDx = Math.abs(nearest.x + 0.5 - player.x);
+  const doorDy = Math.abs(nearest.y + 0.5 - player.y);
+  if (!nearest.closed && doorDx < 0.76 && doorDy < 0.76) {
+    showSubtitle('Step clear of the doorway before closing it.', 1.8);
+    return true;
+  }
+  nearest.closed = !nearest.closed;
+  nearest.targetYaw = nearest.closed ? 0 : nearest.openYaw;
+  if (nearest.closed) nearest.blocked = true;
+  doorStates.set(nearest.stateKey, nearest.closed);
+  ents.forEach((e) => { e.path = null; e.pathTimer = 0; });
+  Audio2.creak();
+  showSubtitle(nearest.closed ? 'The door closes.' : 'The door opens.', 1.4);
+  return true;
+}
+
+function updateDoors(dt) {
+  const blend = Math.min(1, dt * 7);
+  doorMeshes.forEach((door) => {
+    door.g.rotation.y += (door.targetYaw - door.g.rotation.y) * blend;
+    // A door becomes passable only after the leaf has visibly cleared most of
+    // the opening. Closing reserves collision immediately so nobody can enter
+    // the swing while it is moving.
+    if (!door.closed && Math.abs(door.g.rotation.y) > 0.68) door.blocked = false;
+    // A closed leaf SLOWS the dead; it does not stop them. Anything mid-hunt
+    // pressed against the wood shoulders through after a moment — only locks
+    // and the basement bolt truly hold. (Also keeps the Surge honest.)
+    if (door.closed && !door.locked && ents && state === 'PLAY') {
+      let press = false;
+      for (const e of ents) {
+        if (e.floor !== player.floor || e.state !== Entities.S.HUNT) continue;
+        if (Math.hypot(e.x - (door.x + 0.5), e.y - (door.y + 0.5)) < 1.5) { press = true; break; }
+      }
+      if (press) {
+        door.burstT = (door.burstT || 0) + dt;
+        if (door.burstT > 1.5) {
+          door.burstT = 0; door.closed = false; door.targetYaw = door.openYaw;
+          doorStates.set(door.stateKey, false);
+          ents.forEach((e) => { e.path = null; e.pathTimer = 0; });
+          Audio2.slam(); Audio2.thud(0.6); haptic(0.5, 120);
+          player.fear = Math.min(100, player.fear + 5);
+          showSubtitle('The door BURSTS open.', 2.2);
+        }
+      } else door.burstT = 0;
+    }
+  });
 }
 
 // ============================================================ main loop
@@ -4944,6 +5293,7 @@ function update(dt) {
     }
   }
 
+  enforceTrackedCollision();
   if (isVR) vrLocomotion(dt);
   else desktopUpdate(dt);
   // jump arc + crouch height + a stumble dip, applied to the rig as one vertical offset
@@ -4951,7 +5301,7 @@ function update(dt) {
   crouchLerp += ((crouched ? -0.72 : 0) - crouchLerp) * Math.min(1, dt * 8);
   updateTrip(dt);
   dolly.position.y = jumpY + crouchLerp + tripY;
-  playerTileFromCamera();
+  enforceTrackedCollision();
   // hidden = anchored: logical position stays pinned to the hide spot no matter
   // what the headset (or a stuck stick) does
   if (player.hidden && hideSpot) { player.x = hideSpot.x; player.y = hideSpot.y; }
@@ -4979,7 +5329,7 @@ function update(dt) {
   // flashlight points along its local -Z as a spotlight toward target; approximate with parent forward
   player.aim = Math.atan2(tmpV.z, tmpV.x); // world X/Z -> tile x/y angle
 
-  tryUnlockAhead();
+  updateDoors(dt);
 
   // noise
   let noise = 0;
@@ -5448,16 +5798,26 @@ function glassBurst(wx, wz) {
   });
 }
 
-// ---- anchored hiding: enter at a hide tile, leave with Interact — never by walking ----
+// ---- anchored hiding: interact beside a solid locker; emerge where you entered ----
 let hideSpot = null;
-function enterHide() {
-  hideSpot = { floor: player.floor, x: Math.floor(player.x) + 0.5, y: Math.floor(player.y) + 0.5 };
+function nearestHideForInteraction() {
+  let best = null, bestD = 1.35;
+  for (const tile of hideTiles) {
+    const d = Math.hypot(tile.x - player.x, tile.y - player.y);
+    if (d < bestD) { best = tile; bestD = d; }
+  }
+  return best;
+}
+function enterHide(target) {
+  hideSpot = { floor: player.floor, x: target.x, y: target.y, exitX: player.x, exitY: player.y };
   player.hidden = true; player.moving = false; crouched = false;
   placeDollyAtTile(hideSpot.x, hideSpot.y);
   showSubtitle('You press into the dark and go still…  (interact again to come out)', 2.5);
 }
 function leaveHide() {
+  const old = hideSpot;
   player.hidden = false; hideSpot = null;
+  if (old) placeDollyAtNearestSafe(old.exitX, old.exitY);
   showSubtitle('You come out.', 2);
 }
 function isPlayerLit() {
@@ -5613,10 +5973,22 @@ function findInteract() {
     return t === TILE.UP ? 'Trigger — climb the stairs up' : 'Trigger — descend the stairs';
   }
   if (player.hidden) return 'Trigger — leave hiding';
-  if (t === TILE.HIDE) return 'Trigger — hide here';
+  if (nearestHideForInteraction()) return 'Trigger — hide here';
+  if (exitRec && Math.hypot(exitRec.x - player.x, exitRec.y - player.y) < 1.35) return 'Trigger — the chained front doors';
+  const doorHit = nearestDoorForInteraction();
+  if (doorHit) {
+    const door = doorHit.door;
+    const room = data.floors[player.floor].rooms.find((r) => r.doorX === door.x && r.doorY === door.y);
+    if (door.locked) {
+      const keyId = room && KEY_FOR[room.tag];
+      return keyId && player.keys[keyId]
+        ? 'Trigger — unlock ' + (room ? room.name : 'the door')
+        : 'Locked — needs ' + (keyId ? keyLabel(keyId) : 'a key');
+    }
+    return door.closed ? 'Trigger — open the door' : 'Trigger — close the door';
+  }
   if (player.floor === 0 && genRec && !powerOn && Math.hypot(genRec.tx - player.x, genRec.ty - player.y) < 1.9)
     return crankT > 0 ? 'KEEP STILL — the flywheel is turning' : 'Trigger — crank the generator (it will be LOUD)';
-  if (t === TILE.EXIT) return 'Trigger — the chained front doors';
   const it = data.items.find((i) => !i.taken && i.floor === player.floor && Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return 'Trigger — take the ' + itemDisplay(it);
   const doc = documents.find((d) => !d.found && d.floor === player.floor && Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);

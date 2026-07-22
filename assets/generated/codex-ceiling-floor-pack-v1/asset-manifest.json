@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "packId": "codex-ceiling-floor-pack-v1",
+  "created": "2026-07-21",
+  "status": "draft-runtime-integration",
+  "runtimeIntegrated": true,
+  "generator": {
+    "tool": "OpenAI built-in image generation",
+    "mode": "stylized-concept",
+    "externalReferenceImagesUsed": [],
+    "carriedGeneratedInputs": [
+      "linoleum-albedo-v1",
+      "light-cookies-v1"
+    ],
+    "promptFile": "PROMPTS.md",
+    "provenanceFile": "PROVENANCE.md"
+  },
+  "rights": {
+    "aiGenerated": true,
+    "status": "owner-review-required",
+    "commercialClearance": "not-determined",
+    "externalRasterReferences": []
+  },
+  "reproducibility": {
+    "bitReproducible": false,
+    "reason": "The image generator exposed no stable seed; deterministic local processing is documented and included."
+  },
+  "budget": {
+    "derivativeImageCount": 16,
+    "derivativeImageBytes": 6184322
+  },
+  "sources": {
+    "ceiling-calcimine-v1": {
+      "file": "exec-886f5c4f-95a3-4ec8-9d82-5b8e5c8b7060.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2409614,
+      "sha256": "cfe1bca41a22f0c056b88bd710c56bf78ca559591a0b67a8dfd4fdde3b16bc38"
+    },
+    "floor-basement-concrete-v1": {
+      "file": "exec-50fd43f0-c43f-4875-b221-2d5310b15281.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2996001,
+      "sha256": "fd12c0c913e0657ab1fcc5c896fafc900baf3e842912d9fa88a3a2453fc26d57"
+    },
+    "ceiling-basement-concrete-v1": {
+      "file": "exec-3b898582-06c7-4a45-874a-71532c50a653.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 3240271,
+      "sha256": "66c3cb9edec9e777d5530ffd7a4ae329b698b67d10880a07cacc22e6004543f4"
+    },
+    "floor-terrazzo-v1": {
+      "file": "exec-f79927bc-9d4e-4d7c-8df7-d458a538ee29.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 3340267,
+      "sha256": "2bcd69d2d34333d44e912c1aefd7eefc86b56ef0fb78cd8a40d846e1649658e1"
+    },
+    "ceiling-fiberboard-v1": {
+      "file": "exec-92b6e53d-688c-4875-b1c4-6549a51cc4fa.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2813657,
+      "sha256": "09aeaa0d1d692d1439f6d25c4e2ee2578016a32c0feae75a2b46a5a888128197"
+    },
+    "ground-appalachian-v1": {
+      "file": "exec-82970cea-1cac-44d5-b576-3144de5eb1bd.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 3393992,
+      "sha256": "622e093926212cb0706196f0c7b0d0186e339e1f127321559b60bf881b0816b9"
+    },
+    "floor-dark-oak-v1": {
+      "file": "exec-afb88b8a-09d2-4109-a256-f89e11f1783a.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2394176,
+      "sha256": "112a8f3a03cc3f9300981394deb85f49e358eb8799d7fc10e702d5abbd81001e"
+    },
+    "linoleum-albedo-v1": {
+      "file": "exec-03d7cd05-fc04-4597-8e33-f75c4478c79b.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 3166966,
+      "sha256": "26c8d5f3e8437b423b84c0eafb530699c0c1534bc892a606eedd91b1d5e52b16"
+    },
+    "light-cookies-v1": {
+      "file": "exec-e4587f4e-7312-4d22-a413-dded270011ac.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1378831,
+      "sha256": "f63689ae16b9bc9e9f4469c21032c0b2e4615e021bad4e84af7bdc3fed3c0a4b"
+    }
+  },
+  "assets": [
+    {
+      "path": "ceilings/aged-calcimine-plaster-albedo.jpg",
+      "role": "ceiling-color",
+      "sourceId": "ceiling-calcimine-v1",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 313070,
+      "sha256": "93e86dca396167665fd751f63f226a911b6d8733dc361684239b066fb098a720",
+      "edgeMadRgb": { "leftRight": 1.180, "topBottom": 1.179 }
+    },
+    {
+      "path": "ceilings/aged-calcimine-plaster-normal.png",
+      "role": "ceiling-normal",
+      "derivedFrom": "ceilings/aged-calcimine-plaster-albedo.jpg",
+      "normalStrength": 0.55,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 275023,
+      "sha256": "f0a30816c0a57ff0ccc660e07e4b65c672d761eb4c8b846d3d3527a36a17ca87"
+    },
+    {
+      "path": "ceilings/basement-painted-concrete-albedo.jpg",
+      "role": "ceiling-color",
+      "sourceId": "ceiling-basement-concrete-v1",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 501672,
+      "sha256": "156983c6e84c0533d66fe1e99f93958cfb9c2e9d4ba8d736963f978de2f71acf",
+      "edgeMadRgb": { "leftRight": 1.572, "topBottom": 1.572 }
+    },
+    {
+      "path": "ceilings/basement-painted-concrete-normal.png",
+      "role": "ceiling-normal",
+      "derivedFrom": "ceilings/basement-painted-concrete-albedo.jpg",
+      "normalStrength": 0.55,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 370785,
+      "sha256": "0c86b35bf645edc9b33a18d9a6f54cfc39213821795554d5464f8a9cc71a992a"
+    },
+    {
+      "path": "ceilings/midcentury-fiberboard-panels-albedo.jpg",
+      "role": "ceiling-color",
+      "sourceId": "ceiling-fiberboard-v1",
+      "transformation": "six-panel period resized to 768px, seam blended, repeated to exact 8x8 grid",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 444059,
+      "sha256": "88be661dcfa6725d71d28f21f734067a4d1f54a1a78c3eab2e5c8e0c71c8127e",
+      "edgeMadRgb": { "leftRight": 33.436, "topBottom": 35.540 },
+      "edgeMetricNote": "Contrast is expected where a regular panel seam lands at the image boundary; inspect the 4x repeat preview."
+    },
+    {
+      "path": "ceilings/midcentury-fiberboard-panels-normal.png",
+      "role": "ceiling-normal",
+      "derivedFrom": "ceilings/midcentury-fiberboard-panels-albedo.jpg",
+      "normalStrength": 0.22,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 206189,
+      "sha256": "f8799167abcf389b364e35a48c587e1d6c8aa59e1b30ffaea78d35d9413f29d7"
+    },
+    {
+      "path": "floors/basement-sealed-concrete-albedo.jpg",
+      "role": "floor-color",
+      "sourceId": "floor-basement-concrete-v1",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 443258,
+      "sha256": "5e17fa0d642d333aa4bf009edfc5f08bce84f65ba13015db02403b0d5dccc3f2",
+      "edgeMadRgb": { "leftRight": 1.466, "topBottom": 1.439 }
+    },
+    {
+      "path": "floors/basement-sealed-concrete-normal.png",
+      "role": "floor-normal",
+      "derivedFrom": "floors/basement-sealed-concrete-albedo.jpg",
+      "normalStrength": 0.65,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 363039,
+      "sha256": "75e1d2f9297eb5fba4a5fbf5c923c11614b3fcd928b97a1a3586f53028935c27"
+    },
+    {
+      "path": "floors/checker-hospital-linoleum-normal.png",
+      "role": "floor-normal",
+      "derivedFromRepositoryAsset": "../surface-kit-v1/checker-hospital-linoleum-albedo.jpg",
+      "sourceId": "linoleum-albedo-v1",
+      "normalStrength": 0.16,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 230753,
+      "sha256": "fc40536ca7c9766a71b7dfa29cfe9cfeca160a2e065bbb7b1ee63bf07e71d3ed"
+    },
+    {
+      "path": "floors/ground-floor-terrazzo-albedo.jpg",
+      "role": "floor-color",
+      "sourceId": "floor-terrazzo-v1",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 612445,
+      "sha256": "d0b4cc6ccd293f07aa0359045652284e33627a54147d284c9d271bc316024e0b",
+      "edgeMadRgb": { "leftRight": 1.868, "topBottom": 1.888 }
+    },
+    {
+      "path": "floors/ground-floor-terrazzo-normal.png",
+      "role": "floor-normal",
+      "derivedFrom": "floors/ground-floor-terrazzo-albedo.jpg",
+      "normalStrength": 0.55,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 519463,
+      "sha256": "b9359a99b48830ef6818975424b8962408ec558987b593bb8a5732265c77f6e2"
+    },
+    {
+      "path": "floors/upper-floor-dark-oak-albedo.jpg",
+      "role": "floor-color",
+      "sourceId": "floor-dark-oak-v1",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 349482,
+      "sha256": "e712a6239c606222ab594c88e9a9895fb8ae0fb4df1f8037b960644cbef3efa3",
+      "edgeMadRgb": { "leftRight": 1.204, "topBottom": 1.512 }
+    },
+    {
+      "path": "floors/upper-floor-dark-oak-normal.png",
+      "role": "floor-normal",
+      "derivedFrom": "floors/upper-floor-dark-oak-albedo.jpg",
+      "normalStrength": 0.32,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 215573,
+      "sha256": "009d9b60aadd66422270b0ae830958cdfe3d38351a9d263ac53972260ad25f2a"
+    },
+    {
+      "path": "ground/appalachian-wet-leaf-clay-albedo.jpg",
+      "role": "ground-color",
+      "sourceId": "ground-appalachian-v1",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "colorSpace": "sRGB",
+      "bytes": 599467,
+      "sha256": "7cdf264a0d42b367c91ec19d4ae8a37bfbb1e138a9ca6ebac6770ec1b9eef715",
+      "edgeMadRgb": { "leftRight": 1.826, "topBottom": 1.807 }
+    },
+    {
+      "path": "ground/appalachian-wet-leaf-clay-normal.png",
+      "role": "ground-normal",
+      "derivedFrom": "ground/appalachian-wet-leaf-clay-albedo.jpg",
+      "normalStrength": 0.48,
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 449560,
+      "sha256": "7fea0257783f2dda7fc6db3d56d8da0a5f3daf0cfb1f8a3e1d5892122254d12f"
+    },
+    {
+      "path": "lighting/broken-fluorescent-floor-cookie.png",
+      "role": "projected-light-cookie",
+      "sourceId": "light-cookies-v1",
+      "transformation": "top-left source-atlas quadrant cropped and resized to 512x512",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "colorSpace": "linear",
+      "bytes": 290484,
+      "sha256": "00ca68753870484802aafc4d7e5175428d9ec7f2c20ae453b62d17022677b342"
+    }
+  ]
+}

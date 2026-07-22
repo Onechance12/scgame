@@ -11,7 +11,11 @@
 
 const Entities = (() => {
   const S = { DORMANT: 0, PATROL: 1, HUNT: 2, SEARCH: 3, VANISH: 4 };
-  const PASS = { 1: 1, 3: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1 };  // passable tile types
+  // HIDE tiles contain solid lockers in the runtime; the player uses them from
+  // beside the mesh, so hunters must route around them instead of clipping in.
+  const PASS = { 1: 1, 3: 1, 5: 1, 6: 1, 8: 1, 9: 1 };  // passable tile types
+  const runtimeDoorBlocked = (grid, x, y) => typeof window !== 'undefined' &&
+    typeof window.RuntimeDoorBlocked === 'function' && window.RuntimeDoorBlocked(grid, x, y);
 
   // ---- tile BFS: shortest walkable path of tile-centres (excludes start) ----
   function findPath(grid, sx, sy, tx, ty) {
@@ -31,7 +35,7 @@ const Entities = (() => {
       for (let i = 0; i < 4; i++) {
         const nx = cx + dirs[i][0], ny = cy + dirs[i][1], key = nx + ',' + ny;
         if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1 || seen.has(key)) continue;
-        if (!PASS[grid[ny][nx]]) continue;
+        if (!PASS[grid[ny][nx]] || runtimeDoorBlocked(grid, nx, ny)) continue;
         seen.add(key); from.set(key, cx + ',' + cy); q.push([nx, ny]);
       }
     }
@@ -56,7 +60,7 @@ const Entities = (() => {
 
     passable(grid, x, y) {
       if (x < 0 || y < 0 || x >= World.W || y >= World.H) return false;
-      return !!PASS[grid[Math.floor(y)][Math.floor(x)]];
+      return !!PASS[grid[Math.floor(y)][Math.floor(x)]] && !runtimeDoorBlocked(grid, x, y);
     }
 
     pickDenWaypoint(world) {
@@ -218,7 +222,7 @@ const Entities = (() => {
     while (guard++ < 220) {
       if (x === tx && y === ty) return true;
       const t = grid[y] && grid[y][x];
-      if (t === 2 || t === 0 || t === 4) return false;
+      if (t === 2 || t === 0 || t === 4 || t === 7 || runtimeDoorBlocked(grid, x, y)) return false;
       const e2 = 2 * err;
       if (e2 > -dy) { err -= dy; x += sx; }
       if (e2 < dx) { err += dx; y += sy; }

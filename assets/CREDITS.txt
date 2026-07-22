@@ -264,6 +264,15 @@ GENERATED VISUAL PACK (Codex)
   8x8 fire flipbook (altar), hospital-green + floral wall albedos, wayfinding
   signs + facade sign.
 
+  assets/generated/codex-ceiling-floor-pack-v1/ — original surface textures
+  generated for this game (packaged by Codex). Per-level corridor floors
+  (terrazzo, checker linoleum normal, dark oak, sealed concrete), ceilings
+  (calcimine plaster, fiberboard panels, painted concrete), Appalachian
+  wet-leaf hillside ground, broken-fluorescent light cookie. Full prompts,
+  hashes and provenance: PROMPTS.md / PROVENANCE.md / asset-manifest.json in
+  that directory. Commercial clearance remains an owner decision (see
+  PROVENANCE.md).
+
 VENDORED LIBRARIES
 ------------------
   js/vendor/peerjs.min.js — PeerJS 1.5.4 (https://peerjs.com), MIT License.

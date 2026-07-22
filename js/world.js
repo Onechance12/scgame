@@ -62,8 +62,13 @@ const World = (() => {
       g[CORR_TOP - 1][x] = TILE.WALL;
       g[CORR_BOT + 1][x] = TILE.WALL;
     }
-    g[CORR_TOP][1] = TILE.WALL; g[CORR_BOT][1] = TILE.WALL;
-    g[CORR_TOP][W - 2] = TILE.WALL; g[CORR_BOT][W - 2] = TILE.WALL;
+    // Cap the full corridor height. Capping only the two corner rows left the
+    // middle rows open to VOID: collision stopped the player, but no wall face
+    // was rendered there, so each end looked like a black walk-through gap.
+    for (let y = CORR_TOP; y <= CORR_BOT; y++) {
+      g[y][1] = TILE.WALL;
+      g[y][W - 2] = TILE.WALL;
+    }
 
     const rooms = [];
     const topUnits = spec.rooms.filter((r) => r.side === 'top').reduce((a, r) => a + (r.units || 1), 0);
@@ -90,9 +95,11 @@ const World = (() => {
       const doorX = x + Math.floor(w / 2);
       const doorY = top ? y + h - 1 : y;
       g[doorY][doorX] = r.locked ? TILE.LOCKED : TILE.DOOR;
-      // connect the door tile to the corridor floor with a stub
-      if (top) { g[doorY + 1] = g[doorY + 1] || g[doorY + 1]; g[CORR_TOP - 1][doorX] = TILE.DOOR; }
-      else { g[CORR_BOT + 1][doorX] = TILE.DOOR; }
+      // Connect the room leaf to the corridor with a plain floor threshold.
+      // Marking this connector as another DOOR created two stacked leaves for
+      // every room and made the visual swing disagree with collision.
+      if (top) g[CORR_TOP - 1][doorX] = TILE.FLOOR;
+      else g[CORR_BOT + 1][doorX] = TILE.FLOOR;
 
       rooms.push({
         name: r.name, tag: r.tag || r.name, locked: !!r.locked,
@@ -545,7 +552,7 @@ const World = (() => {
     // Exit doors are the front lobby of floor 1.
     (() => {
       const r = findRoom(1, 'lobby');
-      if (r) floors[1].grid[r.y + 1][r.cx] = TILE.EXIT;
+      if (r) floors[1].grid[r.y][r.cx] = TILE.EXIT; // replace the facade wall cell, not a walk-through interior tile
     })();
 
     return { floors, items, objectives, documents, ritual, rite: RITE, LORE, TILE, W, H, CORR_TOP, CORR_BOT };
