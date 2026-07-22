@@ -4352,25 +4352,30 @@ function dressChild(model) {
   }
   const head = model.getObjectByName('Head');
   if (head && !head.getObjectByName('childHair')) {
+    // measured from the GLB: in Head-bone space the skull + hair cap reach
+    // radius ~0.22 and the face front sits near z 0.12, centred on x -0.02.
+    // Strands must START OUTSIDE that shell or they slice through the face.
     const hairMat = new THREE.MeshStandardMaterial({ color: 0x121010, roughness: 1 });
     const hair = new THREE.Group(); hair.name = 'childHair';
+    hair.position.set(-0.02, 0, 0);   // recentre on the actual skull
     let s2 = 977; const r2 = () => { s2 = (s2 * 1103515245 + 12345) & 0x7fffffff; return s2 / 0x7fffffff; };
     const strandGeo = (rad, len) => { const g = new THREE.ConeGeometry(rad, len, 5); g.rotateX(Math.PI); return g; };
-    for (let i = 0; i < 16; i++) {   // a ragged curtain all round the scalp
-      const a = (i / 16) * Math.PI * 2 + (r2() - 0.5) * 0.4;
-      const len = 0.24 + r2() * 0.2;
-      const strand = new THREE.Mesh(strandGeo(0.015 + r2() * 0.012, len), hairMat);
-      const rad = 0.1 + r2() * 0.03;
-      strand.position.set(Math.cos(a) * rad, 0.05 - len / 2 + r2() * 0.04, Math.sin(a) * rad);
-      strand.rotation.x = (r2() - 0.5) * 0.4;
-      strand.rotation.z = (r2() - 0.5) * 0.4;
+    for (let i = 0; i < 20; i++) {   // a ragged curtain hanging OUTSIDE the scalp
+      const a = (i / 20) * Math.PI * 2 + (r2() - 0.5) * 0.3;
+      const len = 0.3 + r2() * 0.2;
+      const strand = new THREE.Mesh(strandGeo(0.013 + r2() * 0.008, len), hairMat);
+      const rad = 0.19 + r2() * 0.025;
+      strand.position.set(Math.cos(a) * rad, 0.1 - len / 2 + r2() * 0.03, Math.sin(a) * rad);
+      // dead vertical, the way wet hair hangs — only the faintest jitter
+      strand.rotation.x = (r2() - 0.5) * 0.08;
+      strand.rotation.z = (r2() - 0.5) * 0.08;
       hair.add(strand);
     }
-    for (let i = 0; i < 6; i++) {    // and lank strands fallen over the face
-      const len = 0.26 + r2() * 0.14;
-      const strand = new THREE.Mesh(strandGeo(0.013, len), hairMat);
-      strand.position.set((r2() - 0.5) * 0.16, 0.06 - len / 2, 0.09 + r2() * 0.03);
-      strand.rotation.x = 0.22 + (r2() - 0.5) * 0.25;
+    for (let i = 0; i < 5; i++) {    // lank strands hanging just clear of the face
+      const len = 0.26 + r2() * 0.12;
+      const strand = new THREE.Mesh(strandGeo(0.012, len), hairMat);
+      strand.position.set((r2() - 0.5) * 0.18, 0.05 - len / 2, 0.15 + r2() * 0.025);
+      strand.rotation.x = 0.1 + (r2() - 0.5) * 0.12;
       hair.add(strand);
     }
     head.add(hair);
