@@ -127,7 +127,7 @@ let doorStates = new Map();     // visit-stable closed/open state: "floor:x,y" -
 let unlockedDoors = new Set();  // locks the player has opened: "floor:x,y" (persisted)
 let doorFloorIndices = new WeakMap(); // grid identity -> floor index (hot AI-path lookup)
 let safePlayer = { floor: -1, x: 0, y: 0 }; // last collision-valid tracked-head position
-let hideTiles = [], exitRec = null;
+let hideTiles = [], exitRec = null, fakeDoors = [];
 // entities.js updates every hunter, including those on floors that are not
 // currently rendered. Current-floor collision follows the animated leaf;
 // streamed-out floors follow their visit-stable door state (and locked tiles).
@@ -2151,6 +2151,37 @@ function fireSignTex() {
   if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
   return (fireSignTex.t = t);
 }
+// dead doors: the corridor's locked closets, vacant wards, offices nobody
+// reopened. Pure dressing — solid wall behind every one — but they rattle.
+const FAKE_LABELS = ['JANITOR', 'STORES', 'PRIVATE', 'OFFICE', 'LINEN', 'WARD CLERK', 'ELECTRICAL', 'NO ADMITTANCE', 'STAFF ONLY', 'VACANT'];
+const FAKE_DOOR_LINES = [
+  'Locked. Rust has sealed it shut.',
+  'Locked — the dust on the knob is forty years thick.',
+  'It won’t give. Behind it, something goes very quiet.',
+  'Locked. The janitor kept his secrets.',
+  'Bolted from the other side.',
+];
+function fakeSignTex(label) {
+  fakeSignTex.c = fakeSignTex.c || {};
+  if (fakeSignTex.c[label]) return fakeSignTex.c[label];
+  const c = document.createElement('canvas'); c.width = 160; c.height = 48;
+  const x = c.getContext('2d');
+  x.fillStyle = '#20242a'; x.fillRect(0, 0, 160, 48);
+  x.strokeStyle = '#6a6f75'; x.lineWidth = 3; x.strokeRect(3, 3, 154, 42);
+  x.fillStyle = '#c9cdd2'; x.font = 'bold 17px Georgia'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(label, 80, 26);
+  const t = new THREE.CanvasTexture(c);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+  return (fakeSignTex.c[label] = t);
+}
+function fakeSignMat(label) {
+  fakeSignMat.c = fakeSignMat.c || {};
+  if (!fakeSignMat.c[label]) {
+    fakeSignMat.c[label] = new THREE.MeshStandardMaterial({ map: fakeSignTex(label), roughness: .8 });
+    if (TEX.sharedMaterials) TEX.sharedMaterials.add(fakeSignMat.c[label]);
+  }
+  return fakeSignMat.c[label];
+}
 let DRESS_MATS = null;
 function dressMats() {
   if (DRESS_MATS) return DRESS_MATS;
@@ -2163,6 +2194,8 @@ function dressMats() {
     steel: new THREE.MeshStandardMaterial({ color: 0x777d80, roughness: .5, metalness: .5 }),
     red: new THREE.MeshStandardMaterial({ color: 0x8e1f14, roughness: .45, metalness: .25 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x1c1a17, roughness: .8 }),
+    deadDoor: new THREE.MeshStandardMaterial({ map: TEX.doorD, color: 0x71624e, roughness: .9 }),
+    plank: new THREE.MeshStandardMaterial({ color: 0x4a3c2a, roughness: 1 }),
   };
   // survive floor rebuilds like every other shared material
   if (TEX.sharedMaterials) Object.values(DRESS_MATS).forEach((m) => TEX.sharedMaterials.add(m));
@@ -2197,17 +2230,49 @@ function dressWalls(fi, g) {
     const paper = plane(0.24, 0.33, M.chart);
     mount(paper, (r.doorX + 0.5) * TILE_M + side * 1.05, 1.37, row.z + row.face * 0.004, row.face);
   });
+  // dead doors first — they claim wall tiles, dressing flows around them.
+  // A hospital corridor is DOORS: vacant wards, closets, offices, all locked.
+  const usedTiles = new Set();
+  rows.forEach((row, ri) => {
+    let run = 0;
+    for (let x = 3; x < World.W - 3; x++) {
+      if (!wallAt(x, row.y) || !wallAt(x - 1, row.y) || !wallAt(x + 1, row.y)) { run = 0; continue; }
+      run++;
+      if (run < 2 || rnd() > 0.4) continue;
+      run = 0;
+      usedTiles.add(row.y + ':' + x);
+      const wx = (x + 0.5 + (rnd() - 0.5) * 0.3) * TILE_M;
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.04, 2.08, 0.055), M.deadDoor);
+      mount(leaf, wx, 1.04, row.z + row.face * 0.012, row.face);
+      const jambL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.22, 0.07), M.frame);
+      mount(jambL, wx - 0.6, 1.11, row.z + row.face * 0.012, row.face);
+      const jambR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.22, 0.07), M.frame);
+      mount(jambR, wx + 0.6, 1.11, row.z + row.face * 0.012, row.face);
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.1, 0.07), M.frame);
+      mount(lintel, wx, 2.26, row.z + row.face * 0.012, row.face);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), M.steel);
+      mount(knob, wx + 0.4, 1.02, row.z + row.face * 0.075, row.face);
+      const r1 = rnd(), r2 = rnd();
+      if (r1 < 0.62) mount(plane(0.44, 0.135, fakeSignMat(FAKE_LABELS[(fi * 3 + x) % FAKE_LABELS.length])), wx, 1.86, row.z + row.face * 0.045, row.face);
+      if (r2 < 0.22) for (let p = 0; p < 3; p++) {   // boarded shut
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.13, 0.03), M.plank);
+        mount(plank, wx + (rnd() - 0.5) * 0.1, 0.7 + p * 0.55 + (rnd() - 0.5) * 0.1, row.z + row.face * 0.055, row.face);
+        plank.rotation.z = (rnd() - 0.5) * 0.24;
+      }
+      fakeDoors.push({ tx: wx / TILE_M, ty: row.y + 0.5 + row.face, line: (fi + x) % FAKE_DOOR_LINES.length });
+    }
+  });
   // evacuation cards, extinguishers, notice boards — walked down the corridor
-  let nextEvac = 4 + rnd() * 4, nextExt = 9 + rnd() * 5, nextBoard = 12 + rnd() * 8;
+  let nextEvac = 4 + rnd() * 3, nextExt = 8 + rnd() * 4, nextBoard = 11 + rnd() * 6;
   for (let x = 3; x < World.W - 3; x++) {
     const row = rows[(x + fi) % 2];
-    if (!wallAt(x, row.y)) continue;
+    if (!wallAt(x, row.y) || usedTiles.has(row.y + ':' + x)) continue;
     const wx = (x + 0.5) * TILE_M;
     if (x >= nextEvac) {
-      nextEvac = x + 7 + rnd() * 5;
+      nextEvac = x + 5 + rnd() * 3;
       mount(plane(0.25, 0.34, M.evac), wx + (rnd() - 0.5) * 0.8, 1.52, row.z, row.face);
     } else if (x >= nextExt) {
-      nextExt = x + 12 + rnd() * 6;
+      nextExt = x + 9 + rnd() * 4;
       // wall bracket, the bottle, the stencilled sign above it
       const body = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.42, 10), M.red);
       mount(body, wx, 1.06, row.z + row.face * 0.078, row.face);
@@ -2217,7 +2282,7 @@ function dressWalls(fi, g) {
       mount(bracket, wx, 1.06, row.z, row.face);
       mount(plane(0.11, 0.26, M.fire), wx, 1.72, row.z, row.face);
     } else if (x >= nextBoard) {
-      nextBoard = x + 18 + rnd() * 9;
+      nextBoard = x + 13 + rnd() * 6;
       const backing = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.7, 0.025), M.frame);
       mount(backing, wx, 1.62, row.z, row.face);
       mount(plane(0.94, 0.6, M.board), wx, 1.62, row.z + row.face * 0.016, row.face);
@@ -2265,7 +2330,7 @@ function buildWallGeometry(g, y0, y1) {
 function buildFloor(fi) {
   disposeGroup(floorGroup);
   doorMeshes.clear(); itemMeshes.clear(); docMeshes.clear(); candleLights = [];
-  hideTiles = []; exitRec = null;
+  hideTiles = []; exitRec = null; fakeDoors = [];
   moodLights = []; carter = null; fallingDebris = []; debrisKept = []; sceneAnims = [];
   entityMeshes.forEach((v) => v.group && scene.remove(v.group));
   entityMeshes.clear();
@@ -4856,6 +4921,9 @@ function interact() {
   const doc = documents.find((d) => !d.found && d.floor === player.floor &&
     Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);
   if (doc) return readDocument(doc);
+  // the corridor's dead doors: they only ever rattle
+  const fd = fakeDoors.find((d) => Math.hypot(d.tx - player.x, d.ty - player.y) < 1.2);
+  if (fd) { Audio2.rattle(); haptic(0.3, 60); showSubtitle(FAKE_DOOR_LINES[fd.line], 2.6); return; }
   if (player.floor === 0 && genRec && !powerOn && Math.hypot(genRec.tx - player.x, genRec.ty - player.y) < 1.9) return startCrank();
   if (ritual && player.floor === ritual.floor && ritualInteract()) return;
   const obj = objectiveHere();
@@ -6247,6 +6315,7 @@ function findInteract() {
   if (it) return 'Trigger — take the ' + itemDisplay(it);
   const doc = documents.find((d) => !d.found && d.floor === player.floor && Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);
   if (doc) return 'Trigger — read the ' + doc.type + ' (' + doc.title + ')';
+  if (fakeDoors.some((d) => Math.hypot(d.tx - player.x, d.ty - player.y) < 1.2)) return 'Trigger — try the door';
   if (ritual && player.floor === ritual.floor) {
     const n = ritual.nodes.find((nn) => Math.hypot(nn.tileX - player.x, nn.tileY - player.y) < 1.3);
     if (n) return n.filled ? 'The ' + n.name + ' rests here' : (player.rite[n.anchor] ? 'Trigger — seat ' + n.name : 'Pedestal — needs ' + n.name);

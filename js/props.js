@@ -724,7 +724,7 @@ const Props = (() => {
     // Fill only side-wall slots, stop at a small density target, and leave the
     // authored ritual/nursery/chapel layouts alone for their later set-pieces.
     const noFill = ['ritual', 'nursery', 'chapel', 'kitchen', 'morgue', 'mose'];
-    const desired = areaT >= 70 ? 3 : 2;
+    const desired = areaT >= 70 ? 5 : 3;
     if (!noFill.includes(room.tag) && placedFloor < desired) {
       const service = ['boiler', 'incinerator', 'laundry', 'storage', 'supply', 'records', 'linen', 'attic', 'landing', 'roof'].includes(room.tag);
       const clinical = ['er', 'surgery', 'prep', 'xray', 'autopsy', 'ward', 'recovery', 'iso', 'room207', 'maternity', 'pharmacy', 'bath'].includes(room.tag);
@@ -735,6 +735,10 @@ const Props = (() => {
         [roomBox.x1 - 0.55, cz + dz, -Math.PI / 2],
         [roomBox.x0 + 0.55, cz + dz, Math.PI / 2],
         [roomBox.x1 - 0.55, cz - dz, -Math.PI / 2],
+        [roomBox.x0 + 0.55, cz, Math.PI / 2],
+        [roomBox.x1 - 0.55, cz, -Math.PI / 2],
+        [cx - dz, roomBox.z0 + 0.55, 0],
+        [cx + dz, roomBox.z1 - 0.55, Math.PI],
       ];
       for (let i = 0; i < slots.length && placedFloor < desired; i++) {
         const [sx, sz, syaw] = slots[i];
@@ -842,32 +846,35 @@ const Props = (() => {
         if (!SP.has(grid[y][sx])) continue;
         specials.push({ x0: sx * TILE_M - 0.05, x1: (sx + 1) * TILE_M + 0.05, z0: y * TILE_M - 0.05, z1: (y + 1) * TILE_M + 0.05 });
       }
-      let slot = 0;
-      for (let x = 5; x < (data.W || 64) - 5; x += 4, slot++) {
-        const xx = x + (rnd() - 0.5) * 2;
-        const top = (slot % 2) === 0;
-        const name = CORR[Math.floor(rnd() * CORR.length)];
-        const b = BUILDERS[name]; if (!b) continue;
-        const g = b();
-        const yaw = (top ? 0 : Math.PI) + (rnd() - 0.5) * 0.32;
-        const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
-        const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw));
-        const w = fw * c + fd * s, d = fw * s + fd * c;
-        const xm = (xx + 0.5) * TILE_M;
-        const zm = top ? corridor.z0 + d / 2 + 0.18 : corridor.z1 - d / 2 - 0.18;
-        const rec = { x0: xm - w / 2, x1: xm + w / 2, z0: zm - d / 2, z1: zm + d / 2 };
-        // Keep a broad centre aisle, door approaches, and other props clear.
-        const blocksCentre = top ? rec.z1 > centreZ - 0.9 : rec.z0 < centreZ + 0.9;
-        const blocksDoor = doorXs.some((dx) => rec.x0 < dx + TILE_M * 1.15 && rec.x1 > dx - TILE_M * 1.15);
-        const blocksProp = corridorPlaced.some((p) => overlaps(rec, p, 0.12)) || solids.some((p) => overlaps(rec, p, 0.08));
-        const blocksSpecial = specials.some((p) => overlaps(rec, p, 0));
-        if (blocksCentre || blocksDoor || blocksProp || blocksSpecial) { g.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); continue; }
-        g.position.set(xm, 0, zm);
-        g.rotation.y = yaw;
-        group.add(g);
-        corridorPlaced.push(rec);
-        if (g.userData.solid !== false) {
-          solids.push(rec);
+      // BOTH walls get a chance at every slot — sixty years of abandoned
+      // equipment lines the corridor, but the centre aisle and every door
+      // approach stay guaranteed clear.
+      for (let x = 5; x < (data.W || 64) - 5; x += 3) {
+        for (const top of [true, false]) {
+          if (rnd() > 0.8) continue;   // ragged, not a picket line
+          const xx = x + (rnd() - 0.5) * 1.6;
+          const name = CORR[Math.floor(rnd() * CORR.length)];
+          const b = BUILDERS[name]; if (!b) continue;
+          const g = b();
+          const yaw = (top ? 0 : Math.PI) + (rnd() - 0.5) * 0.32;
+          const fw = g.userData.fw || 0.6, fd = g.userData.fd || 0.6;
+          const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw));
+          const w = fw * c + fd * s, d = fw * s + fd * c;
+          const xm = (xx + 0.5) * TILE_M;
+          const zm = top ? corridor.z0 + d / 2 + 0.16 : corridor.z1 - d / 2 - 0.16;
+          const rec = { x0: xm - w / 2, x1: xm + w / 2, z0: zm - d / 2, z1: zm + d / 2 };
+          const blocksCentre = top ? rec.z1 > centreZ - 0.78 : rec.z0 < centreZ + 0.78;
+          const blocksDoor = doorXs.some((dx) => rec.x0 < dx + TILE_M * 0.9 && rec.x1 > dx - TILE_M * 0.9);
+          const blocksProp = corridorPlaced.some((p) => overlaps(rec, p, 0.1)) || solids.some((p) => overlaps(rec, p, 0.08));
+          const blocksSpecial = specials.some((p) => overlaps(rec, p, 0));
+          if (blocksCentre || blocksDoor || blocksProp || blocksSpecial) { g.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); continue; }
+          g.position.set(xm, 0, zm);
+          g.rotation.y = yaw;
+          group.add(g);
+          corridorPlaced.push(rec);
+          if (g.userData.solid !== false) {
+            solids.push(rec);
+          }
         }
       }
     })();
