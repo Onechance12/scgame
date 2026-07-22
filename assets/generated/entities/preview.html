@@ -7,12 +7,14 @@
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #080b0a; color: #d6ddd7; font: 14px/1.4 system-ui, sans-serif; }
     canvas { display: block; }
-    aside { position: fixed; top: 16px; left: 16px; z-index: 2; width: 245px; padding: 14px; border: 1px solid #344039; border-radius: 8px; background: #101612e8; box-shadow: 0 8px 30px #0008; }
+    aside { position: fixed; top: 16px; left: 16px; z-index: 2; width: 275px; padding: 14px; border: 1px solid #344039; border-radius: 8px; background: #101612e8; box-shadow: 0 8px 30px #0008; }
     h1 { margin: 0 0 5px; font-size: 17px; }
     p { margin: 0 0 11px; color: #9eaaa2; }
     button { margin: 3px 3px 3px 0; padding: 7px 11px; border: 1px solid #526158; border-radius: 5px; color: #d9e2dc; background: #1b241f; cursor: pointer; }
     button.active { color: #111; background: #b8c7bd; }
     output { display: block; margin-top: 8px; color: #8fbda0; }
+    #qa { color: #7f9388; font-size: 12px; }
+    hr { border: 0; border-top: 1px solid #2d3932; margin: 9px 0; }
   </style>
   <script type="importmap">
     { "imports": { "three": "../../../js/vendor/three.module.min.js" } }
@@ -20,13 +22,17 @@
 </head>
 <body>
   <aside>
-    <h1>Child Phantom — Batch 1</h1>
+    <h1 id="title">Original Entity Cast</h1>
     <p>Original procedural mesh, rig, and animation. Drag horizontally to orbit.</p>
+    <button data-model="child" class="active">Child</button>
+    <button data-model="crawler">Crawler</button>
+    <hr>
     <button data-clip="idle" class="active">Idle</button>
     <button data-clip="walk">Walk</button>
     <button data-clip="run">Run</button>
     <button id="bones">Rig</button>
     <output>Loading…</output>
+    <output id="qa"></output>
   </aside>
   <script type="module">
     import * as THREE from 'three';
@@ -54,33 +60,91 @@
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
     const grid = new THREE.GridHelper(4, 16, 0x314139, 0x1d2822); grid.position.y = 0.001; scene.add(grid);
 
-    let root, mixer, active, helper;
+    const models = {
+      child: { path: './child/child.glb', title: 'Child Phantom — Batch 1', camera: [1.65, 0.86, 2.5], look: [0, 0.6, 0] },
+      crawler: { path: './crawler/crawler.glb', title: 'Restraint Crawler — Batch 2', camera: [1.45, 0.9, 2.15], look: [0, 0.28, -0.05] },
+    };
+    let root, mixer, active, helper, currentGltf;
     let orbit = 0;
     const output = document.querySelector('output');
-    const buttons = [...document.querySelectorAll('[data-clip]')];
+    const qaOutput = document.querySelector('#qa');
+    const clipButtons = [...document.querySelectorAll('[data-clip]')];
+    const modelButtons = [...document.querySelectorAll('[data-model]')];
 
-    new GLTFLoader().load('./child/child.glb', (gltf) => {
-      root = gltf.scene;
-      root.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.frustumCulled = false; } });
-      scene.add(root);
-      mixer = new THREE.AnimationMixer(root);
-      const play = (keyName) => {
-        const clip = gltf.animations.find((item) => item.name.toLowerCase().includes(keyName));
-        if (!clip) return;
-        const next = mixer.clipAction(clip); next.reset().fadeIn(0.2).play();
-        if (active && active !== next) active.fadeOut(0.2);
-        active = next;
-        buttons.forEach((button) => button.classList.toggle('active', button.dataset.clip === keyName));
-        output.textContent = `${clip.name} · ${clip.duration.toFixed(2)} s`;
-      };
-      buttons.forEach((button) => button.addEventListener('click', () => play(button.dataset.clip)));
-      document.querySelector('#bones').addEventListener('click', (event) => {
-        if (!helper) { helper = new THREE.SkeletonHelper(root); scene.add(helper); }
-        helper.visible = !helper.visible;
-        event.currentTarget.classList.toggle('active', helper.visible);
-      });
-      play('idle');
-    }, undefined, (error) => { output.textContent = `Load failed: ${error.message}`; console.error(error); });
+    const play = (keyName) => {
+      const clip = currentGltf?.animations.find((item) => item.name.toLowerCase().includes(keyName));
+      if (!clip || !mixer) return;
+      const next = mixer.clipAction(clip); next.reset().fadeIn(0.2).play();
+      if (active && active !== next) active.fadeOut(0.2);
+      active = next;
+      clipButtons.forEach((button) => button.classList.toggle('active', button.dataset.clip === keyName));
+      output.textContent = `${clip.name} · ${clip.duration.toFixed(2)} s`;
+    };
+
+    const scanBounds = (gltf, keyName) => {
+      const qaMixer = new THREE.AnimationMixer(gltf.scene);
+      const box = new THREE.Box3();
+      const idle = gltf.animations.find((clip) => clip.name.toLowerCase().includes('idle')) || gltf.animations[0];
+      const idleAction = qaMixer.clipAction(idle); idleAction.play(); qaMixer.setTime(0);
+      gltf.scene.updateMatrixWorld(true); box.setFromObject(gltf.scene, true);
+      const baselineMinY = box.min.y;
+      idleAction.stop();
+      const clips = [];
+      for (const clip of gltf.animations) {
+        const action = qaMixer.clipAction(clip); action.reset().play();
+        let minRelativeY = Infinity, maxRelativeY = -Infinity, maxHeight = 0;
+        const contactSamples = [];
+        for (let sample = 0; sample <= 32; sample++) {
+          qaMixer.setTime(clip.duration * sample / 32);
+          gltf.scene.updateMatrixWorld(true); box.setFromObject(gltf.scene, true);
+          const relativeMinY = box.min.y - baselineMinY;
+          minRelativeY = Math.min(minRelativeY, relativeMinY);
+          maxRelativeY = Math.max(maxRelativeY, relativeMinY);
+          maxHeight = Math.max(maxHeight, box.max.y - box.min.y);
+          contactSamples.push({ time: clip.duration * sample / 32, minY: relativeMinY });
+        }
+        action.stop();
+        clips.push({ name: clip.name, minRelativeY, maxRelativeY, maxHeight, contactSamples });
+      }
+      const result = { model: keyName, baselineMinY, clips };
+      window.__entityQA = result;
+      qaOutput.dataset.results = JSON.stringify(result);
+      const low = Math.min(...clips.map((clip) => clip.minRelativeY));
+      const high = Math.max(...clips.map((clip) => clip.maxRelativeY));
+      qaOutput.textContent = `32× bounds/clip · contact ${low.toFixed(3)}…${high.toFixed(3)} m · ` +
+        clips.map((clip) => `${clip.name.split('_')[0]} ${clip.minRelativeY.toFixed(3)}`).join(' / ');
+    };
+
+    const loadModel = (keyName) => {
+      const config = models[keyName] || models.child;
+      output.textContent = 'Loading…'; qaOutput.textContent = '';
+      if (mixer) mixer.stopAllAction();
+      if (helper) { scene.remove(helper); helper = null; }
+      if (root) scene.remove(root);
+      root = null; mixer = null; active = null; currentGltf = null; orbit = 0;
+      document.querySelector('#bones').classList.remove('active');
+      modelButtons.forEach((button) => button.classList.toggle('active', button.dataset.model === keyName));
+      document.querySelector('#title').textContent = config.title;
+      camera.position.set(...config.camera); camera.lookAt(...config.look);
+      new GLTFLoader().load(config.path, (gltf) => {
+        currentGltf = gltf; root = gltf.scene;
+        root.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.frustumCulled = false; } });
+        scene.add(root);
+        scanBounds(gltf, keyName);
+        mixer = new THREE.AnimationMixer(root);
+        play('idle');
+      }, undefined, (error) => { output.textContent = `Load failed: ${error.message}`; console.error(error); });
+    };
+
+    clipButtons.forEach((button) => button.addEventListener('click', () => play(button.dataset.clip)));
+    modelButtons.forEach((button) => button.addEventListener('click', () => loadModel(button.dataset.model)));
+    document.querySelector('#bones').addEventListener('click', (event) => {
+      if (!root) return;
+      if (!helper) { helper = new THREE.SkeletonHelper(root); scene.add(helper); }
+      helper.visible = !helper.visible;
+      event.currentTarget.classList.toggle('active', helper.visible);
+    });
+    loadModel(new URLSearchParams(location.search).get('model') || 'child');
 
     let dragging = false, previousX = 0;
     renderer.domElement.addEventListener('pointerdown', (event) => { dragging = true; previousX = event.clientX; renderer.domElement.setPointerCapture(event.pointerId); });

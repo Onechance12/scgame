@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_MODEL = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'child', 'child.glb');
 const modelPath = resolve(process.argv[2] || DEFAULT_MODEL);
 const bytes = readFileSync(modelPath);
+const manifestPath = resolve(dirname(modelPath), 'asset-manifest.json');
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const assetRecord = manifest.assets?.find((asset) => asset.path === modelPath.split('/').at(-1));
+const kind = assetRecord?.kind || 'unknown';
 const errors = [];
 const checks = [];
 
@@ -96,13 +100,32 @@ check(bytes.byteLength < 20 * 1024 * 1024, 'model is within the whole-PR 20 MiB 
 check(index.values.every((value) => value >= 0 && value < vertexCount), 'all indices address valid vertices');
 check(position.values.every(Number.isFinite) && normal.values.every(Number.isFinite), 'geometry contains only finite values');
 
-let minY = Infinity, maxY = -Infinity;
-for (let i = 1; i < position.values.length; i += 3) {
-  minY = Math.min(minY, position.values[i]);
-  maxY = Math.max(maxY, position.values[i]);
+const modelMin = [Infinity, Infinity, Infinity];
+const modelMax = [-Infinity, -Infinity, -Infinity];
+for (let i = 0; i < position.values.length; i += 3) {
+  for (let axis = 0; axis < 3; axis++) {
+    modelMin[axis] = Math.min(modelMin[axis], position.values[i + axis]);
+    modelMax[axis] = Math.max(modelMax[axis], position.values[i + axis]);
+  }
 }
+const modelSize = modelMax.map((value, axis) => value - modelMin[axis]);
+const minY = modelMin[1], maxY = modelMax[1];
 check(Math.abs(minY) <= 1e-6, `feet are at origin (minimum Y ${minY.toFixed(7)} m)`);
-check(maxY >= 1.1 && maxY <= 1.3, `bind height ${maxY.toFixed(4)} m is child scale`);
+if (kind === 'child') {
+  check(modelSize[1] >= 1.1 && modelSize[1] <= 1.3,
+    `bind height ${modelSize[1].toFixed(4)} m is child scale`);
+} else if (kind === 'crawler') {
+  check(modelSize[1] >= 0.56 && modelSize[1] <= 0.66,
+    `bind height ${modelSize[1].toFixed(4)} m is crawler scale`);
+  check(modelSize[0] >= 0.65 && modelSize[0] <= 0.82,
+    `crawler width ${modelSize[0].toFixed(4)} m fits the corridor-safe silhouette`);
+  check(modelSize[2] >= 1.3 && modelSize[2] <= 1.65,
+    `crawler length ${modelSize[2].toFixed(4)} m is controlled around the logical collider`);
+  check(modelSize[1] < modelSize[2] * 0.5, 'crawler is natively prone rather than an upright rig rotated at runtime');
+  check(triangleCount <= 4500, `crawler triangle count ${triangleCount} meets the tighter Quest target`);
+} else {
+  check(modelSize[1] > 0 && modelSize[1] <= 2.5, `bind height ${modelSize[1].toFixed(4)} m is plausible`);
+}
 
 const skin = gltf.skins?.[0];
 check(gltf.skins?.length === 1, 'model has one skin');
@@ -125,6 +148,16 @@ const nodeNames = gltf.nodes.map((node) => node.name || '');
 for (const required of ['Root', 'Hips', 'Spine', 'Chest', 'Head', 'UpperLeg_L', 'UpperLeg_R', 'UpperArm_L', 'UpperArm_R']) {
   check(nodeNames.includes(required), `rig contains ${required}`);
 }
+const meshNode = gltf.nodes.find((node) => node.mesh === 0);
+const rootNode = gltf.nodes.find((node) => node.name === 'Root');
+const identityVector = (value, expected) => value == null || value.every((item, index) => near(item, expected[index]));
+check(identityVector(meshNode?.translation, [0, 0, 0]) && identityVector(meshNode?.rotation, [0, 0, 0, 1]) &&
+  identityVector(meshNode?.scale, [1, 1, 1]), 'mesh node uses an identity transform');
+check(identityVector(rootNode?.translation, [0, 0, 0]) && identityVector(rootNode?.rotation, [0, 0, 0, 1]) &&
+  identityVector(rootNode?.scale, [1, 1, 1]), 'skeleton Root uses an identity transform');
+check(meshNode?.extras?.forwardAxis === '+Z', 'entity declares local +Z as its forward axis');
+check(meshNode?.extras?.kind === kind, 'mesh-node kind matches the per-model manifest');
+if (kind === 'crawler') check(meshNode?.extras?.prone === true, 'crawler declares its native prone pose');
 
 const animationNames = gltf.animations?.map((animation) => animation.name.toLowerCase()) || [];
 for (const key of ['idle', 'walk', 'run']) {
@@ -160,8 +193,10 @@ for (const animation of gltf.animations || []) {
     }
     if (targetNode.name === 'Root' && channel.target.path === 'translation') hasRootTranslation = true;
     if (targetNode.name === 'Hips' && channel.target.path === 'translation') {
+      const baseX = targetNode.translation?.[0] || 0;
+      const baseZ = targetNode.translation?.[2] || 0;
       for (let i = 0; i < output.values.length; i += 3) {
-        maxHipXZ = Math.max(maxHipXZ, Math.abs(output.values[i]), Math.abs(output.values[i + 2]));
+        maxHipXZ = Math.max(maxHipXZ, Math.abs(output.values[i] - baseX), Math.abs(output.values[i + 2] - baseZ));
       }
     }
   }
@@ -171,9 +206,6 @@ for (const animation of gltf.animations || []) {
   check(maxHipXZ <= 0.02, `${animation.name} stays in place (hip X/Z sway <= 2 cm)`);
 }
 
-const manifestPath = resolve(dirname(modelPath), 'asset-manifest.json');
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-const assetRecord = manifest.assets?.find((asset) => asset.path === modelPath.split('/').at(-1));
 const sha256 = createHash('sha256').update(bytes).digest('hex');
 check(assetRecord?.bytes === bytes.byteLength, 'manifest byte count matches the GLB');
 check(assetRecord?.sha256 === sha256, 'manifest SHA-256 matches the GLB');
@@ -192,7 +224,7 @@ if (errors.length) {
     sha256,
     vertices: vertexCount,
     triangles: triangleCount,
-    heightMetres: maxY - minY,
+    dimensionsMetres: modelSize,
     joints: skin.joints.length,
     clips: gltf.animations.map((animation) => animation.name),
   }, null, 2));
