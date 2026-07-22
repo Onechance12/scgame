@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "packId": "codex-original-entity-nurse2-v1",
+  "created": "2026-07-22",
+  "status": "review-candidate",
+  "generator": {
+    "tool": "OpenAI Codex deterministic procedural glTF builder",
+    "script": "../tools/build-nurses.mjs",
+    "sharedLibrary": "../tools/entity-glb-kit.mjs",
+    "externalReferenceImagesUsed": [],
+    "thirdPartyModelsUsed": [],
+    "scansUsed": []
+  },
+  "rights": {
+    "projectOriginal": true,
+    "thirdPartyContent": false,
+    "attributionRequired": false,
+    "franchiseOrTrademarkContent": false,
+    "realPersonLikeness": false,
+    "commercialClearance": "owner-review-required"
+  },
+  "reproducibility": {
+    "bitReproducible": true,
+    "randomSeed": null,
+    "runtimeDependencies": [
+      "Node.js standard library"
+    ]
+  },
+  "assets": [
+    {
+      "path": "nurse2.glb",
+      "role": "rigged-animated-entity",
+      "kind": "nurse2",
+      "displayName": "Night Nurse",
+      "rigId": "original-ward-nurse-rig-v1",
+      "rigSignatureSha256": "f15c1b335bc975f6436fcc87ffd74915ecbdf36a10bf8528f0e38bd285f63a95",
+      "format": "glTF 2.0 GLB",
+      "coordinateSystem": "Y-up",
+      "units": "metres",
+      "feetAtOrigin": true,
+      "upright": true,
+      "dimensionsMetres": {
+        "width": 0.812598,
+        "height": 1.796737,
+        "depth": 0.552525,
+        "min": [
+          -0.402674,
+          0,
+          -0.249649
+        ],
+        "max": [
+          0.409924,
+          1.796737,
+          0.302877
+        ]
+      },
+      "vertices": 1848,
+      "triangles": 2938,
+      "bones": 25,
+      "meshes": 1,
+      "primitives": 1,
+      "materials": 1,
+      "textures": 0,
+      "clips": [
+        {
+          "name": "idle_fever_tremor",
+          "durationSeconds": 2.4,
+          "inPlace": true,
+          "nominalSpeedMps": 0,
+          "groundContactSamples": 65,
+          "groundCompensationTargetMetres": 0.003
+        },
+        {
+          "name": "walk_restraint_limp_in_place_1p1mps",
+          "durationSeconds": 1,
+          "inPlace": true,
+          "nominalSpeedMps": 1.1,
+          "groundContactSamples": 65,
+          "groundCompensationTargetMetres": 0.003
+        },
+        {
+          "name": "run_cold_charge_in_place_2p5mps",
+          "durationSeconds": 0.81,
+          "inPlace": true,
+          "nominalSpeedMps": 2.5,
+          "groundContactSamples": 65,
+          "groundCompensationTargetMetres": 0.003
+        }
+      ],
+      "bytes": 161908,
+      "sha256": "7fda6d01caa2a5bc6206277a1c713faf3177f6f1fbb084e1cfe53ffffff14ee8"
+    }
+  ]
+}
