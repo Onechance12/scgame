@@ -44,6 +44,20 @@ Game: "College Hill — 24 Hours", WebXR survival horror, Meta Quest primary tar
    uneven strips, which limits where I can put fire. With a clean grid I'll upgrade the ritual
    altar and add the incinerator fire.
 
+### P1.5 — added 2026-07-22 (new gameplay systems just landed)
+
+11. **`generated/generator/` — a 1920s industrial generator, GLB.** The basement power
+    system shipped with a procedural placeholder: replace it. Cast-iron engine block on a
+    skid, riveted fuel tank, flywheel + hand crank, brass pressure gauge, cloth-wrapped
+    cables. Rust, oil staining, chipped paint. ≤ 10k faces, ≤ 1K textures, ~1.7 m long.
+    It sits in the boiler room and the player cranks it by hand — make it look worth the risk.
+12. **`generated/mirrors/` — mirror scare set.** (a) A wall mirror with an aged wooden
+    frame, GLB ≤ 3k faces (silvered glass slightly desilvered at the edges); (b) the SAME
+    mirror broken: empty frame + a few shards clinging, for the after-state; (c) a 512px
+    **cracked-glass decal** (PNG alpha, spiderweb crack radiating from an impact point) we
+    can overlay on any intact mirror; (d) a 512px **glass-shard sprite sheet** (4×4, bright
+    slivers on black, additive-ready) for the shatter burst.
+
 ### P2 — big atmosphere upgrades
 
 4. **`generated/signs/` — period hospital signage pack, PNGs with alpha, 512px each.**

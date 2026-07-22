@@ -99,6 +99,12 @@ let deskUseDown = false;   // desktop: left-mouse held (brandish / use)
 let dropSeq = 0, droppedLight = null;         // droppedLight: the flashlight item lying somewhere, maybe still lit
 let aHoldT = 0, aDropped = false, bHoldT = 0, bDropped = false, xDownAt = 0, fDownAt = 0;
 let fxMixers = [];   // animated set-piece FX (ritual flames, the glyph arch)
+// the basement generator: crank it (LOUD) and the bottom two floors get what
+// little power the 1988 lines still carry
+let powerOn = false, crankT = 0, crankTick = 0, genRec = null, genHumOn = false, boilerWarned = false;
+// mirror trigger-scares: armed points that fire ONCE as you pass — a distant
+// shatter down the hall, or the mirror beside you letting go of the wall
+let scareTriggers = [], fallingMirrors = [], firedScares = new Set();
 let phoneRang = false;   // the 3:33 AM payphone (once a night)
 let fogWisps = [], atmoDrips = [], atmoShafts = [];   // drifting fog, ceiling drips, flickering light shafts
 const WARD_RANGE = 6.5;
@@ -234,7 +240,7 @@ function saveState() {
     docs: documents.filter((d) => d.found).map((d) => d.id),
     ritualFilled: ritual ? ritual.nodes.filter((n) => n.filled).map((n) => n.anchor) : [],
     ritualDone: !!(ritual && ritual.done),
-    childrenFreed, spiritsFreed,
+    childrenFreed, spiritsFreed, powerOn, scares: [...firedScares],
     survival: (typeof Survival !== 'undefined') ? Survival.serialize() : undefined,
     finished: state === 'WIN' || state === 'DEAD',
   };
@@ -271,7 +277,7 @@ function validateSave(s) {
   const wIn = obj(s.weapons); s.weapons = {}; WEAPON_ORDER.forEach((k) => { if (wIn[k]) s.weapons[k] = true; });
   s.tool = (s.tool === 'cross' || s.weapons[s.tool]) ? s.tool : 'bare';
   const strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.length <= 64) : [];
-  s.itemsTaken = strs(s.itemsTaken); s.docs = strs(s.docs); s.ritualFilled = strs(s.ritualFilled);
+  s.itemsTaken = strs(s.itemsTaken); s.docs = strs(s.docs); s.ritualFilled = strs(s.ritualFilled); s.scares = strs(s.scares);
   s.objectives = Array.isArray(s.objectives) ? s.objectives.map((b) => !!b) : [];
   const DROP_TYPES = { weapon: 1, ward: 1, flashlight: 1 };
   s.drops = (Array.isArray(s.drops) ? s.drops : []).filter((d) =>
@@ -911,6 +917,8 @@ function newGame(saved) {
   // clear set-piece state so a scare from a previous night can't bleed into this one
   morgueScared = false; carter = null; carterTimer = 50; fallingDebris = []; debrisKept = []; sceneAnims = []; riteClimax = false;
   dropSeq = 0; droppedLight = null; aHoldT = 0; aDropped = false; bHoldT = 0; bDropped = false; fxMixers = []; hideSpot = null; pausedAt = 0;
+  powerOn = false; crankT = 0; genRec = null; boilerWarned = false; firedScares = new Set(); scareTriggers = []; fallingMirrors = [];
+  if (genHumOn) { genHumOn = false; Audio2.genHumStop(); }
   tripTimer = 1200 + Math.random() * 1500; tripping = false; tripT = 0; tripY = 0; sprintHold = 0;
   watchView = 'watch'; watchUsed = false; watchArmed = true; watchHover = -1;
   if (wristMenuPanel && wristMenuPanel.parent) wristMenuPanel.parent.remove(wristMenuPanel);
@@ -964,6 +972,7 @@ function restoreFrom(s) {
   } else (s.objectives || []).forEach((done, i) => { if (data.objectives[i]) data.objectives[i].done = done; });
   (s.docs || []).forEach((id) => { const d = documents.find((dd) => dd.id === id); if (d) d.found = true; });
   childrenFreed = !!s.childrenFreed; spiritsFreed = !!s.spiritsFreed;
+  powerOn = !!s.powerOn; firedScares = new Set(s.scares || []);
   // stairwell-key compatibility: a save from before the lockdown update (or any
   // save made past a stairwell) must never strand the player — grant the keys
   // for every floor between the start floor and wherever they already are.
@@ -1844,6 +1853,13 @@ function buildFloor(fi) {
       moodLights = p.moods || [];
     } catch (e) { console.warn('props failed:', e); }
   }
+
+  // the generator (basement), restored power, and the mirror trigger-scares
+  try {
+    if (fi === 0) addGenerator();
+    if (powerOn && fi <= 1) reviveFixtures();
+    buildScareTriggers(fi);
+  } catch (e) { console.warn('power/scares failed:', e); }
 
   // children behind the walls
   try { buildPeekers(fi); } catch (e) { console.warn('peekers failed:', e); peekers = []; }
@@ -4092,6 +4108,7 @@ function interact() {
   const doc = documents.find((d) => !d.found && d.floor === player.floor &&
     Math.hypot(d.x + 0.5 - player.x, d.y + 0.5 - player.y) < 1.4);
   if (doc) return readDocument(doc);
+  if (player.floor === 0 && genRec && !powerOn && Math.hypot(genRec.tx - player.x, genRec.ty - player.y) < 1.9) return startCrank();
   if (ritual && player.floor === ritual.floor && ritualInteract()) return;
   if (t === TILE.EXIT) return tryExit();
   const obj = objectiveHere();
@@ -4739,6 +4756,7 @@ function update(dt) {
   const moveStick = OPTS.swapHands ? sources.right : sources.left;
   if (isVR && (readAxes(moveStick)[0] || readAxes(moveStick)[1])) noise = Math.max(noise, 0.14);
   if (spiritActive) noise = Math.max(noise, 0.85);
+  if (crankT > 0) noise = Math.max(noise, 0.9);   // the crank carries through the whole basement
   if (crouched) noise *= 0.45;   // low and slow — the dead hear less of you
   if (jumpY > 0.05) noise = Math.max(noise, 0.4);   // jumping is NOT quiet
   if (player.hidden) noise = 0;
@@ -4763,6 +4781,15 @@ function update(dt) {
   };
   updateWard(dt);   // apply the cross's ward BEFORE the dead act this frame (no lag)
   updateMelee(dt);  // and the weapon swing, same frame-order guarantee
+  updateGenerator(dt);
+  updateScares(dt);
+  // the boiler room is guarded — first steps inside earn the warning
+  if (!boilerWarned && player.floor === 0 && !powerOn && inRoom(0, 'boiler')) {
+    boilerWarned = true;
+    showSubtitle('Something feeds near the generator. Go low. Go slow.', 4.5);
+    const gh = ents.find((e) => e.kind === 'ghoul');
+    if (gh && genRec && gh.floor === 0) { gh.target = { x: genRec.tx, y: genRec.ty }; gh.path = null; }
+  }
   let nearest = Infinity, hunting = false;
   const eDt = dt * Survival.entityTimeScale();
   ents.forEach((e) => {
@@ -4903,6 +4930,191 @@ function beamHits(ex, ey) {
   if (da > CONE) return false;
   return Entities.lineOfSight(data.floors[player.floor].grid, player.x, player.y, ex, ey);
 }
+// ============================================================ the generator
+// A hulking 1920s unit in the boiler room. Cranking it is a held, LOUD ritual —
+// the dead hear every pull — and what it buys is thin: the bottom two floors
+// get a scatter of half-alive tubes. The wards above lost their lines in '88.
+function addGenerator() {
+  genRec = null;
+  const r = data.floors[0].rooms.find((rr) => rr.tag === 'boiler');
+  if (!r) return;
+  const tx = r.cx + (r.w > 4 ? 1.2 : 0.6), ty = r.cy - 0.4;
+  const wx = tx * TILE_M, wz = ty * TILE_M;
+  const g = new THREE.Group();
+  const iron = new THREE.MeshStandardMaterial({ color: 0x2e3236, metalness: 0.7, roughness: 0.55 });
+  const rust = new THREE.MeshStandardMaterial({ color: 0x5a3a24, metalness: 0.4, roughness: 0.85 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0x8a703a, metalness: 0.8, roughness: 0.4 });
+  const block = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 0.8), iron); block.position.y = 0.65; g.add(block);
+  const skid = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.2, 1.0), rust); skid.position.y = 0.1; g.add(skid);
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.3, 12), rust);
+  tank.rotation.z = Math.PI / 2; tank.position.set(0, 1.28, -0.18); g.add(tank);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.05, 8, 18), iron);
+  wheel.position.set(0.82, 0.7, 0); wheel.rotation.y = Math.PI / 2; g.add(wheel);
+  for (let i = 0; i < 3; i++) { const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.56, 0.04), iron); spoke.rotation.x = i * Math.PI / 3; spoke.position.copy(wheel.position); g.add(spoke); }
+  const crank = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), brass);
+  crank.position.set(0.86, 0.95, 0.18); crank.rotation.z = 0.5; g.add(crank);
+  const gauge = new THREE.Mesh(new THREE.CircleGeometry(0.09, 14), new THREE.MeshStandardMaterial({ color: 0xd8d2b8, emissive: 0x221a08, emissiveIntensity: 0.4 }));
+  gauge.position.set(-0.4, 1.05, 0.41); g.add(gauge);
+  const needle = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.07, 0.004), new THREE.MeshBasicMaterial({ color: 0x8a1212 }));
+  needle.position.set(-0.4, 1.05, 0.415); needle.rotation.z = 1.1; g.add(needle);
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 8), rust);
+  pipe.position.set(-0.6, 1.75, -0.3); g.add(pipe);
+  // cables running off toward the wall — where the building drinks from it
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 6), new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.9 }));
+  cable.rotation.z = Math.PI / 2.3; cable.position.set(-1.4, 0.4, 0); g.add(cable);
+  g.position.set(wx, 0, wz);
+  g.rotation.y = 0.3;
+  floorGroup.add(g);
+  propSolids.push({ x0: wx - 0.95, z0: wz - 0.6, x1: wx + 0.95, z1: wz + 0.6 });
+  genRec = { g, needle, wheel, tx, ty };
+}
+function reviveFixtures() {
+  // "barely any lights work": a seeded ~40% of the dead tubes come back, dim and nervous
+  let seed = 777 + player.floor;
+  const rr = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  flickers.forEach((f) => {
+    if (f.dead && rr() < 0.4) { f.dead = false; f.on = true; f.base = Math.max(f.base, f.light ? 0.9 : 0); f.nextFlick = rr() * 2; }
+  });
+}
+function startCrank() {
+  if (powerOn || crankT > 0) return;
+  crankT = 4.2; crankTick = 0;
+  showSubtitle('You haul on the crank. It is VERY loud. Keep pulling — and pray nothing is close.', 4);
+}
+function updateGenerator(dt) {
+  // the hum follows you: on powered floors it lives in the walls
+  const wantHum = powerOn && player.floor <= 1;
+  if (wantHum !== genHumOn) { genHumOn = wantHum; if (wantHum) Audio2.genHumStart(); else Audio2.genHumStop(); }
+  if (genRec && powerOn) { genRec.wheel.rotation.x += dt * 7; genRec.g.position.y = Math.sin(performance.now() / 60) * 0.004; genRec.needle.rotation.z = 0.2 + Math.sin(performance.now() / 300) * 0.15; }
+  if (crankT <= 0) return;
+  // cranking: stand your ground. Moving lets the flywheel die.
+  if (player.moving) { crankT = 0; showSubtitle('The flywheel spins down. It needs your whole weight, uninterrupted.', 3); return; }
+  crankT -= dt; crankTick -= dt;
+  if (crankTick <= 0) { crankTick = 0.85; Audio2.generatorCrank(0.32); haptic(0.5, 90); if (genRec) genRec.wheel.rotation.x += 0.9; }
+  if (crankT <= 0) {
+    powerOn = true;
+    Audio2.generatorStart();
+    reviveFixtures();
+    player.fear = Math.max(0, player.fear - 10);
+    showSubtitle('The generator catches. Down here and the first floor, a few tubes stutter alive — the wards above lost their lines in the ’88 fire.', 6);
+    saveState();
+  }
+}
+
+// ============================================================ mirror scares
+// Trigger points armed per floor, fired ONCE each, persisted through saves.
+// The effects don't exist until your footsteps reach them.
+function buildScareTriggers(fi) {
+  scareTriggers = []; fallingMirrors = [];
+  const g = data.floors[fi].grid;
+  let seed = 4242 + fi * 131;
+  const rr = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const ct = data.CORR_TOP || 14, cb = data.CORR_BOT || 17;
+  // 2 distant-shatter points along the corridor
+  for (let i = 0; i < 2; i++) {
+    const x = 8 + Math.floor(rr() * (World.W - 16));
+    const id = 'f' + fi + '_far_' + i;
+    scareTriggers.push({ id, kind: 'far', x: x + 0.5, y: (ct + cb) / 2 + 0.5, r: 1.8, fired: firedScares.has(id) });
+  }
+  // 1–2 falling mirrors mounted on corridor walls, tipped by your passing
+  const nFall = 1 + (rr() < 0.5 ? 1 : 0);
+  for (let i = 0; i < nFall; i++) {
+    const x = 7 + Math.floor(rr() * (World.W - 14));
+    const topSide = rr() < 0.5;
+    const wallY = topSide ? ct : cb;   // corridor edge rows — walls line them
+    const yTile = topSide ? ct - 1 : cb + 1;
+    if (!g[yTile] || g[yTile][x] !== TILE.WALL) continue;   // needs a real wall behind it
+    const id = 'f' + fi + '_fall_' + x;
+    const wx = (x + 0.5) * TILE_M;
+    const wz = (yTile + (topSide ? 1 : 0)) * TILE_M + (topSide ? 0.06 : -0.06);
+    // the mirror itself: aged frame + a glass pane that still shows too much
+    const grp = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.82, 0.05), new THREE.MeshStandardMaterial({ color: 0x4a3a26, roughness: 0.8 }));
+    grp.add(frame);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.72),
+      new THREE.MeshStandardMaterial({ color: 0x9aa8b2, metalness: 0.9, roughness: 0.18, emissive: 0x0a0e12, emissiveIntensity: 0.4 }));
+    glass.position.z = 0.028; grp.add(glass);
+    grp.position.set(wx, 1.55, wz);
+    grp.rotation.y = topSide ? 0 : Math.PI;
+    floorGroup.add(grp);
+    const fired = firedScares.has(id);
+    if (fired) { grp.rotation.x = topSide ? 1.45 : -1.45; grp.position.y = 0.45; }   // already down: it lies where it fell
+    scareTriggers.push({ id, kind: 'fall', x: x + 0.5, y: (ct + cb) / 2 + 0.5, r: 2.2, fired, grp, topSide, glass });
+  }
+}
+function fireScare(s) {
+  s.fired = true; firedScares.add(s.id);
+  if (s.kind === 'far') {
+    // a mirror lets go somewhere you can't see
+    const pan = Math.random() < 0.5 ? -0.8 : 0.8;
+    Audio2.glassShatterPan(pan, 0.14);
+    player.fear = Math.min(100, player.fear + 6);
+    showSubtitle('Somewhere down the hall, a mirror lets go of the wall.', 3.5);
+  } else {
+    fallingMirrors.push({ s, t: 0, vel: 0 });
+  }
+  saveState();
+}
+function updateScares(dt) {
+  for (const s of scareTriggers) {
+    if (s.fired || player.floor === undefined) continue;
+    if (Math.hypot(s.x - player.x, s.y - player.y) < s.r) fireScare(s);
+  }
+  // falling mirrors: tip, accelerate, SHATTER
+  for (let i = fallingMirrors.length - 1; i >= 0; i--) {
+    const fm = fallingMirrors[i];
+    fm.t += dt; fm.vel += dt * 6;
+    const grp = fm.s.grp;
+    const dir = fm.s.topSide ? 1 : -1;
+    grp.rotation.x += dir * fm.vel * dt;
+    grp.position.y = Math.max(0.45, grp.position.y - fm.vel * dt * 0.55);
+    if (Math.abs(grp.rotation.x) >= 1.45 || grp.position.y <= 0.45) {
+      grp.rotation.x = dir * 1.45; grp.position.y = 0.45;
+      fallingMirrors.splice(i, 1);
+      // the LOUD part
+      Audio2.glassShatter(0.6);
+      haptic(0.8, 120);
+      comfortBlink(0.5);
+      player.fear = Math.min(100, player.fear + 14);
+      showSubtitle('THE MIRROR COMES OFF THE WALL AND SHATTERS.', 3);
+      if (fm.s.glass) fm.s.glass.visible = false;
+      glassBurst(grp.position.x, grp.position.z);
+      // the dead heard that too — anything near comes to look
+      ents.forEach((e) => {
+        if (e.floor !== player.floor) return;
+        if (Math.hypot(e.x - grp.position.x / TILE_M, e.y - grp.position.z / TILE_M) < 12) {
+          e.lastSeen = { x: grp.position.x / TILE_M, y: grp.position.z / TILE_M };
+          if (e.state !== Entities.S.HUNT && e.state !== Entities.S.DORMANT) { e.state = Entities.S.SEARCH; e.path = null; }
+        }
+      });
+    }
+  }
+}
+function glassBurst(wx, wz) {
+  const N = 36, pos = new Float32Array(N * 3), vel = [];
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = wx + (Math.random() - 0.5) * 0.3; pos[i * 3 + 1] = 0.5 + Math.random() * 0.4; pos[i * 3 + 2] = wz + (Math.random() - 0.5) * 0.3;
+    vel.push([(Math.random() - 0.5) * 2.2, 1 + Math.random() * 2, (Math.random() - 0.5) * 2.2]);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: softDotTex(), color: 0xcfe4f2, size: 0.05, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+  pts.frustumCulled = false;
+  floorGroup.add(pts);
+  let life = 1.3;
+  // sceneAnims contract: return truthy to stay alive, falsy to be removed
+  sceneAnims.push((dt) => {
+    life -= dt;
+    for (let i = 0; i < N; i++) {
+      vel[i][1] -= dt * 6;
+      pos[i * 3] += vel[i][0] * dt; pos[i * 3 + 1] = Math.max(0.02, pos[i * 3 + 1] + vel[i][1] * dt); pos[i * 3 + 2] += vel[i][2] * dt;
+    }
+    geo.attributes.position.needsUpdate = true;
+    pts.material.opacity = Math.max(0, life / 1.3);
+    if (life <= 0) { floorGroup.remove(pts); return false; }
+    return true;
+  });
+}
+
 // ---- anchored hiding: enter at a hide tile, leave with Interact — never by walking ----
 let hideSpot = null;
 function enterHide() {
@@ -5067,6 +5279,8 @@ function findInteract() {
   }
   if (player.hidden) return 'Trigger — leave hiding';
   if (t === TILE.HIDE) return 'Trigger — hide here';
+  if (player.floor === 0 && genRec && !powerOn && Math.hypot(genRec.tx - player.x, genRec.ty - player.y) < 1.9)
+    return crankT > 0 ? 'KEEP STILL — the flywheel is turning' : 'Trigger — crank the generator (it will be LOUD)';
   if (t === TILE.EXIT) return 'Trigger — the chained front doors';
   const it = data.items.find((i) => !i.taken && i.floor === player.floor && Math.hypot(i.x + 0.5 - player.x, i.y + 0.5 - player.y) < 1.4);
   if (it) return 'Trigger — take the ' + itemDisplay(it);

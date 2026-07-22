@@ -898,6 +898,94 @@ const Audio2 = (() => {
     s.connect(bp); bp.connect(g); g.connect(master); s.start(t); s.stop(t + 0.26);
   }
 
+  // ---- glass: a mirror letting go. Burst of bright noise + ringing shard partials ----
+  function glassCore(out, vol, t) {
+    const s = noiseSource();
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(Math.max(0.001, vol), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    s.connect(hp); hp.connect(g); g.connect(out); s.start(t); s.stop(t + 0.4);
+    // shard pings — many fast, high, detuned rings dying at different rates
+    for (let i = 0; i < 9; i++) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.value = 1800 + rnd() * 4200;
+      const og = ctx.createGain();
+      const dt0 = rnd() * 0.12;
+      og.gain.setValueAtTime(0.0001, t + dt0);
+      og.gain.exponentialRampToValueAtTime(vol * (0.25 + rnd() * 0.3), t + dt0 + 0.008);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + dt0 + 0.15 + rnd() * 0.4);
+      o.connect(og); og.connect(out); o.start(t + dt0); o.stop(t + dt0 + 0.6);
+    }
+    // settling tinkles
+    let tt = t + 0.3;
+    for (let i = 0; i < 5; i++) {
+      const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 2400 + rnd() * 3000;
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(vol * 0.12 / (i + 1), tt);
+      g2.gain.exponentialRampToValueAtTime(0.0001, tt + 0.1);
+      o2.connect(g2); g2.connect(out); o2.start(tt); o2.stop(tt + 0.12);
+      tt += 0.06 + rnd() * 0.1;
+    }
+  }
+  function glassShatter(vol) { if (!started) return; glassCore(master, vol == null ? 0.5 : vol, now()); }
+  function glassShatterPan(pan, vol) { if (!started) return; glassCore(panOut(pan), vol == null ? 0.12 : vol, now()); }
+
+  // ---- the basement generator ----
+  function generatorCrank(vol) {   // one hard pull: flywheel chug + belt squeal
+    if (!started) return;
+    const t = now(), v = vol == null ? 0.3 : vol;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(28, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.18);
+    o.frequency.exponentialRampToValueAtTime(24, t + 0.5);
+    const g = ctx.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320;
+    o.connect(lp); lp.connect(g); g.connect(master); o.start(t); o.stop(t + 0.6);
+    const s = noiseSource();
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 3;
+    const g2 = ctx.createGain(); g2.gain.setValueAtTime(v * 0.5, t + 0.05); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    s.connect(bp); bp.connect(g2); g2.connect(master); s.start(t); s.stop(t + 0.45);
+  }
+  function generatorStart() {   // sputter… sputter… ROAR, settling into the hum
+    if (!started) return;
+    const t = now();
+    [0, 0.35, 0.62].forEach((dt0, i) => {
+      const o = ctx.createOscillator(); o.type = 'square';
+      o.frequency.setValueAtTime(30 + i * 8, t + dt0);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.22, t + dt0); g.gain.exponentialRampToValueAtTime(0.0001, t + dt0 + 0.22);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
+      o.connect(lp); lp.connect(g); g.connect(master); o.start(t + dt0); o.stop(t + dt0 + 0.25);
+    });
+    const s = noiseSource();
+    const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 500;
+    const g3 = ctx.createGain();
+    g3.gain.setValueAtTime(0.0001, t + 0.9); g3.gain.exponentialRampToValueAtTime(0.5, t + 1.05);
+    g3.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+    s.connect(lp2); lp2.connect(g3); g3.connect(master); s.start(t + 0.9); s.stop(t + 2.3);
+  }
+  let genHum = null;
+  function genHumStart() {   // the powered floors carry a low diesel-and-mains drone
+    if (!started || genHum) return;
+    const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(master);
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 55;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+    o1.connect(lp); lp.connect(g);
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 110;
+    const g2 = ctx.createGain(); g2.gain.value = 0.3; o2.connect(g2); g2.connect(g);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 6.5;
+    const lg = ctx.createGain(); lg.gain.value = 0.008;
+    lfo.connect(lg); lg.connect(g.gain);
+    o1.start(); o2.start(); lfo.start();
+    g.gain.exponentialRampToValueAtTime(0.05, now() + 1.2);
+    genHum = { g, stopAll: () => { try { o1.stop(); o2.stop(); lfo.stop(); } catch (e) { } } };
+  }
+  function genHumStop() {
+    if (!genHum) return;
+    const h = genHum; genHum = null;
+    try { h.g.gain.exponentialRampToValueAtTime(0.0001, now() + 0.6); } catch (e) { }
+    setTimeout(() => { h.stopAll(); try { h.g.disconnect(); } catch (e) { } }, 800);
+  }
+
   function setMasterVolume(v) { if (master) master.gain.value = v; }
   function suspend() { if (ctx) ctx.suspend(); }
   function resume() { if (ctx) ctx.resume(); }
@@ -911,6 +999,7 @@ const Audio2 = (() => {
     babyCry, musicBox, humming, rattle,
     footstepPan, laughPan, chains, crash, thud, gust,
     growlPan, moanPan, hissPan, breathPan, screechPan, humPan, gnawPan, cracklePan, wardChime, swish, phoneRing,
+    glassShatter, glassShatterPan, generatorCrank, generatorStart, genHumStart, genHumStop,
   };
 })();
 if (typeof window !== 'undefined') window.Audio2 = Audio2;
