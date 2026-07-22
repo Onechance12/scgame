@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "packId": "codex-original-entity-child-v1",
+  "created": "2026-07-22",
+  "status": "review-candidate",
+  "generator": {
+    "tool": "OpenAI Codex deterministic procedural glTF builder",
+    "script": "../tools/build-child.mjs",
+    "externalReferenceImagesUsed": [],
+    "thirdPartyModelsUsed": [],
+    "scansUsed": []
+  },
+  "rights": {
+    "projectOriginal": true,
+    "thirdPartyContent": false,
+    "attributionRequired": false,
+    "franchiseOrTrademarkContent": false,
+    "realPersonLikeness": false,
+    "commercialClearance": "owner-review-required"
+  },
+  "reproducibility": {
+    "bitReproducible": true,
+    "randomSeed": null,
+    "runtimeDependencies": [
+      "Node.js standard library"
+    ]
+  },
+  "assets": [
+    {
+      "path": "child.glb",
+      "role": "rigged-animated-entity",
+      "kind": "child",
+      "format": "glTF 2.0 GLB",
+      "coordinateSystem": "Y-up",
+      "units": "metres",
+      "feetAtOrigin": true,
+      "dimensionsMetres": {
+        "width": 0.488,
+        "height": 1.219,
+        "depth": 0.340338,
+        "min": [
+          -0.244,
+          0,
+          -0.135
+        ],
+        "max": [
+          0.244,
+          1.219,
+          0.205338
+        ]
+      },
+      "vertices": 1350,
+      "triangles": 2502,
+      "bones": 20,
+      "meshes": 1,
+      "primitives": 1,
+      "materials": 1,
+      "textures": 0,
+      "clips": [
+        {
+          "name": "idle_breathing",
+          "durationSeconds": 3,
+          "inPlace": true,
+          "nominalSpeedMps": 0
+        },
+        {
+          "name": "walk_in_place_1p1mps",
+          "durationSeconds": 1,
+          "inPlace": true,
+          "nominalSpeedMps": 1.1
+        },
+        {
+          "name": "run_in_place_2p5mps",
+          "durationSeconds": 0.6,
+          "inPlace": true,
+          "nominalSpeedMps": 2.5
+        }
+      ],
+      "bytes": 117792,
+      "sha256": "30ce342470c23955acbb5e31810689b4fa6365fac116d56f25f24717516a277a"
+    }
+  ]
+}

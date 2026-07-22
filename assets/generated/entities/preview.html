@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Original Entity Cast Preview</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #080b0a; color: #d6ddd7; font: 14px/1.4 system-ui, sans-serif; }
+    canvas { display: block; }
+    aside { position: fixed; top: 16px; left: 16px; z-index: 2; width: 245px; padding: 14px; border: 1px solid #344039; border-radius: 8px; background: #101612e8; box-shadow: 0 8px 30px #0008; }
+    h1 { margin: 0 0 5px; font-size: 17px; }
+    p { margin: 0 0 11px; color: #9eaaa2; }
+    button { margin: 3px 3px 3px 0; padding: 7px 11px; border: 1px solid #526158; border-radius: 5px; color: #d9e2dc; background: #1b241f; cursor: pointer; }
+    button.active { color: #111; background: #b8c7bd; }
+    output { display: block; margin-top: 8px; color: #8fbda0; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "../../../js/vendor/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <aside>
+    <h1>Child Phantom — Batch 1</h1>
+    <p>Original procedural mesh, rig, and animation. Drag horizontally to orbit.</p>
+    <button data-clip="idle" class="active">Idle</button>
+    <button data-clip="walk">Walk</button>
+    <button data-clip="run">Run</button>
+    <button id="bones">Rig</button>
+    <output>Loading…</output>
+  </aside>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from '../../../js/vendor/GLTFLoader.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x080b0a);
+    scene.fog = new THREE.Fog(0x080b0a, 3, 7);
+    const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 0.01, 20);
+    camera.position.set(1.65, 0.86, 2.5);
+    camera.lookAt(0, 0.6, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    document.body.append(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xb8cde0, 0x1a130f, 1.8));
+    const key = new THREE.DirectionalLight(0xdce9e2, 3.4);
+    key.position.set(1.5, 2.5, 2); key.castShadow = true; scene.add(key);
+    const rim = new THREE.DirectionalLight(0x6688aa, 2.1);
+    rim.position.set(-2, 1.4, -1.5); scene.add(rim);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(2.1, 48), new THREE.MeshStandardMaterial({ color: 0x121915, roughness: 1 }));
+    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+    const grid = new THREE.GridHelper(4, 16, 0x314139, 0x1d2822); grid.position.y = 0.001; scene.add(grid);
+
+    let root, mixer, active, helper;
+    let orbit = 0;
+    const output = document.querySelector('output');
+    const buttons = [...document.querySelectorAll('[data-clip]')];
+
+    new GLTFLoader().load('./child/child.glb', (gltf) => {
+      root = gltf.scene;
+      root.traverse((node) => { if (node.isMesh) { node.castShadow = true; node.frustumCulled = false; } });
+      scene.add(root);
+      mixer = new THREE.AnimationMixer(root);
+      const play = (keyName) => {
+        const clip = gltf.animations.find((item) => item.name.toLowerCase().includes(keyName));
+        if (!clip) return;
+        const next = mixer.clipAction(clip); next.reset().fadeIn(0.2).play();
+        if (active && active !== next) active.fadeOut(0.2);
+        active = next;
+        buttons.forEach((button) => button.classList.toggle('active', button.dataset.clip === keyName));
+        output.textContent = `${clip.name} · ${clip.duration.toFixed(2)} s`;
+      };
+      buttons.forEach((button) => button.addEventListener('click', () => play(button.dataset.clip)));
+      document.querySelector('#bones').addEventListener('click', (event) => {
+        if (!helper) { helper = new THREE.SkeletonHelper(root); scene.add(helper); }
+        helper.visible = !helper.visible;
+        event.currentTarget.classList.toggle('active', helper.visible);
+      });
+      play('idle');
+    }, undefined, (error) => { output.textContent = `Load failed: ${error.message}`; console.error(error); });
+
+    let dragging = false, previousX = 0;
+    renderer.domElement.addEventListener('pointerdown', (event) => { dragging = true; previousX = event.clientX; renderer.domElement.setPointerCapture(event.pointerId); });
+    renderer.domElement.addEventListener('pointermove', (event) => { if (dragging) { orbit += (event.clientX - previousX) * 0.008; previousX = event.clientX; } });
+    renderer.domElement.addEventListener('pointerup', () => { dragging = false; });
+    addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+    const clock = new THREE.Clock();
+    renderer.setAnimationLoop(() => {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      if (mixer) mixer.update(dt);
+      if (root) root.rotation.y = orbit;
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>
