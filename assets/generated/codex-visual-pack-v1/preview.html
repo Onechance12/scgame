@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex Visual Pack v1</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090b0a;
+      --panel: #151814;
+      --ink: #eee8d8;
+      --muted: #aaa597;
+      --line: #393e37;
+      --accent: #bbaa78;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    main { width: min(1240px, calc(100% - 32px)); margin: auto; padding: 34px 0 72px; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin-top: 44px; color: var(--accent); }
+    p, figcaption { color: var(--muted); }
+    .notice { padding: 12px 14px; border-left: 4px solid var(--accent); background: #12150f; }
+    .hero, .asset, .sign, .tile {
+      display: block;
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .hero { aspect-ratio: 16 / 9; object-fit: cover; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .sign-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    figure { margin: 0; padding: 12px; border: 1px solid var(--line); background: var(--panel); }
+    figcaption { margin-top: 8px; font-size: 12px; }
+    .asset { object-fit: contain; }
+    .tile { aspect-ratio: 1; background-repeat: repeat; background-size: 25% 25%; }
+    .green-wall { background-image: url('walls/hospital-green-painted-plaster-albedo.jpg'); }
+    .wallpaper { background-image: url('walls/1920s-floral-wallpaper-albedo.jpg'); }
+    .checker {
+      background-color: #d4d0c5;
+      background-image:
+        linear-gradient(45deg, #777 25%, transparent 25%),
+        linear-gradient(-45deg, #777 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #777 75%),
+        linear-gradient(-45deg, transparent 75%, #777 75%);
+      background-position: 0 0, 0 16px, 16px -16px, -16px 0;
+      background-size: 32px 32px;
+    }
+    .checker img { display: block; width: 100%; }
+    .sign-card { padding: 8px; }
+    .sign { aspect-ratio: 2 / 1; object-fit: contain; border: 0; }
+    .facade { grid-column: span 2; }
+    .facade .sign { aspect-ratio: 4 / 1; }
+    .dark { background: #000; }
+    @media (max-width: 800px) {
+      .grid, .sign-grid { grid-template-columns: 1fr; }
+      .facade { grid-column: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Codex Visual Pack v1</h1>
+    <p class="notice">Claude review build. New generated assets only; no runtime references or existing game files are changed.</p>
+
+    <h2>Title candidate</h2>
+    <img class="hero" src="title/hospital-on-hill-title-art-v1.jpg" alt="Painterly abandoned hospital on a misty Appalachian hill at night with one amber window">
+
+    <h2>P1 prop and fire replacements</h2>
+    <div class="grid">
+      <figure>
+        <img class="asset" src="newspaper/williamson-daily-october-1988.png" alt="Aged Williamson Daily front page announcing the closure of College Hill Hospital">
+        <figcaption>1024² tutorial newspaper. Required display text is exact; small article copy is noncanonical texture.</figcaption>
+      </figure>
+      <figure class="dark">
+        <img class="asset" src="flames/fire-orange-8x8.png" alt="Orange fire animation atlas in a uniform eight by eight grid">
+        <figcaption>Orange additive flipbook: 64 cells at 128² each.</figcaption>
+      </figure>
+      <figure class="dark">
+        <img class="asset" src="flames/fire-witch-green-8x8.png" alt="Green witchfire animation atlas in a uniform eight by eight grid">
+        <figcaption>Hue-derived witchfire with identical frame registration.</figcaption>
+      </figure>
+      <figure class="checker">
+        <img class="asset" src="grime/hospital-grime-atlas.png" alt="Sixteen transparent hospital grime and surface-damage decals">
+        <figcaption>512² RGBA grime atlas on a checker receiver.</figcaption>
+      </figure>
+    </div>
+
+    <h2>4× wall repetition</h2>
+    <p>Each panel repeats the final 1K albedo four times on both axes.</p>
+    <div class="grid">
+      <figure>
+        <div class="tile green-wall" role="img" aria-label="Hospital-green plaster texture repeated four by four"></div>
+        <figcaption>Hospital-green painted plaster.</figcaption>
+      </figure>
+      <figure>
+        <div class="tile wallpaper" role="img" aria-label="1920s floral wallpaper texture repeated four by four"></div>
+        <figcaption>1920s floral wallpaper.</figcaption>
+      </figure>
+    </div>
+
+    <h2>Exact-text period signs</h2>
+    <div class="sign-grid">
+      <figure class="sign-card checker"><img class="sign" src="signs/ward-2-a.png" alt="Aged sign reading Ward 2-A"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/ward-2-b.png" alt="Aged sign reading Ward 2-B"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/maternity.png" alt="Aged sign reading Maternity"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/surgery.png" alt="Aged sign reading Surgery"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/x-ray.png" alt="Aged sign reading X-Ray"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/records.png" alt="Aged sign reading Records"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/morgue.png" alt="Aged sign reading Morgue"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/autopsy.png" alt="Aged sign reading Autopsy"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/pharmacy.png" alt="Aged sign reading Pharmacy"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/chapel.png" alt="Aged sign reading Chapel"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/no-admittance.png" alt="Aged sign reading No Admittance"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/quiet-please.png" alt="Aged sign reading Quiet Please"></figure>
+      <figure class="sign-card checker"><img class="sign" src="signs/stairs-right.png" alt="Aged sign reading Stairs with a right arrow"></figure>
+      <figure class="sign-card checker facade"><img class="sign" src="signs/college-hill-hospital-est-1928.png" alt="Aged facade sign reading College Hill Hospital, established 1928"></figure>
+    </div>
+
+    <h2>Document viewer backplates</h2>
+    <div class="grid">
+      <figure><img class="asset" src="documents/patient-admission-form.jpg" alt="Blank aged patient admission form"><figcaption>Patient admission form.</figcaption></figure>
+      <figure><img class="asset" src="documents/police-report-letterhead.jpg" alt="Blank aged county police report"><figcaption>Police report letterhead.</figcaption></figure>
+      <figure><img class="asset" src="documents/handwritten-diary-page.jpg" alt="Mostly blank aged ruled diary page"><figcaption>Handwritten diary backplate.</figcaption></figure>
+      <figure><img class="asset" src="documents/press-cutting-layout.jpg" alt="Blank aged press cutting layout"><figcaption>Press-cutting layout.</figcaption></figure>
+    </div>
+
+    <h2>Burning parchment card</h2>
+    <div class="grid">
+      <figure><img class="asset" src="parchment/burning-parchment-albedo-v1.jpg" alt="Aged parchment with a charred irregular edge"><figcaption>sRGB albedo.</figcaption></figure>
+      <figure class="dark"><img class="asset" src="parchment/burning-parchment-scorched-edge-mask-v1.png" alt="Black and white scorched parchment opacity mask"><figcaption>Linear keep/cut mask: white keeps, black removes.</figcaption></figure>
+    </div>
+
+    <p>See the sibling README for integration mappings, technical caveats, budgets, and Claude's decision checklist.</p>
+  </main>
+</body>
+</html>

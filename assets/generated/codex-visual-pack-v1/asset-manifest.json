@@ -1,0 +1,578 @@
+{
+  "schemaVersion": 1,
+  "packId": "codex-visual-pack-v1",
+  "created": "2026-07-21",
+  "status": "review-ready-not-integrated",
+  "runtimeIntegrated": false,
+  "generator": {
+    "tool": "OpenAI built-in image generation",
+    "primaryMode": "generate",
+    "externalReferenceImagesUsed": [],
+    "internalGeneratedEditInputs": [
+      {
+        "sourceId": "parchment-albedo-v1",
+        "file": "exec-307c8660-bf7f-42bf-a6c2-194d0d629b8d.png"
+      }
+    ],
+    "promptFile": "PROMPTS.md",
+    "provenanceFile": "PROVENANCE.md"
+  },
+  "rights": {
+    "aiGenerated": true,
+    "status": "owner-review-required",
+    "commercialClearance": "not-determined",
+    "externalRasterReferences": [],
+    "exceptions": [
+      {
+        "id": "newspaper-fictional-prop",
+        "detail": "The entire newspaper is a fictional generated prop with requested real-world-adjacent display text; it is not an archival scan or verified reconstruction, and generated article copy was intentionally blurred."
+      },
+      {
+        "id": "sign-system-font-output",
+        "detail": "Exact sign text includes rasterized glyph output from locally installed system fonts; font files are not redistributed and commercial clearance is not determined."
+      },
+      {
+        "id": "facade-fictionalization",
+        "detail": "The facade sign and EST. 1928 wording are fictional requested game art, not independently verified historical evidence."
+      }
+    ]
+  },
+  "reproducibility": {
+    "bitReproducible": false,
+    "reason": "The built-in generator did not expose a stable seed or complete run metadata; observed source hashes and deterministic local transformations are documented."
+  },
+  "budget": {
+    "hardLimitBytes": 20971520,
+    "derivativeImageBytes": 7726876,
+    "derivativeImageCount": 27,
+    "withinHardLimit": true
+  },
+  "omittedRequests": [
+    {
+      "id": "watch-glb",
+      "reason": "No trustworthy low-poly modeling, UV, material, and glTF validation workflow was available."
+    },
+    {
+      "id": "rigged-child-glb",
+      "reason": "No trustworthy original character modeling, rigging, animation, and headset QA workflow was available."
+    },
+    {
+      "id": "generator-glb",
+      "reason": "Added to Claude's base branch while this bitmap pack was being packaged; requires a trustworthy 3D authoring and glTF validation pass."
+    },
+    {
+      "id": "mirror-intact-and-broken-glbs",
+      "reason": "Added to Claude's base branch while this bitmap pack was being packaged; requires matched 3D authoring, materials, and state-transition QA."
+    },
+    {
+      "id": "mirror-cracked-glass-decal",
+      "reason": "Added to Claude's base branch after this pack's generation pass; deferred to a dedicated transparent bitmap pass."
+    },
+    {
+      "id": "mirror-glass-shard-sheet",
+      "reason": "Added to Claude's base branch after this pack's generation pass; deferred to a dedicated additive flipbook pass."
+    }
+  ],
+  "sources": {
+    "newspaper-v1": {
+      "file": "exec-68bfe675-db68-47e3-94fa-e8a5c3217494.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2942529,
+      "sha256": "a0710aebcf8993c419344e7fc058bcc17b058befdc4aa1ff4c98a81050f8b737"
+    },
+    "document-patient-v1": {
+      "file": "exec-a352f4ce-f2fa-4f4b-a669-0367be511a76.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 2280326,
+      "sha256": "41806b03f4803f408825d99db8ce93815994996df3b11f6582135d45efc53c20"
+    },
+    "document-police-v1": {
+      "file": "exec-5ed5dbb6-f6ba-4eec-bc3c-b6471a648c2e.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 2264400,
+      "sha256": "df0783c09230b012b7074fbaf29414e77798bcda4241fb3ea77ee69c83f0fc02"
+    },
+    "document-diary-v1": {
+      "file": "exec-0cd49af1-37eb-43a9-b92a-6e2d92ca1cdb.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 2099540,
+      "sha256": "cb9d0dd2b7f568119ceb14f734886a33c4dfeda64a8d624b8474eac73a9f307f"
+    },
+    "document-press-v1": {
+      "file": "exec-99f6ccf3-c277-45e1-9e1e-fb615193acf5.png",
+      "width": 1448,
+      "height": 1086,
+      "bytes": 2612344,
+      "sha256": "419b34ede3d29483b88cd83a45fd87b2dae4eb8eaedfd468cb777256dee5b563"
+    },
+    "sign-plates-v1": {
+      "file": "exec-f95a1cc8-649e-4af3-8117-fa7346a27fda.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1789387,
+      "sha256": "701755a97c12e7f92192509716021972f5245804e5806ad777fe092d17cbb32f"
+    },
+    "sign-facade-v1": {
+      "file": "exec-20fdaaf4-b1a7-4724-950f-cb573135be72.png",
+      "width": 1881,
+      "height": 836,
+      "bytes": 1699846,
+      "sha256": "20852abef2ba5ee1f0b6168b4f03ac4aded19869ec827504a8cf2d9f15decd57"
+    },
+    "flames-orange-v1": {
+      "file": "exec-aea79f3b-d476-49ef-8927-7e78625559b9.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1108506,
+      "sha256": "1f8c213c04d58dd21be74b40939f962894dc7d38fb8a803c73209876f9ca9646"
+    },
+    "grime-v2": {
+      "file": "exec-f5e5bc52-76d0-43fc-af38-3687dc1a9b87.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1698389,
+      "sha256": "bc3d492ae29a712608a11153b79b4f4a4b75d33daf0db83005fe046a057f16a6"
+    },
+    "wall-green-v2": {
+      "file": "exec-bc6130af-0806-47cb-aa28-fd9b8f7d4e0c.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 3179428,
+      "sha256": "7a59fe2d0f4b06cec403792e61252eba1b15782c8130e1bf6d5790688c5ac03e"
+    },
+    "wall-wallpaper-v2": {
+      "file": "exec-8cef2b14-d53d-40c7-8edd-86cbd89e50f4.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2924241,
+      "sha256": "563cab0f082fe6bd55157106f6a98ddeb43dfd124eb49b1e83b42c20b9b17ae6"
+    },
+    "title-v1": {
+      "file": "exec-c5cff43b-cedc-4a10-839b-9bcd4affb80d.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 2182154,
+      "sha256": "4135d706422d7990bb7c79f48017c5544daf6b5b042defff358c7835e456280a"
+    },
+    "parchment-albedo-v1": {
+      "file": "exec-307c8660-bf7f-42bf-a6c2-194d0d629b8d.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 3164201,
+      "sha256": "cc43278f990716bd10a1cbf4e21bbf56b57c0830a282bbbb70e6c1e0d0f56f4e"
+    },
+    "parchment-mask-v1": {
+      "file": "exec-607774c6-5a65-460a-b800-2a3d039867a3.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 809847,
+      "sha256": "84f534ae8d20bcbd1de6e1e84d15cdc98ccbdbb6367ef88ca87123cc2218cca1"
+    }
+  },
+  "groups": [
+    {
+      "id": "newspaper",
+      "runtimeColorSpace": "sRGB",
+      "assets": [
+        {
+          "path": "newspaper/williamson-daily-october-1988.png",
+          "role": "tutorial-newspaper-color",
+          "promptId": "newspaper-v1",
+          "sourceId": "newspaper-v1",
+          "contentStatus": "wholly-fictional-generated-prop-body-copy-intentionally-blurred",
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 1375686,
+          "sha256": "78ef00383f5150c7d7a8a5158aba0cfe954b158863725a42c7ac286f1681d614"
+        }
+      ]
+    },
+    {
+      "id": "documents",
+      "runtimeColorSpace": "sRGB",
+      "assets": [
+        {
+          "path": "documents/patient-admission-form.jpg",
+          "role": "document-viewer-backplate",
+          "promptId": "document-patient-v1",
+          "sourceId": "document-patient-v1",
+          "width": 1024,
+          "height": 768,
+          "mode": "RGB",
+          "bytes": 151833,
+          "sha256": "5893452a5f73ecc2a680897231a0d715d494bc6188fec6947342aaa17f5734f5"
+        },
+        {
+          "path": "documents/police-report-letterhead.jpg",
+          "role": "document-viewer-backplate",
+          "promptId": "document-police-v1",
+          "sourceId": "document-police-v1",
+          "width": 1024,
+          "height": 768,
+          "mode": "RGB",
+          "bytes": 151785,
+          "sha256": "bf82911459a8b549256f7521675cb26ab6dfe7fcd96b9876d88d8bd1b83af689"
+        },
+        {
+          "path": "documents/handwritten-diary-page.jpg",
+          "role": "document-viewer-backplate",
+          "promptId": "document-diary-v1",
+          "sourceId": "document-diary-v1",
+          "width": 1024,
+          "height": 768,
+          "mode": "RGB",
+          "bytes": 122988,
+          "sha256": "fae8cc0515d303537d763945ea45cd202e49fffa235ac99c73999f28371d5b48"
+        },
+        {
+          "path": "documents/press-cutting-layout.jpg",
+          "role": "document-viewer-backplate",
+          "promptId": "document-press-v1",
+          "sourceId": "document-press-v1",
+          "width": 1024,
+          "height": 768,
+          "mode": "RGB",
+          "bytes": 194622,
+          "sha256": "d7b1e9ced8dcdb046ecc8baa86f3af9827846cf77f3b57f79cbffc0156a0a9a0"
+        }
+      ]
+    },
+    {
+      "id": "flames",
+      "runtimeColorSpace": "sRGB",
+      "grid": {
+        "columns": 8,
+        "rows": 8,
+        "cellWidth": 128,
+        "cellHeight": 128,
+        "order": "left-to-right-top-to-bottom"
+      },
+      "assets": [
+        {
+          "path": "flames/fire-orange-8x8.png",
+          "role": "additive-fire-flipbook",
+          "promptId": "flames-orange-v1",
+          "sourceId": "flames-orange-v1",
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 740618,
+          "sha256": "33927aa8dc0cbd9d674ca5c68f581a195794851ed0ca6f191b878202767fdb32"
+        },
+        {
+          "path": "flames/fire-witch-green-8x8.png",
+          "role": "additive-witchfire-flipbook",
+          "promptId": "flames-orange-v1",
+          "sourceId": "flames-orange-v1",
+          "derivedFrom": "flames/fire-orange-8x8.png",
+          "transformation": "HSV hue +67/256 with restrained saturation adjustment",
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 716893,
+          "sha256": "44e032b6a2a9991d99aca9231d8e99d94eb38732f0e94a71925f4d9836e83676"
+        }
+      ]
+    },
+    {
+      "id": "grime",
+      "runtimeColorSpace": "sRGB-color-alpha",
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "cellWidth": 128,
+        "cellHeight": 128,
+        "order": "left-to-right-top-to-bottom",
+        "cells": [
+          "vertical water leak",
+          "circular water ring",
+          "black mold bloom",
+          "mildew edge",
+          "thin rust run",
+          "broad rust runoff",
+          "damp ceiling stain",
+          "soot smear",
+          "dirty handprint",
+          "finger streaks",
+          "shoe scuffs",
+          "dragged grime",
+          "chipped cream enamel",
+          "old adhesive residue",
+          "fine scratches",
+          "peeling green paint"
+        ]
+      },
+      "assets": [
+        {
+          "path": "grime/hospital-grime-atlas.png",
+          "role": "transparent-surface-decal-atlas",
+          "promptId": "grime-v2",
+          "sourceId": "grime-v2",
+          "width": 512,
+          "height": 512,
+          "mode": "RGBA",
+          "bytes": 232514,
+          "sha256": "6f7f90681447bc97dda7424ebf8ae2b1e8e90602142bf7794f5d570861c5d179",
+          "alpha": {
+            "transparentPercent": 75.529,
+            "partialPercent": 24.463,
+            "opaquePercent": 0.008,
+            "cornerValues": [0, 0, 0, 0]
+          }
+        }
+      ]
+    },
+    {
+      "id": "walls",
+      "runtimeColorSpace": "sRGB",
+      "assets": [
+        {
+          "path": "walls/hospital-green-painted-plaster-albedo.jpg",
+          "role": "seamless-wall-albedo",
+          "promptId": "wall-green-v2",
+          "sourceId": "wall-green-v2",
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 277960,
+          "sha256": "b2a153ef7fbfa6d737645d3f6c829232cb2dda2c3ab6fe19e5fe7de198ab8a47",
+          "seamEdgeMad": {
+            "leftRight": 2.415,
+            "topBottom": 2.876
+          }
+        },
+        {
+          "path": "walls/1920s-floral-wallpaper-albedo.jpg",
+          "role": "seamless-wall-albedo",
+          "promptId": "wall-wallpaper-v2",
+          "sourceId": "wall-wallpaper-v2",
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 249178,
+          "sha256": "a77e91c4721a32642fc1d15a7439ed304459afbebfbcc6a538cb4eed6e0d669b",
+          "seamEdgeMad": {
+            "leftRight": 1.891,
+            "topBottom": 1.965
+          }
+        }
+      ]
+    },
+    {
+      "id": "signs",
+      "role": "transparent-period-wayfinding-signs",
+      "promptIds": ["sign-plates-v1", "sign-facade-v1"],
+      "assetDefaults": {
+        "role": "transparent-wayfinding-sign",
+        "promptId": "sign-plates-v1"
+      },
+      "alphaValidation": {
+        "fullRange": true,
+        "allCornersTransparent": true
+      },
+      "runtimeColorSpace": "sRGB-color-alpha",
+      "standardDimensions": [512, 256],
+      "assets": [
+        {
+          "path": "signs/ward-2-a.png",
+          "text": "WARD 2-A",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 154663,
+          "sha256": "2a115531ffd8c2e3cd678b19a844bad997c6e62f44e9c12b2f834b33d94a5f7b"
+        },
+        {
+          "path": "signs/ward-2-b.png",
+          "text": "WARD 2-B",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 154560,
+          "sha256": "526687ddea0438ac8e7079d7456b3c9e5e3726b1ed006bf7d22c98bf591edfb9"
+        },
+        {
+          "path": "signs/maternity.png",
+          "text": "MATERNITY",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 147559,
+          "sha256": "2aee4760f0807a1d9bd89ddd01f2ab901b1a6ddc32f70ee65792c7c8af55f5a2"
+        },
+        {
+          "path": "signs/surgery.png",
+          "text": "SURGERY",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 150011,
+          "sha256": "9a1d37962f0b5a944509a54ffd93c94a4ab7bca15ddb9e3b1a37f395c7d1f8a5"
+        },
+        {
+          "path": "signs/x-ray.png",
+          "text": "X-RAY",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 164918,
+          "sha256": "fd0e6253336fb6f3f8b823d625358334c7622c76885017afd11e90bfda260a87"
+        },
+        {
+          "path": "signs/records.png",
+          "text": "RECORDS",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 160003,
+          "sha256": "f473936d2532666103454f4b75da3de088708e709c89f8fd5c9c5e7b933a1f6a"
+        },
+        {
+          "path": "signs/morgue.png",
+          "text": "MORGUE",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 161866,
+          "sha256": "23fca869069df5c7f548600968d709735d00ecb7e17e67e11112c819c643ccb8"
+        },
+        {
+          "path": "signs/autopsy.png",
+          "text": "AUTOPSY",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 163278,
+          "sha256": "b81e096a9ade6a853e931dd21c2972409f5917a822dbee8f341bc2e64142259d"
+        },
+        {
+          "path": "signs/pharmacy.png",
+          "text": "PHARMACY",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 153463,
+          "sha256": "95b1cf49554d3a1dc61f3170506a5c4bbf88d65f8918e0a02c84537b03bc5a60"
+        },
+        {
+          "path": "signs/chapel.png",
+          "text": "CHAPEL",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 160086,
+          "sha256": "8919d6ffe1934138493660cea0de4bf77ad3776a40146e867252d49ee52895b2"
+        },
+        {
+          "path": "signs/no-admittance.png",
+          "text": "NO ADMITTANCE",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 157901,
+          "sha256": "f9c1097894d166aeae75b3b4dda666f95c00b137b0498ee0e10842f24fd7674f"
+        },
+        {
+          "path": "signs/quiet-please.png",
+          "text": "QUIET PLEASE",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 146669,
+          "sha256": "39b18adc3ff887dabb6efc7129dfc1d2ca845c5d9364185483a1fa9c430d2ec1"
+        },
+        {
+          "path": "signs/stairs-right.png",
+          "text": "STAIRS →",
+          "sourceId": "sign-plates-v1",
+          "width": 512,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 161642,
+          "sha256": "117cae6ef70ab5d3cdf9c7ca15de144b86c0f0646f5a02ecc1825d8efd2c4726"
+        },
+        {
+          "path": "signs/college-hill-hospital-est-1928.png",
+          "role": "transparent-fictional-facade-sign",
+          "promptId": "sign-facade-v1",
+          "text": "COLLEGE HILL HOSPITAL — EST. 1928",
+          "sourceId": "sign-facade-v1",
+          "width": 1024,
+          "height": 256,
+          "mode": "RGBA",
+          "bytes": 353532,
+          "sha256": "7ab15bc0a1b87dedb9aea157e87a326d465305ff065b1b35074817d2d7888534"
+        }
+      ]
+    },
+    {
+      "id": "title",
+      "runtimeColorSpace": "sRGB",
+      "assets": [
+        {
+          "path": "title/hospital-on-hill-title-art-v1.jpg",
+          "role": "start-screen-key-art",
+          "promptId": "title-v1",
+          "sourceId": "title-v1",
+          "width": 1920,
+          "height": 1080,
+          "mode": "RGB",
+          "bytes": 506219,
+          "sha256": "fb9b62ed46b07e9eecaafcd8df3c38617f5b39a9086469c35cea2cd14f07071f"
+        }
+      ]
+    },
+    {
+      "id": "parchment",
+      "assets": [
+        {
+          "path": "parchment/burning-parchment-albedo-v1.jpg",
+          "role": "parchment-color",
+          "runtimeColorSpace": "sRGB",
+          "promptId": "parchment-albedo-v1",
+          "sourceId": "parchment-albedo-v1",
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 578504,
+          "sha256": "128bf5e65c441b98d6ca0dd250037c76f9a73bfe0e8b722e3da8dd135b588186"
+        },
+        {
+          "path": "parchment/burning-parchment-scorched-edge-mask-v1.png",
+          "role": "parchment-alpha-map",
+          "runtimeColorSpace": "linear-mask",
+          "promptId": "parchment-mask-v1",
+          "sourceId": "parchment-mask-v1",
+          "inputSourceIds": ["parchment-albedo-v1"],
+          "width": 1024,
+          "height": 1024,
+          "mode": "RGB",
+          "bytes": 37925,
+          "sha256": "edb4ad0490ef28bc6f5e747592da31f4e90474e1c31413aa99aeca7ff15cbd2f",
+          "maskDistribution": {
+            "blackPercent": 4.143,
+            "whitePercent": 95.305,
+            "grayPercent": 0.552
+          }
+        }
+      ]
+    }
+  ]
+}
