@@ -2955,7 +2955,9 @@ const Assets = (() => {
   mob('cast', 'helene', 'assets/models/sketchfab/helene/scene.gltf');
   mob('cast', 'anne', 'assets/models/sketchfab/anne/scene.gltf');
   mob('cast', 'wolfram', 'assets/models/sketchfab/wolfram/scene.gltf');
-  mob('cast', 'horrorkid', 'assets/models/horror/horrorkid/scene.gltf');
+  // the Child — Codex's original cast replacement (batch 1). The CC-BY-NC
+  // horrorkid stays on disk but is no longer loaded or shipped to players.
+  mob('cast', 'childcast', 'assets/generated/entities/child/child.glb');
   mob('cast', 'crawler2', 'assets/models/horror/crawler2/scene.gltf');
   mob('cast', 'ghoul', 'assets/models/horror/ghoul/scene.gltf');
   mob('cast', 'closer', 'assets/models/horror/closer/scene.gltf');
@@ -4315,7 +4317,7 @@ const MOBMAP = {
   // The Night Nurse — Nurse Anne, sicklier, a charger
   nurse2: { key: 'anne', targetH: 1.8, translucent: true, opacity: 0.82, tint: 0xaecdb4, tintAmt: 0.3, aura: 'rgba(140,200,150,0.45)', auraS: 2.4, yaw: Math.PI },
   // The Child — Fantasma, a small floating phantom
-  child: { key: 'horrorkid', targetH: 1.18, translucent: false, opacity: 1, tint: 0xb8b0aa, tintAmt: 0.22, aura: 'rgba(150,60,60,0.45)', auraS: 1.8, yaw: 0 },
+  child: { key: 'childcast', targetH: 1.18, translucent: false, opacity: 1, tint: 0xb8b0aa, tintAmt: 0.22, aura: 'rgba(150,60,60,0.45)', auraS: 1.8, yaw: 0 },
   // Mose the Lurching Orderly — Wolfram, tall & dark, he can run
   mose: { key: 'wolfram', targetH: 2.02, translucent: false, opacity: 1, tint: 0x2a2530, tintAmt: 0.45, emissive: 0x0a0004, aura: 'rgba(60,10,10,0.55)', auraS: 2.8, yaw: Math.PI },
   // The Crawler — a mutated human dragging itself along the floor (prone, so targetH is its low height)

@@ -70,6 +70,8 @@ license.txt from Sketchfab.
     horror/horrorkid/ "Horror Kid"  by LostModels2025
               https://sketchfab.com/3d-models/horror-kid-0cebfd4b5dbc429b91ba026223a5bcc8
               (LostModels2025 — CC-BY-NC-4.0, non-commercial; fan-project compatible)
+              NOTE (2026-07-22): no longer loaded — replaced in-game by the
+              original generated child (assets/generated/entities/child/).
 
   The Crawler (a mutated human that drags itself along the floor):
     horror/crawler2/ "Crawling mutated human"  by Elisey
@@ -272,6 +274,12 @@ GENERATED VISUAL PACK (Codex)
   hashes and provenance: PROMPTS.md / PROVENANCE.md / asset-manifest.json in
   that directory. Commercial clearance remains an owner decision (see
   PROVENANCE.md).
+
+  assets/generated/entities/ — original monster cast replacements generated
+  for this game (packaged by Codex): procedural rigs, meshes and animations,
+  no third-party model/scan/likeness. Batch 1: the Child. Per-model
+  PROVENANCE.md and manifests in each folder. Owned outright — no external
+  license or attribution required.
 
 VENDORED LIBRARIES
 ------------------
