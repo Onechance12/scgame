@@ -818,9 +818,12 @@ function prepareGame(saved) {
   return prepPromise;
 }
 // props landed mid-night: rebuild the current floor once so real furniture
-// replaces the sparse first build (masked with a comfort blink)
+// replaces the sparse first build (masked with a comfort blink). If they land
+// during the walk-up, note it — endCinematic rebuilds before you step inside.
+let propsLate = false;
 function propsArrived() {
-  if (state !== 'PLAY' || !data) return;
+  if (!data) return;
+  if (state !== 'PLAY') { propsLate = true; return; }
   comfortBlink(0.8);
   buildFloor(player.floor);
   placeDollyAtTile(player.x, player.y);
@@ -1335,6 +1338,11 @@ function startCinematic() {
     runnerCue: 'wait', heldLantern: null, banner: null, climb: 0, panelT: 0,
   };
   state = 'INTRO';
+  // the interior is already built and waiting behind the facade — but the ward
+  // is far wider than the frontage, so from the hillside its pale green walls
+  // would poke out past both ends of the building. Keep the inside hidden
+  // until the doors take you.
+  if (floorGroup) floorGroup.visible = false;
   // you start with the light OFF — the very first lesson is finding its switch
   player.hasLight = true; player.lightOn = false; flashlight.visible = false;
   jumpY = 0; jumpVel = 0; crouched = false;
@@ -1679,6 +1687,10 @@ function endCinematic() {
   Audio2.creak(); Audio2.slam();
   comfortBlink(1);
   disposeGroup(c.g); cine = null;
+  // the inside was hidden for the walk-up; if the furniture stream finished
+  // while you climbed, rebuild once so you enter a fully-dressed floor
+  if (propsLate) { propsLate = false; buildFloor(player.floor); }
+  if (floorGroup) floorGroup.visible = true;
   const sp = World.spawn(data);
   placeDollyAtTile(sp.x + 0.5, sp.y + 0.5);
   dolly.position.y = 0; dolly.rotation.set(0, 0, 0);
