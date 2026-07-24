@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "packId": "college-hill-surface-lighting-kit",
+  "created": "2026-07-21",
+  "status": "review-only",
+  "runtimeIntegrated": false,
+  "referenceImagesUsed": [],
+  "generator": {
+    "tool": "OpenAI built-in image generation",
+    "mode": "generate",
+    "promptFile": "PROMPTS.md"
+  },
+  "totalDerivativeImageBytes": 4464689,
+  "assets": [
+    {
+      "id": "corridor-mood-v1",
+      "role": "art-direction-reference",
+      "promptId": "corridor-mood-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "not-applicable",
+      "source": {
+        "generatedFile": "exec-9cd442e0-3c1b-4ab2-a6bc-8961315ddc55.png",
+        "mimeType": "image/png",
+        "width": 1672,
+        "height": 941,
+        "sha256": "127adde695243a895da85a4502c4c47330255ac2ada1162e7dca8413a2004b21"
+      },
+      "derivative": {
+        "path": "concept/hospital-corridor-mood.jpg",
+        "mimeType": "image/jpeg",
+        "width": 1536,
+        "height": 864,
+        "bytes": 355601,
+        "sha256": "ff5b0cbcbed867e2e215a8b03114d7debab9b430ca02ceae99989da782694597"
+      },
+      "transformations": [
+        "resized to 1536x864 with macOS sips",
+        "encoded as JPEG with macOS sips"
+      ]
+    },
+    {
+      "id": "plaster-albedo-v1",
+      "role": "candidate-albedo",
+      "promptId": "plaster-albedo-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "sRGB",
+      "source": {
+        "generatedFile": "exec-6d241bdb-9f27-42bb-8870-e9e001586c26.png",
+        "mimeType": "image/png",
+        "width": 1254,
+        "height": 1254,
+        "sha256": "b50e42ca1b4d970955f08e45140eddececdddb2b506969047b345dedd5e14590"
+      },
+      "derivative": {
+        "path": "materials/peeling-surgical-green-plaster-albedo.jpg",
+        "mimeType": "image/jpeg",
+        "width": 1024,
+        "height": 1024,
+        "bytes": 485609,
+        "sha256": "10c1ef8aa4e6777ec47c6f8f7e43222d53cc645dcb4f47bab90239d87d3b1adb"
+      },
+      "transformations": [
+        "resized to 1024x1024 with macOS sips",
+        "encoded as JPEG with macOS sips"
+      ]
+    },
+    {
+      "id": "linoleum-albedo-v1",
+      "role": "candidate-albedo",
+      "promptId": "linoleum-albedo-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "sRGB",
+      "source": {
+        "generatedFile": "exec-03d7cd05-fc04-4597-8e33-f75c4478c79b.png",
+        "mimeType": "image/png",
+        "width": 1254,
+        "height": 1254,
+        "sha256": "26c8d5f3e8437b423b84c0eafb530699c0c1534bc892a606eedd91b1d5e52b16"
+      },
+      "derivative": {
+        "path": "materials/checker-hospital-linoleum-albedo.jpg",
+        "mimeType": "image/jpeg",
+        "width": 1024,
+        "height": 1024,
+        "bytes": 491235,
+        "sha256": "9a007ec4f83222418cd62513663208c2ee9aedb78f2b39f4d351013785e2c54b"
+      },
+      "transformations": [
+        "resized to 1024x1024 with macOS sips",
+        "encoded as JPEG with macOS sips"
+      ]
+    },
+    {
+      "id": "painted-steel-albedo-v1",
+      "role": "candidate-albedo",
+      "promptId": "painted-steel-albedo-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "sRGB",
+      "source": {
+        "generatedFile": "exec-fdfeb29e-951b-46ae-8091-120e926cc812.png",
+        "mimeType": "image/png",
+        "width": 1254,
+        "height": 1254,
+        "sha256": "53bceb1df06e4dce5b92961550f5534cba19b1f20f64c7bd0403f3f8f206b2c5"
+      },
+      "derivative": {
+        "path": "materials/cream-painted-steel-albedo.jpg",
+        "mimeType": "image/jpeg",
+        "width": 1024,
+        "height": 1024,
+        "bytes": 473181,
+        "sha256": "0245f7fef56a47b071baea66905bdc5a1c169ba1fd351dce0495a00a3466046f"
+      },
+      "transformations": [
+        "resized to 1024x1024 with macOS sips",
+        "encoded as JPEG with macOS sips"
+      ]
+    },
+    {
+      "id": "damage-decals-v1",
+      "role": "candidate-transparent-decal-atlas",
+      "promptId": "damage-decals-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "sRGB",
+      "source": {
+        "generatedFile": "exec-b2655f75-e9e8-4d16-a17f-da4a5a326785.png",
+        "mimeType": "image/png",
+        "width": 1254,
+        "height": 1254,
+        "sha256": "80fb0a6a2274ae5981620b6623d9ddd94872c14dcfa145d804bdbf479c3642eb"
+      },
+      "derivative": {
+        "path": "decals/hospital-damage-atlas.png",
+        "mimeType": "image/png",
+        "width": 1024,
+        "height": 1024,
+        "bytes": 928998,
+        "sha256": "cfdc72806011be8d00279fef8a8d092dbd384a5b5acd52a2e86d86be19df7e74"
+      },
+      "transformations": [
+        "removed #00ff00 chroma key with the OpenAI image-generation helper",
+        "used automatic border key, soft matte, 12 transparent threshold, 220 opaque threshold, despill, and one-pixel edge contraction",
+        "resized to 1024x1024"
+      ],
+      "validation": {
+        "cornerAlpha": [0, 0, 0, 0],
+        "fullyTransparentPixelPercent": 74.202,
+        "partiallyTransparentPixelPercent": 11.33,
+        "fullyOpaquePixelPercent": 14.469
+      }
+    },
+    {
+      "id": "light-cookies-v1",
+      "role": "candidate-grayscale-light-cookie-atlas",
+      "promptId": "light-cookies-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "linear-mask",
+      "source": {
+        "generatedFile": "exec-e4587f4e-7312-4d22-a413-dded270011ac.png",
+        "mimeType": "image/png",
+        "width": 1254,
+        "height": 1254,
+        "sha256": "f63689ae16b9bc9e9f4469c21032c0b2e4615e021bad4e84af7bdc3fed3c0a4b"
+      },
+      "derivative": {
+        "path": "lighting/light-cookie-atlas.png",
+        "mimeType": "image/png",
+        "width": 1024,
+        "height": 1024,
+        "bytes": 991036,
+        "sha256": "12d7bb93eb1676f95f245db0d141ec18b2df568adf2962e3ae14498e18c88376"
+      },
+      "transformations": [
+        "resized to 1024x1024 with macOS sips"
+      ]
+    },
+    {
+      "id": "atmosphere-particles-v1",
+      "role": "candidate-grayscale-vfx-atlas",
+      "promptId": "atmosphere-particles-v1",
+      "productionReady": false,
+      "runtimeColorSpace": "linear-mask",
+      "source": {
+        "generatedFile": "exec-1548b8af-92a2-487c-ab31-3d6ae68d8ff0.png",
+        "mimeType": "image/png",
+        "width": 1254,
+        "height": 1254,
+        "sha256": "6521fd1949d7aaa45b8cc91f843e8c40caffe8617ce77fce90de7c34a8e29b53"
+      },
+      "derivative": {
+        "path": "vfx/atmosphere-particle-atlas.png",
+        "mimeType": "image/png",
+        "width": 1024,
+        "height": 1024,
+        "bytes": 739029,
+        "sha256": "c65b98e499aa7c67d25da283e7ba2ef88a491699b3a06d170bd042db8c68ce34"
+      },
+      "transformations": [
+        "resized to 1024x1024 with macOS sips"
+      ]
+    }
+  ]
+}
