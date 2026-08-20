@@ -757,8 +757,14 @@ function hideBigPanel() { bigPanel.visible = false; }
 // ============================================================ new game
 function bindUI() {
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
-  on('btn-vr', () => enterVR());
-  on('btn-desktop', () => startDesktop());
+  let gameStartClaimed = false;
+  const startOnce = (start) => {
+    if (gameStartClaimed) return;
+    gameStartClaimed = true;
+    start();
+  };
+  on('btn-vr', () => startOnce(() => enterVR()));
+  on('btn-desktop', () => startOnce(() => startDesktop()));
   on('btn-resume', resumeGame);
   on('btn-restart', () => newGame());
   on('btn-restart-dead', () => newGame());
@@ -793,7 +799,7 @@ function bindUI() {
   optBtn('opt-walklook', 'walkLook', (o) => '👣 Hold X/Y (move hand) to walk: ' + (o.walkLook ? 'ON' : 'OFF'));
   on('btn-resume-save', () => {
     const s = loadSave(); if (!s) return;
-    if (xrSupported) enterVR(s); else startDesktop(s);
+    startOnce(() => { if (xrSupported) enterVR(s); else startDesktop(s); });
   });
   bindAccountUI();
   bindMPUI();
@@ -5185,6 +5191,10 @@ function bindDesktopInput() {
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase(); keys[k] = true;
     if (state === 'MENU') return;
+    // Movement reads the held key above; every action below is discrete. Let
+    // the OS repeat WASD without repeatedly drinking, healing, pausing, or
+    // toggling equipment dozens of times per second.
+    if (e.repeat) return;
     if (k === 'f' && !e.repeat) { if (state === 'PLAY') fDownAt = performance.now(); else toggleFlash(); }
     if (k === 'e') { if (state === 'PLAY') interact(); else if (state === 'INTRO') introInteract(); }
     if (k === 'q' && state === 'PLAY') startSpirit();
