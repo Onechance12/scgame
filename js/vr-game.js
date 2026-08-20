@@ -2001,11 +2001,20 @@ function loadTextures() {
     const mat = shared(new THREE.MeshStandardMaterial({
       map: fallbackMap, normalMap: fallbackNormal,
       color: opts.color, roughness: opts.roughness, metalness: 0,
+      // a ceiling faces DOWN — it catches almost no flashlight and only the
+      // hemisphere's near-black ground colour, so without a faint self-lit
+      // term it renders as void and the walls appear to float. emissiveMap
+      // tracks the albedo so the glow reads as the real surface, not a panel.
+      emissive: opts.emissive || 0x000000,
+      emissiveMap: opts.emissiveIntensity ? fallbackMap : null,
+      emissiveIntensity: opts.emissiveIntensity || 0,
     }));
     let albedo = null, normal = null, failed = false;
     const commit = () => {
       if (failed || !albedo || !normal) return;
-      mat.map = albedo; mat.normalMap = normal; mat.needsUpdate = true;
+      mat.map = albedo; mat.normalMap = normal;
+      if (opts.emissiveIntensity) mat.emissiveMap = albedo;
+      mat.needsUpdate = true;
     };
     const fetch = (path, srgb, ready) => {
       L.load(path, (t) => { ready(configureSurface(t, srgb)); commit(); }, undefined, () => {
@@ -2041,12 +2050,15 @@ function loadTextures() {
   };
   const legacyCeiling = ceilingPlasterTex();
   legacyCeiling.repeat.set(1, 1); // geometry carries its intended 4-tile period
+  // every ceiling carries a faint self-lit term (emissiveMap = its own albedo)
+  // so it reads as a solid cap over the room instead of black void — enough to
+  // ground the walls, not enough to break the dark
   TEX.ceilingMats = {
-    plaster: surfaceMaterial('ceilings/aged-calcimine-plaster', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1 }),
-    panels: surfaceMaterial('ceilings/midcentury-fiberboard-panels', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1 }),
-    concrete: surfaceMaterial('ceilings/basement-painted-concrete', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1 }),
-    legacy: shared(new THREE.MeshStandardMaterial({ map: legacyCeiling, color: 0x8f8d87, roughness: 1 })),
-    boards: shared(new THREE.MeshStandardMaterial({ map: TEX.rooms.wood, color: 0x625b54, roughness: 1 })),
+    plaster: surfaceMaterial('ceilings/aged-calcimine-plaster', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1, emissive: 0x6a6c70, emissiveIntensity: 0.34 }),
+    panels: surfaceMaterial('ceilings/midcentury-fiberboard-panels', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1, emissive: 0x6a6c70, emissiveIntensity: 0.34 }),
+    concrete: surfaceMaterial('ceilings/basement-painted-concrete', TEX.ceilD, TEX.flatNormal, { color: 0x6d7076, roughness: 1, emissive: 0x5a5c60, emissiveIntensity: 0.30 }),
+    legacy: shared(new THREE.MeshStandardMaterial({ map: legacyCeiling, color: 0x8f8d87, roughness: 1, emissive: 0x8f8d87, emissiveMap: legacyCeiling, emissiveIntensity: 0.30 })),
+    boards: shared(new THREE.MeshStandardMaterial({ map: TEX.rooms.wood, color: 0x625b54, roughness: 1, emissive: 0x554d44, emissiveMap: TEX.rooms.wood, emissiveIntensity: 0.28 })),
   };
   TEX.roomMats.checker = TEX.corridorMats.lino;
   TEX.groundMat = surfaceMaterial('ground/appalachian-wet-leaf-clay', TEX.groundForest, TEX.flatNormal,
